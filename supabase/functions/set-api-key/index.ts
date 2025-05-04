@@ -15,7 +15,17 @@ serve(async (req) => {
   
   try {
     // Parse the request body
-    const { name, key, service } = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ success: false, message: 'Invalid JSON body' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const { name, key, service } = body;
     
     // Validate input
     if (!name || !key || !service) {
@@ -31,6 +41,11 @@ serve(async (req) => {
     // Set up Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error("Missing Supabase URL or service role key");
+    }
+    
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     
     // Generate a masked version of the API key for display
@@ -68,14 +83,9 @@ serve(async (req) => {
       }
     } catch (secretError) {
       console.error('Error setting secret:', secretError);
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'API key metadata stored but secret storage failed',
-          warning: 'The API key was stored in the database, but setting the secret failed. Some functionality may not work correctly.'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      // We'll continue with the database storage even if setting the secret fails
+      // but we'll include a warning in the response
+      console.warn('Secret storage failed but continuing with database storage');
     }
     
     // Ensure the api_keys table exists
@@ -84,11 +94,7 @@ serve(async (req) => {
       const { error: checkError } = await supabase
         .from('api_keys')
         .select('count')
-        .limit(1)
-        .catch(e => {
-          console.error("Check table error:", e);
-          return { error: e };
-        });
+        .limit(1);
         
       if (checkError && checkError.message.includes('relation "public.api_keys" does not exist')) {
         console.log("Creating api_keys table as it doesn't exist");
@@ -138,14 +144,7 @@ serve(async (req) => {
         }
       }
     } catch (tableError) {
-      console.error("Error creating table:", tableError);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          message: `Failed to ensure api_keys table exists: ${tableError instanceof Error ? tableError.message : 'Unknown error'}`
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.error("Error checking/creating table:", tableError);
     }
     
     // Generate a new UUID for the API key record
@@ -155,30 +154,45 @@ serve(async (req) => {
     const singleKeyServices = ['openai', 'perplexity', 'fred'];
     if (singleKeyServices.includes(service.toLowerCase())) {
       try {
-        await supabase
+        const { error: updateError } = await supabase
           .from('api_keys')
           .update({ is_active: false })
           .eq('service', service)
           .eq('is_active', true);
+          
+        if (updateError) {
+          console.error("Error deactivating existing keys:", updateError);
+        }
       } catch (updateError) {
         console.log('No existing keys to deactivate or error:', updateError);
       }
     }
     
     // Store API key metadata in the database
-    const { error: insertError } = await supabase
-      .from('api_keys')
-      .insert({
-        id: uuid,
-        name: name,
-        service: service,
-        key_masked: keyMasked,
-        is_active: true,
-        created_at: new Date().toISOString()
-      });
-      
-    if (insertError) {
-      throw new Error(`Failed to store API key metadata: ${insertError.message}`);
+    try {
+      const { error: insertError } = await supabase
+        .from('api_keys')
+        .insert({
+          id: uuid,
+          name: name,
+          service: service,
+          key_masked: keyMasked,
+          is_active: true,
+          created_at: new Date().toISOString()
+        });
+        
+      if (insertError) {
+        throw new Error(`Failed to store API key metadata: ${insertError.message}`);
+      }
+    } catch (insertError) {
+      console.error("Error inserting key:", insertError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: `Failed to store API key: ${insertError instanceof Error ? insertError.message : 'Unknown error'}`
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     return new Response(

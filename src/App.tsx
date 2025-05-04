@@ -35,12 +35,20 @@ function App() {
       
       try {
         // Call edge function to create API keys table and helper function
-        const { error } = await supabase.functions.invoke('create-api-keys-function', {});
+        const { data, error } = await supabase.functions.invoke('create-api-keys-function', {});
         
         if (error) {
           console.error("Error initializing database:", error);
           toast.error("Error initializing database", { 
             description: "Some features may not work correctly. Please try refreshing the page."
+          });
+          return;
+        }
+        
+        if (!data?.success) {
+          console.error("Initialization was not successful:", data?.message);
+          toast.error("Error initializing database", { 
+            description: data?.message || "Some features may not work correctly."
           });
           return;
         }

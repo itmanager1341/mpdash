@@ -17,18 +17,19 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
     
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error("Missing Supabase URL or service role key");
+    }
+    
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     
     // Check if api_keys table exists and create if it doesn't
     try {
-      const { error: checkError } = await supabase
+      // Try to query the table first
+      const { data: testData, error: checkError } = await supabase
         .from('api_keys')
         .select('count')
-        .limit(1)
-        .catch(e => {
-          console.error("Check table error:", e);
-          return { error: e };
-        });
+        .limit(1);
         
       if (checkError && checkError.message.includes('relation "public.api_keys" does not exist')) {
         console.log("api_keys table does not exist, creating it...");
@@ -68,7 +69,7 @@ serve(async (req) => {
           }
         } catch (pgError) {
           console.error("Failed to create table with Postgres client:", pgError);
-          throw new Error(`Failed to create api_keys table: ${pgError.message}`);
+          throw new Error(`Failed to create api_keys table: ${pgError instanceof Error ? pgError.message : 'Unknown error'}`);
         }
         
         // Return empty keys array as the table was just created
@@ -77,19 +78,19 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-    } catch (error) {
-      console.error("Error checking table:", error);
-      throw new Error(`Failed to check or create api_keys table: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } catch (tableError) {
+      console.error("Error checking or creating table:", tableError);
+      throw new Error(`Failed to check or create api_keys table: ${tableError instanceof Error ? tableError.message : 'Unknown error'}`);
     }
     
     // Get all API keys
-    const { data: keys, error } = await supabase
+    const { data: keys, error: fetchError } = await supabase
       .from('api_keys')
       .select('*')
       .order('created_at', { ascending: false });
       
-    if (error) {
-      throw new Error(`Failed to fetch API keys: ${error.message}`);
+    if (fetchError) {
+      throw new Error(`Failed to fetch API keys: ${fetchError.message}`);
     }
     
     return new Response(

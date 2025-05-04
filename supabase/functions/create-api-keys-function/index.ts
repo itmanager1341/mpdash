@@ -24,36 +24,19 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     
-    // Create the api_keys table directly with SQL
-    const { error: tableError } = await supabase.rpc('create_table_if_not_exists', {
-      table_name: 'api_keys',
-      table_definition: `
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name TEXT NOT NULL,
-        service TEXT NOT NULL,
-        key_masked TEXT NOT NULL,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      `
-    }).catch(e => {
-      console.error("RPC error:", e);
-      return { error: e };
-    });
+    console.log("Creating api_keys table if not exists...");
     
-    if (tableError) {
-      console.log("RPC failed, trying direct SQL");
-      
-      // Try with simple query - this should be supported
-      const { error: queryError } = await supabase
+    // Create the api_keys table directly with SQL
+    try {
+      // Try direct SQL query - this should be supported in most cases
+      const { error: sqlError } = await supabase
         .from('api_keys')
         .select('count')
-        .limit(1)
-        .catch(e => {
-          console.error("Query error:", e);
-          return { error: e };
-        });
+        .limit(1);
       
-      if (queryError && queryError.message.includes('relation "public.api_keys" does not exist')) {
+      if (sqlError && sqlError.message.includes('relation "public.api_keys" does not exist')) {
+        console.log("Table doesn't exist, creating it now...");
+        
         // Create the table manually since the table doesn't exist
         const createTableQuery = `
           CREATE TABLE IF NOT EXISTS public.api_keys (
@@ -89,18 +72,35 @@ serve(async (req) => {
           }
         } catch (pgError) {
           console.error("Failed to create table with Postgres client:", pgError);
-          throw new Error(`Failed to create api_keys table: ${pgError.message}`);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              message: `Failed to create api_keys table: ${pgError instanceof Error ? pgError.message : 'Unknown error'}`
+            }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
+      } else {
+        console.log("Table already exists or could be queried");
       }
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "API keys table initialization completed"
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (error) {
+      console.error("Error checking or creating table:", error);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error occurred"
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "API keys table created successfully"
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
   } catch (error) {
     console.error("Error creating API keys function:", error);
     
