@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, List } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 interface Article {
   id: string;
@@ -22,7 +23,7 @@ interface Article {
 const MPDailyPlanner = () => {
   const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
 
-  const { data: articles, isLoading, error } = useQuery({
+  const { data: articles, isLoading, error, refetch } = useQuery({
     queryKey: ['articles', 'mpdaily'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -36,11 +37,28 @@ const MPDailyPlanner = () => {
     }
   });
 
+  const handlePublish = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('articles')
+        .update({ status: 'published' })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      toast.success("Article published successfully");
+      refetch();
+    } catch (err) {
+      console.error("Error publishing article:", err);
+      toast.error("Failed to publish article");
+    }
+  };
+
   const getArticleStatusColor = (status: string | null) => {
     switch (status) {
       case 'published':
         return 'bg-green-100 text-green-800 border-green-200';
-      case 'unpublished':
+      case 'queued':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
         return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -72,7 +90,6 @@ const MPDailyPlanner = () => {
         </div>
       </div>
 
-      {/* Wrap the TabsContent components inside the same Tabs component */}
       <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "schedule")}>
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
@@ -98,12 +115,24 @@ const MPDailyPlanner = () => {
                         <CardTitle className="text-lg">{article.title}</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground mb-4">
+                          {article.content_variants?.summary 
+                            ? article.content_variants.summary.substring(0, 100) + '...'
+                            : 'No summary available'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
                           Created: {new Date(article.created_at).toLocaleDateString()}
                         </p>
                         <div className="mt-4 flex justify-end space-x-2">
                           <Button variant="outline" size="sm">Edit</Button>
-                          <Button variant="default" size="sm">Publish</Button>
+                          <Button 
+                            variant="default" 
+                            size="sm"
+                            disabled={article.status === 'published'}
+                            onClick={() => handlePublish(article.id)}
+                          >
+                            {article.status === 'published' ? 'Published' : 'Publish'}
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>

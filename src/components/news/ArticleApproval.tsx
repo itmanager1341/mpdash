@@ -3,7 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Send, Calendar, Globe, X } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
@@ -22,20 +22,6 @@ export default function ArticleApproval({
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
   
-  const generateContentWithOpenAI = async (newsItemId: string, destinations: string[]) => {
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-article', {
-        body: { newsItemId, destinations }
-      });
-      
-      if (error) throw error;
-      return data;
-    } catch (err) {
-      console.error("Error generating content:", err);
-      throw err;
-    }
-  };
-
   const toggleDestination = (destination: string) => {
     setSelectedDestinations(prev => 
       prev.includes(destination) 
@@ -63,8 +49,25 @@ export default function ArticleApproval({
       
       if (updateError) throw updateError;
       
-      // Generate content with OpenAI - only if destinations are selected
-      await generateContentWithOpenAI(newsItem.id, selectedDestinations);
+      // Create article entries for each approved destination
+      for (const destination of selectedDestinations) {
+        const { error: articleError } = await supabase
+          .from('articles')
+          .insert({
+            title: newsItem.headline,
+            source_news_id: newsItem.id,
+            status: 'queued',
+            destinations: [destination],
+            content_variants: {
+              summary: `This is a summary of article based on the news item: ${newsItem.headline}`
+            }
+          });
+          
+        if (articleError) {
+          console.error(`Error creating article for ${destination}:`, articleError);
+          toast.error(`Error creating article for ${destination}`);
+        }
+      }
       
       toast.success("Article approved for selected destinations");
       onApproved();
