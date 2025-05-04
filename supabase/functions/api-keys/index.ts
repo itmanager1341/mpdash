@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -129,16 +128,19 @@ async function handleCreateApiKey(supabase: any, body: ApiKeyRequest, corsHeader
   try {
     secretName = getSecretNameForService(service);
     
-    // In production, set the secret in Supabase
-    // For the purpose of this example, we'll just log it
-    console.log(`Setting secret ${secretName}=${key}`);
-    
-    // Actual secret setting would be like:
-    // await setSecret(secretName, key);
+    // Set the secret using Supabase Management API
+    await setSecretValue(secretName, key);
+    console.log(`Successfully set secret: ${secretName}`);
   } catch (secretError) {
     console.error('Error setting secret:', secretError);
-    // We'll continue with the database storage even if setting the secret fails
-    console.warn('Secret storage failed but continuing with database storage');
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: `Failed to store API key as a secret: ${secretError instanceof Error ? secretError.message : 'Unknown error'}`,
+        details: "The API key could not be stored as a Supabase secret. Please check your Supabase configuration."
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
   
   // Check if we need to deactivate other keys for the same service
@@ -194,6 +196,56 @@ async function handleCreateApiKey(supabase: any, body: ApiKeyRequest, corsHeader
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+}
+
+// Function to set a secret value using Supabase Admin API
+async function setSecretValue(secretName: string, secretValue: string): Promise<void> {
+  const supabaseId = Deno.env.get('SUPABASE_PROJECT_ID') || '';
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  
+  if (!supabaseId) {
+    throw new Error('Missing SUPABASE_PROJECT_ID environment variable');
+  }
+  
+  if (!serviceRoleKey) {
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
+  }
+  
+  // Set the secret directly using Deno.env in Supabase Edge Functions environment
+  // This is a workaround since we can't modify environment variables at runtime
+  // In production, this simulates setting the secret and the actual value will be used
+  
+  // Attempt to verify if we can access the current environment variables
+  const currentSecrets = Object.keys(Deno.env.toObject()).filter(key => 
+    !key.startsWith('SUPABASE_') && 
+    !['HOME', 'PATH', 'HOSTNAME'].includes(key)
+  );
+  
+  console.log(`Current environment has ${currentSecrets.length} secrets`);
+  console.log(`Setting secret: ${secretName}`);
+  
+  // Using the Admin API to set secrets for Edge Functions
+  const response = await fetch(`https://api.supabase.com/v1/projects/${supabaseId}/secrets`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      name: secretName,
+      value: secretValue
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`Failed to set secret: ${response.status} ${response.statusText}`);
+    console.error(`Error details: ${errorText}`);
+    throw new Error(`Failed to set secret: ${response.status} ${response.statusText}`);
+  }
+  
+  const result = await response.json();
+  console.log(`Secret ${secretName} set successfully`);
 }
 
 async function handleListApiKeys(supabase: any, corsHeaders: Record<string, string>): Promise<Response> {
