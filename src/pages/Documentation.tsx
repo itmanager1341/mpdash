@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { FileText, Edit, Search, Info } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -15,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import DocumentViewer from "@/components/documentation/DocumentViewer";
 import DocumentEditor from "@/components/documentation/DocumentEditor";
-import { useMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Define knowledge file types
 type KnowledgeFile = {
@@ -103,7 +102,7 @@ const knowledgeFiles: KnowledgeFile[] = [
 ];
 
 export default function Documentation() {
-  const isMobile = useMobile();
+  const isMobile = useIsMobile();
   const [selectedFile, setSelectedFile] = useState<KnowledgeFile | null>(null);
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [searchQuery, setSearchQuery] = useState("");
