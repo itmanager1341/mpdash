@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface ApiKeyFormProps {
   onSuccess: () => void;
+  service?: string;
 }
 
 type ServiceInfo = {
@@ -55,10 +56,10 @@ const serviceInfo: Record<string, ServiceInfo> = {
   }
 };
 
-export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
+export default function ApiKeyForm({ onSuccess, service = "perplexity" }: ApiKeyFormProps) {
   const [keyName, setKeyName] = useState("");
   const [keyValue, setKeyValue] = useState("");
-  const [service, setService] = useState("perplexity");
+  const [selectedService, setSelectedService] = useState(service);
   const [isLoading, setIsLoading] = useState(false);
   const [showKeyValue, setShowKeyValue] = useState(false);
   const [validationError, setValidationError] = useState("");
@@ -90,8 +91,8 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
     }
     
     // Validate key format
-    if (!validateKeyFormat(keyValue, service)) {
-      setValidationError(`This doesn't appear to be a valid ${serviceInfo[service].name} API key format`);
+    if (!validateKeyFormat(keyValue, selectedService)) {
+      setValidationError(`This doesn't appear to be a valid ${serviceInfo[selectedService].name} API key format`);
       return;
     }
     
@@ -108,7 +109,7 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
         body: {
           name: keyName,
           key: keyValue,
-          service: service
+          service: selectedService
         }
       });
 
@@ -126,7 +127,7 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
       
       // Notify success
       toast.success("API key added successfully", {
-        description: `The ${serviceInfo[service].name} API key has been securely stored`
+        description: `The ${serviceInfo[selectedService].name} API key has been securely stored`
       });
 
       // Trigger parent component refresh
@@ -138,6 +139,13 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
       setIsLoading(false);
     }
   };
+
+  // Update the selected service when the service prop changes
+  useEffect(() => {
+    if (service) {
+      setSelectedService(service);
+    }
+  }, [service]);
 
   return (
     <Card>
@@ -173,12 +181,12 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="key-service">Service</Label>
-              {serviceInfo[service]?.docUrl && (
+              {serviceInfo[selectedService]?.docUrl && (
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <a 
-                        href={serviceInfo[service].docUrl} 
+                        href={serviceInfo[selectedService].docUrl} 
                         target="_blank" 
                         rel="noreferrer"
                         className="text-xs text-blue-600 hover:text-blue-800 flex items-center"
@@ -188,15 +196,15 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
                       </a>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Visit {serviceInfo[service].name} to get your API key</p>
+                      <p>Visit {serviceInfo[selectedService].name} to get your API key</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               )}
             </div>
             
-            <Select value={service} onValueChange={(value) => {
-              setService(value);
+            <Select value={selectedService} onValueChange={(value) => {
+              setSelectedService(value);
               setValidationError("");
             }}>
               <SelectTrigger>
@@ -210,7 +218,7 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">{serviceInfo[service]?.description || "API service integration"}</p>
+            <p className="text-xs text-muted-foreground">{serviceInfo[selectedService]?.description || "API service integration"}</p>
           </div>
           
           <div className="space-y-2 md:col-span-2">
@@ -219,7 +227,7 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
               <Input
                 id="key-value"
                 type={showKeyValue ? "text" : "password"}
-                placeholder={`Enter ${serviceInfo[service]?.name || "service"} API key`}
+                placeholder={`Enter ${serviceInfo[selectedService]?.name || "service"} API key`}
                 value={keyValue}
                 onChange={(e) => {
                   setKeyValue(e.target.value);
@@ -260,14 +268,14 @@ export default function ApiKeyForm({ onSuccess }: ApiKeyFormProps) {
           <DialogHeader>
             <DialogTitle>Confirm API Key Storage</DialogTitle>
             <DialogDescription>
-              You're about to store a {serviceInfo[service]?.name || "service"} API key. 
+              You're about to store a {serviceInfo[selectedService]?.name || "service"} API key. 
               This key will be stored securely as a Supabase secret and referenced in the database.
               Only the last few characters will be visible after storage.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <p className="text-sm font-medium">Name: {keyName}</p>
-            <p className="text-sm font-medium">Service: {serviceInfo[service]?.name || service}</p>
+            <p className="text-sm font-medium">Service: {serviceInfo[selectedService]?.name || selectedService}</p>
             <p className="text-sm font-medium mt-2">
               Key: {showKeyValue 
                 ? keyValue 
