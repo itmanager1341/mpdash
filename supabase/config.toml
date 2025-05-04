@@ -1,56 +1,11 @@
 
+# This file configures Supabase Edge Functions.
 project_id = "grebpkcwmurbxorodiyb"
 
 [api]
-port = 54321
-schemas = ["public", "storage", "graphql_public"]
-extra_search_path = ["public", "extensions"]
-max_rows = 1000
+enabled = true
 
-[db]
-port = 54322
-server_port = 54323
-major_version = 15
-
-[studio]
-port = 54324
-
-[inbucket]
-port = 54325
-smtp_port = 54326
-pop3_port = 54327
-
-[storage]
-file_size_limit = "50MiB"
-
-[auth]
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://localhost:3000"]
-jwt_expiry = 3600
-enable_signup = true
-double_confirm_changes = true
-enable_confirmations = false
-
-[functions]
-port = 54321
-database_url = "postgres://postgres:postgres@localhost:54322/postgres"
-node_runtime = true
-deno_runtime = true
-
-[functions.set-api-key]
-verify_jwt = true
-
-[functions.test-perplexity-key]
-verify_jwt = true
-
-[functions.list-api-keys]
-verify_jwt = true
-
-[functions.delete-api-key]
-verify_jwt = true
-
-[functions.toggle-api-key-status]
-verify_jwt = true
-
-[functions.create-api-keys-function]
+[api.functions]
+[api.functions.api-keys]
+enabled = true
 verify_jwt = true

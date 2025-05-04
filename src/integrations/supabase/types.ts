@@ -9,6 +9,33 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      api_keys: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          key_masked: string
+          name: string
+          service: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key_masked: string
+          name: string
+          service: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          key_masked?: string
+          name?: string
+          service?: string
+        }
+        Relationships: []
+      }
       articles: {
         Row: {
           content_variants: Json | null
@@ -224,6 +251,10 @@ export type Database = {
       binary_quantize: {
         Args: { "": string } | { "": unknown }
         Returns: unknown
+      }
+      get_active_api_key: {
+        Args: { service_name: string }
+        Returns: string
       }
       halfvec_avg: {
         Args: { "": number[] }

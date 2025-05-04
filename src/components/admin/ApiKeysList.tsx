@@ -30,13 +30,16 @@ export default function ApiKeysList({ apiKeys, isLoading, onRefresh }: ApiKeysLi
   const handleDeleteApiKey = async (keyId: string) => {
     setProcessingKeyId(keyId);
     try {
-      // Call edge function to delete the API key
-      const { error } = await supabase.functions.invoke('delete-api-key', {
-        body: { id: keyId }
+      // Call consolidated edge function to delete the API key
+      const { error, data } = await supabase.functions.invoke('api-keys', {
+        body: { 
+          operation: 'delete',
+          id: keyId 
+        }
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (error || !data?.success) {
+        throw new Error(error?.message || data?.message || "Failed to delete API key");
       }
 
       // Refresh the list of API keys
@@ -57,16 +60,17 @@ export default function ApiKeysList({ apiKeys, isLoading, onRefresh }: ApiKeysLi
   const handleToggleKeyStatus = async (keyId: string, currentStatus: boolean) => {
     setProcessingKeyId(keyId);
     try {
-      // Call edge function to toggle the API key status
-      const { error } = await supabase.functions.invoke('toggle-api-key-status', {
+      // Call consolidated edge function to toggle the API key status
+      const { error, data } = await supabase.functions.invoke('api-keys', {
         body: { 
+          operation: 'toggle',
           id: keyId,
           is_active: !currentStatus 
         }
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (error || !data?.success) {
+        throw new Error(error?.message || data?.message || "Failed to update API key status");
       }
 
       // Refresh the list of API keys

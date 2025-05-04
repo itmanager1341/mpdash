@@ -29,41 +29,36 @@ const router = createBrowserRouter([
 
 function App() {
   useEffect(() => {
-    // Initialize database tables
-    const initializeDatabase = async () => {
-      console.info("Initializing database tables...");
-      
+    // Check database tables on app startup
+    const checkDatabaseTables = async () => {
       try {
-        // Call edge function to create API keys table and helper function
-        const { data, error } = await supabase.functions.invoke('create-api-keys-function', {});
+        // Get the list of API keys to verify the table exists and is accessible
+        const { data, error } = await supabase.functions.invoke('api-keys', {
+          body: { operation: 'list' }
+        });
         
         if (error) {
-          console.error("Error initializing database:", error);
-          toast.error("Error initializing database", { 
-            description: "Some features may not work correctly. Please try refreshing the page."
+          console.error("Error checking database tables:", error);
+          toast.error("Error connecting to database", { 
+            description: "Some features may not be available. Please check your connection."
           });
           return;
         }
         
-        if (!data?.success) {
-          console.error("Initialization was not successful:", data?.message);
-          toast.error("Error initializing database", { 
-            description: data?.message || "Some features may not work correctly."
-          });
-          return;
-        }
+        console.info("Database connection verified successfully");
         
-        console.info("Database initialization completed successfully");
+        // Preload the API keys into the query client cache
+        queryClient.setQueryData(['apiKeys'], data?.keys || []);
       } catch (error) {
-        console.error("Exception during database initialization:", error);
-        toast.error("Error initializing database", { 
+        console.error("Exception during database check:", error);
+        toast.error("Error initializing application", { 
           description: "An unexpected error occurred. Some features may not work correctly."
         });
       }
     };
     
-    // Run initialization on startup
-    initializeDatabase();
+    // Run verification on startup
+    checkDatabaseTables();
   }, []);
 
   return (

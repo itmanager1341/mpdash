@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -103,9 +104,10 @@ export default function ApiKeyForm({ onSuccess, service = "perplexity" }: ApiKey
     setShowConfirmDialog(false);
     setIsLoading(true);
     try {
-      // Call edge function to store the API key
-      const { data, error } = await supabase.functions.invoke('set-api-key', {
+      // Call consolidated edge function to store the API key
+      const { data, error } = await supabase.functions.invoke('api-keys', {
         body: {
+          operation: 'create',
           name: keyName,
           key: keyValue,
           service: selectedService

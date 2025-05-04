@@ -9,10 +9,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface ApiKeyTesterProps {
   service: string;
-  onSuccess?: () => void;
+  onRefresh?: () => Promise<void>;
 }
 
-export default function ApiKeyTester({ service, onSuccess }: ApiKeyTesterProps) {
+export default function ApiKeyTester({ service, onRefresh }: ApiKeyTesterProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [testResult, setTestResult] = useState<{success: boolean, message: string, details?: string} | null>(null);
   
@@ -32,8 +32,13 @@ export default function ApiKeyTester({ service, onSuccess }: ApiKeyTesterProps) 
   const testApiKey = async () => {
     setIsLoading(true);
     try {
-      // Call the edge function to test the API key
-      const { data, error } = await supabase.functions.invoke(`test-${service.toLowerCase()}-key`, {});
+      // Call consolidated edge function to test the API key
+      const { data, error } = await supabase.functions.invoke('api-keys', {
+        body: { 
+          operation: 'test',
+          service
+        }
+      });
       
       if (error) {
         throw new Error(error.message);
@@ -45,8 +50,8 @@ export default function ApiKeyTester({ service, onSuccess }: ApiKeyTesterProps) 
         details: data.sample_result || data.details
       });
       
-      if (data.success && onSuccess) {
-        onSuccess();
+      if (data.success && onRefresh) {
+        await onRefresh();
       }
     } catch (error) {
       console.error(`Error testing ${service} API key:`, error);

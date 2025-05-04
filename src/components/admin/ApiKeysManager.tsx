@@ -11,57 +11,35 @@ import ApiKeyForm from "./ApiKeyForm";
 import ApiKeysList, { ApiKey } from "./ApiKeysList";
 import ApiKeyTester from "./ApiKeyTester";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { useQuery } from "@tanstack/react-query";
 
 export default function ApiKeysManager() {
-  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
-  const [isFetching, setIsFetching] = useState(true);
   const [isCollapsibleOpen, setIsCollapsibleOpen] = useState(true);
   const [selectedService, setSelectedService] = useState("perplexity");
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchApiKeys();
-  }, []);
-
-  const fetchApiKeys = async () => {
-    setIsFetching(true);
-    setFetchError(null);
-    try {
-      console.log("Fetching API keys...");
-      
-      // First ensure the database function exists
+  // Use React Query to fetch API keys
+  const { 
+    data: apiKeys = [], 
+    isLoading: isFetching, 
+    error: fetchError, 
+    refetch: fetchApiKeys 
+  } = useQuery({
+    queryKey: ['apiKeys'],
+    queryFn: async () => {
       try {
-        await supabase.functions.invoke('create-api-keys-function', {});
-      } catch (initError) {
-        console.log("Note: create-api-keys-function may not be ready yet:", initError);
-        // This is expected on first run, we'll continue anyway
-      }
-      
-      // Call the edge function to get API keys
-      const { data, error } = await supabase.functions.invoke('list-api-keys', {});
-      
-      if (error) {
+        const { data, error } = await supabase.functions.invoke('api-keys', {
+          body: { operation: 'list' }
+        });
+        
+        if (error) throw new Error(error.message);
+        return data.keys || [];
+      } catch (error) {
         console.error("Error fetching API keys:", error);
-        setFetchError(`Failed to fetch API keys: ${error.message}`);
-        toast.error(`Error fetching API keys: ${error.message}`);
-        return;
+        throw error;
       }
-      
-      if (data && Array.isArray(data.keys)) {
-        setApiKeys(data.keys);
-      } else {
-        console.warn("No keys found or invalid response format:", data);
-        setApiKeys([]);
-      }
-    } catch (error) {
-      console.error("Exception when fetching API keys:", error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setFetchError(`Failed to fetch API keys: ${errorMessage}`);
-      toast.error(`Failed to fetch API keys: ${errorMessage}`);
-    } finally {
-      setIsFetching(false);
-    }
-  };
+    },
+    refetchOnWindowFocus: false
+  });
 
   const serviceHasKey = (service: string): boolean => {
     return apiKeys.some(key => key.service.toLowerCase() === service.toLowerCase() && key.is_active);
@@ -93,11 +71,11 @@ export default function ApiKeysManager() {
             <Alert variant="destructive" className="mb-4">
               <AlertTitle>Error fetching API keys</AlertTitle>
               <AlertDescription>
-                {fetchError}
+                {fetchError instanceof Error ? fetchError.message : 'Unknown error'}
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={fetchApiKeys} 
+                  onClick={() => fetchApiKeys()} 
                   className="ml-2"
                 >
                   Try Again
@@ -155,43 +133,43 @@ export default function ApiKeysManager() {
             </TabsList>
             
             <TabsContent value="perplexity" className="space-y-6">
-              <ApiKeyTester service="perplexity" />
-              <ApiKeyForm onSuccess={fetchApiKeys} service="perplexity" />
+              <ApiKeyTester service="perplexity" onRefresh={() => fetchApiKeys()} />
+              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="perplexity" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "perplexity")}
                 isLoading={isFetching}
-                onRefresh={fetchApiKeys}
+                onRefresh={() => fetchApiKeys()}
               />
             </TabsContent>
             
             <TabsContent value="openai" className="space-y-6">
-              <ApiKeyTester service="openai" />
-              <ApiKeyForm onSuccess={fetchApiKeys} service="openai" />
+              <ApiKeyTester service="openai" onRefresh={() => fetchApiKeys()} />
+              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="openai" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "openai")}
                 isLoading={isFetching}
-                onRefresh={fetchApiKeys}
+                onRefresh={() => fetchApiKeys()}
               />
             </TabsContent>
             
             <TabsContent value="fred" className="space-y-6">
-              <ApiKeyTester service="fred" />
-              <ApiKeyForm onSuccess={fetchApiKeys} service="fred" />
+              <ApiKeyTester service="fred" onRefresh={() => fetchApiKeys()} />
+              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="fred" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "fred")}
                 isLoading={isFetching}
-                onRefresh={fetchApiKeys}
+                onRefresh={() => fetchApiKeys()}
               />
             </TabsContent>
             
             <TabsContent value="other" className="space-y-6">
-              <ApiKeyForm onSuccess={fetchApiKeys} service="other" />
+              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="other" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => 
                   !["perplexity", "openai", "fred"].includes(key.service.toLowerCase())
                 )}
                 isLoading={isFetching}
-                onRefresh={fetchApiKeys}
+                onRefresh={() => fetchApiKeys()}
               />
             </TabsContent>
           </Tabs>
