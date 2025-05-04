@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { AlertCircle, CheckCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 type ApiKey = {
   id: string;
@@ -35,6 +35,7 @@ export default function ApiKeysManager() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [promptTemplates, setPromptTemplates] = useState<AiPromptTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyValue, setNewKeyValue] = useState("");
   const [newKeyService, setNewKeyService] = useState("perplexity");
@@ -51,20 +52,31 @@ export default function ApiKeysManager() {
   }, []);
 
   const fetchApiKeys = async () => {
+    setIsFetching(true);
     try {
+      console.log("Fetching API keys...");
       // Call the edge function to get API keys
       const { data, error } = await supabase.functions.invoke('list-api-keys', {});
       
       if (error) {
         console.error("Error fetching API keys:", error);
+        toast.error(`Error fetching API keys: ${error.message}`);
         return;
       }
       
+      console.log("API keys response:", data);
+      
       if (data && Array.isArray(data.keys)) {
         setApiKeys(data.keys);
+      } else {
+        console.warn("No keys found or invalid response format:", data);
+        setApiKeys([]);
       }
     } catch (error) {
-      console.error("Error fetching API keys:", error);
+      console.error("Exception when fetching API keys:", error);
+      toast.error(`Failed to fetch API keys: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsFetching(false);
     }
   };
 
@@ -76,6 +88,7 @@ export default function ApiKeysManager() {
 
     setIsLoading(true);
     try {
+      console.log("Adding new API key...");
       // Call edge function to store the API key
       const { data, error } = await supabase.functions.invoke('set-api-key', {
         body: {
@@ -87,6 +100,12 @@ export default function ApiKeysManager() {
 
       if (error) {
         throw new Error(error.message);
+      }
+
+      console.log("API key added response:", data);
+      
+      if (!data?.success) {
+        throw new Error(data?.message || "Unknown error occurred");
       }
 
       // Refresh the list of API keys
@@ -267,7 +286,12 @@ export default function ApiKeysManager() {
                 onClick={handleAddApiKey} 
                 disabled={isLoading || !newKeyName || !newKeyValue}
               >
-                {isLoading ? "Adding..." : "Add API Key"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : "Add API Key"}
               </Button>
               
               {newKeyService === "perplexity" && (
@@ -276,6 +300,9 @@ export default function ApiKeysManager() {
                   variant="outline"
                   disabled={isLoading}
                 >
+                  {isLoading && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
                   Test Perplexity Connection
                 </Button>
               )}
@@ -303,8 +330,25 @@ export default function ApiKeysManager() {
           )}
 
           <div className="mt-6">
-            <h4 className="text-lg font-medium mb-4">Stored API Keys</h4>
-            {apiKeys.length > 0 ? (
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-lg font-medium">Stored API Keys</h4>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={fetchApiKeys}
+                disabled={isFetching}
+              >
+                {isFetching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : "Refresh"}
+              </Button>
+            </div>
+            
+            {isFetching ? (
+              <div className="flex justify-center items-center p-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : apiKeys.length > 0 ? (
               <div className="space-y-2">
                 {apiKeys.map((key) => (
                   <div key={key.id} className="flex items-center justify-between p-4 border rounded-md">
@@ -399,7 +443,12 @@ export default function ApiKeysManager() {
                 onClick={handleAddPromptTemplate} 
                 disabled={isLoading || !newPromptName || !newPromptTemplate}
               >
-                {isLoading ? "Adding..." : "Add Template"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : "Add Template"}
               </Button>
             </CardFooter>
           </Card>

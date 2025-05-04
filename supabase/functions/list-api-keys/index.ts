@@ -19,38 +19,39 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // First check if the api_keys table exists
-    const { data: tables, error: tablesError } = await supabase.from('information_schema.tables')
-      .select('table_name')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'api_keys');
-    
-    if (tablesError) {
-      throw new Error(`Failed to check if table exists: ${tablesError.message}`);
-    }
-    
-    if (!tables || tables.length === 0) {
-      // Table doesn't exist yet, return empty list
+    // Check if the api_keys table exists using a more reliable method
+    try {
+      // First try to query the table directly - if it doesn't exist, this will fail
+      const { data: apiKeys, error } = await supabase
+        .from('api_keys')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (error) {
+        // If there's an error and it's about the table not existing
+        if (error.message.includes('relation "public.api_keys" does not exist')) {
+          // Return empty array since table doesn't exist yet
+          return new Response(
+            JSON.stringify({ keys: [] }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        throw error; // Re-throw if it's another kind of error
+      }
+      
+      // If we get here, the table exists and we have data
+      return new Response(
+        JSON.stringify({ keys: apiKeys || [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (tableError) {
+      console.log("Error checking/querying api_keys table:", tableError);
+      // Return empty array as a fallback
       return new Response(
         JSON.stringify({ keys: [] }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    // Fetch API keys
-    const { data, error } = await supabase
-      .from('api_keys')
-      .select('*')
-      .order('created_at', { ascending: false });
-      
-    if (error) {
-      throw new Error(`Failed to fetch API keys: ${error.message}`);
-    }
-    
-    return new Response(
-      JSON.stringify({ keys: data || [] }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
   } catch (error) {
     console.error('Error in list-api-keys function:', error);
     

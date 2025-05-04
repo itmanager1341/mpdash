@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,72 +28,86 @@ serve(async (req) => {
       );
     }
 
-    // Set the API key as a project secret
-    // This is using the Supabase dashboard API, which requires admin privileges
+    // Set up Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
     
     // Generate a masked version of the API key for display
     const keyMasked = key.substring(0, 3) + '...' + key.substring(key.length - 4);
     
     // Store API key in the Supabase project secrets
-    // For Perplexity API, store it as PERPLEXITY_API_KEY
     if (service.toLowerCase() === 'perplexity') {
       // Set the Edge Function secret
-      const secretsResponse = await fetch(`${supabaseUrl}/functions/v1/secret`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${serviceRoleKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: 'PERPLEXITY_API_KEY',
-          value: key,
-        }),
-      });
-      
-      if (!secretsResponse.ok) {
-        throw new Error(`Failed to store API key as a secret: ${await secretsResponse.text()}`);
+      try {
+        await supabase.functions.setSecret('PERPLEXITY_API_KEY', key);
+        console.log('Successfully stored PERPLEXITY_API_KEY as a secret');
+      } catch (secretError) {
+        console.error('Error setting secret:', secretError);
+        // Continue anyway, we'll still store the metadata
       }
     }
     
-    // Also store metadata about the key in the database for management purposes
+    // Create the api_keys table if it doesn't exist
+    try {
+      const { error: tableCheckError } = await supabase
+        .from('api_keys')
+        .select('count')
+        .limit(1);
+        
+      if (tableCheckError && tableCheckError.message.includes('relation "public.api_keys" does not exist')) {
+        // Table doesn't exist, create it
+        const { error: createTableError } = await supabase.rpc('create_table_if_not_exists', {
+          table_name: 'api_keys',
+          table_definition: `
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name TEXT NOT NULL,
+            service TEXT NOT NULL,
+            key_masked TEXT NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+          `
+        });
+        
+        if (createTableError) {
+          // Try direct SQL as a fallback
+          const { error: sqlError } = await supabase.sql(`
+            CREATE TABLE IF NOT EXISTS api_keys (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              name TEXT NOT NULL,
+              service TEXT NOT NULL,
+              key_masked TEXT NOT NULL,
+              is_active BOOLEAN NOT NULL DEFAULT TRUE,
+              created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+          `);
+          
+          if (sqlError) {
+            console.error('Failed to create api_keys table:', sqlError);
+          }
+        }
+      }
+    } catch (tableError) {
+      console.error('Error checking/creating table:', tableError);
+      // Continue anyway, the insert might still work if the table exists
+    }
+    
     // Generate a new UUID for the API key record
     const uuid = crypto.randomUUID();
     
-    // Store API key metadata in a "api_keys" table
-    const createTableResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/create_api_keys_table_if_not_exists`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-      }
-    });
-    
-    if (!createTableResponse.ok) {
-      console.error(`Failed to create api_keys table if needed: ${await createTableResponse.text()}`);
-      // We'll continue anyway as the table might already exist
-    }
-    
-    const storeResponse = await fetch(`${supabaseUrl}/rest/v1/api_keys`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceRoleKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify({
+    // Store API key metadata in the database
+    const { error: insertError } = await supabase
+      .from('api_keys')
+      .insert({
         id: uuid,
         name: name,
         service: service,
         key_masked: keyMasked,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      }),
-    });
-    
-    if (!storeResponse.ok) {
-      throw new Error(`Failed to store API key metadata: ${await storeResponse.text()}`);
+        is_active: true
+      });
+      
+    if (insertError) {
+      throw new Error(`Failed to store API key metadata: ${insertError.message}`);
     }
 
     return new Response(
