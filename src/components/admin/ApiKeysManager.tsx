@@ -250,7 +250,7 @@ export default function ApiKeysManager() {
                     onChange={(e) => setNewPromptTemplate(e.target.value)}
                   />
                   <p className="text-sm text-muted-foreground">
-                    Use {{`placeholder`}} for dynamic content
+                    Use {"{{"}"placeholder{"}}}"} for dynamic content
                   </p>
                 </div>
               </div>
