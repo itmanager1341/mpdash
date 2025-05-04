@@ -155,6 +155,7 @@ export type Database = {
           matched_clusters: string[] | null
           perplexity_score: number | null
           source: string | null
+          status: string | null
           summary: string | null
           timestamp: string | null
           url: string
@@ -166,6 +167,7 @@ export type Database = {
           matched_clusters?: string[] | null
           perplexity_score?: number | null
           source?: string | null
+          status?: string | null
           summary?: string | null
           timestamp?: string | null
           url: string
@@ -177,6 +179,7 @@ export type Database = {
           matched_clusters?: string[] | null
           perplexity_score?: number | null
           source?: string | null
+          status?: string | null
           summary?: string | null
           timestamp?: string | null
           url?: string

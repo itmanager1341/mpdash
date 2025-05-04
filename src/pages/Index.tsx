@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -21,6 +20,7 @@ interface NewsItem {
   is_competitor_covered: boolean;
   matched_clusters: string[];
   timestamp: string;
+  status: string | null;
 }
 
 const Index = () => {
