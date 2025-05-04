@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import MPDailyPlanner from "./pages/MPDailyPlanner";
@@ -17,19 +17,47 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => {
+  const [isInitializing, setIsInitializing] = useState(true);
+
   useEffect(() => {
     // Ensure necessary tables are created
     const initializeDatabase = async () => {
       try {
-        await supabase.functions.invoke('create-api-keys-table', {});
+        console.log("Initializing database tables...");
+        
+        // Initialize the API keys table
+        const apiKeysResult = await supabase.functions.invoke('create-api-keys-table', {});
+        
+        if (!apiKeysResult.error) {
+          console.log("API keys table initialization completed:", apiKeysResult.data);
+        } else {
+          console.error("Error initializing API keys table:", apiKeysResult.error);
+        }
+        
+        // Add more table initialization here as needed
+        
         console.log("Database initialization completed");
       } catch (error) {
         console.error("Error initializing database:", error);
+      } finally {
+        setIsInitializing(false);
       }
     };
     
     initializeDatabase();
   }, []);
+
+  // Don't render the app until initialization is complete
+  if (isInitializing) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+          <div className="text-lg font-medium text-muted-foreground">Initializing application...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

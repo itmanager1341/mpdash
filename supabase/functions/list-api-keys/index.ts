@@ -19,39 +19,33 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Check if the api_keys table exists using a more reliable method
-    try {
-      // First try to query the table directly - if it doesn't exist, this will fail
-      const { data: apiKeys, error } = await supabase
-        .from('api_keys')
-        .select('*')
-        .order('created_at', { ascending: false });
+    // Ensure the api_keys table exists before querying
+    await ensureApiKeysTableExists(supabase);
+    
+    // Get API keys with proper sorting and error handling
+    const { data: apiKeys, error } = await supabase
+      .from('api_keys')
+      .select('*')
+      .order('is_active', { ascending: false })
+      .order('created_at', { ascending: false });
         
-      if (error) {
-        // If there's an error and it's about the table not existing
-        if (error.message.includes('relation "public.api_keys" does not exist')) {
-          // Return empty array since table doesn't exist yet
-          return new Response(
-            JSON.stringify({ keys: [] }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        throw error; // Re-throw if it's another kind of error
-      }
-      
-      // If we get here, the table exists and we have data
-      return new Response(
-        JSON.stringify({ keys: apiKeys || [] }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } catch (tableError) {
-      console.log("Error checking/querying api_keys table:", tableError);
-      // Return empty array as a fallback
-      return new Response(
-        JSON.stringify({ keys: [] }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (error) {
+      throw error;
     }
+      
+    // Format the response to ensure consistent date format
+    const formattedKeys = apiKeys?.map(key => ({
+      ...key,
+      created_at: key.created_at // Keep ISO string format
+    })) || [];
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        keys: formattedKeys
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   } catch (error) {
     console.error('Error in list-api-keys function:', error);
     
@@ -65,3 +59,44 @@ serve(async (req) => {
     );
   }
 });
+
+// Helper function to ensure the api_keys table exists
+async function ensureApiKeysTableExists(supabase) {
+  try {
+    // Try to query the table first to see if it exists
+    const { error: queryError } = await supabase
+      .from('api_keys')
+      .select('count')
+      .limit(1);
+      
+    if (queryError && queryError.message.includes('relation "public.api_keys" does not exist')) {
+      console.log('api_keys table does not exist, creating it...');
+      
+      // Table doesn't exist, create it
+      const { error: createError } = await supabase.sql(`
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL,
+          service TEXT NOT NULL,
+          key_masked TEXT NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+      `);
+      
+      if (createError) {
+        throw new Error(`Failed to create api_keys table: ${createError.message}`);
+      }
+      
+      console.log('api_keys table created successfully');
+      return { success: true, message: 'Table created successfully', keys: [] };
+    } else if (queryError) {
+      throw new Error(`Error checking if api_keys table exists: ${queryError.message}`);
+    } else {
+      console.log('api_keys table already exists');
+    }
+  } catch (error) {
+    console.error('Error in ensureApiKeysTableExists:', error);
+    throw error;
+  }
+}
