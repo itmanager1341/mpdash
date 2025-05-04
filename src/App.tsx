@@ -9,6 +9,7 @@ import MPDailyPlanner from "@/pages/MPDailyPlanner";
 import MagazinePlanner from "@/pages/MagazinePlanner";
 import Performance from "@/pages/Performance";
 import AdminSettings from "@/pages/AdminSettings";
+import Documentation from "@/pages/Documentation";
 import NotFound from "@/pages/NotFound";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ const router = createBrowserRouter([
   { path: "/magazine-planner", element: <MagazinePlanner /> },
   { path: "/performance", element: <Performance /> },
   { path: "/admin-settings", element: <AdminSettings /> },
+  { path: "/documentation", element: <Documentation /> },
   { path: "*", element: <NotFound /> }
 ]);
 

@@ -14,7 +14,7 @@ import {
   SidebarTrigger,
   SidebarInset
 } from "@/components/ui/sidebar";
-import { CalendarDays, LayoutDashboard, Mail, Settings, BookOpen, PieChart } from "lucide-react";
+import { CalendarDays, LayoutDashboard, Mail, Settings, BookOpen, PieChart, FileText } from "lucide-react";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -74,6 +74,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     <a href="/performance">
                       <PieChart />
                       <span>Performance</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Documentation">
+                    <a href="/documentation">
+                      <FileText />
+                      <span>Documentation</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
