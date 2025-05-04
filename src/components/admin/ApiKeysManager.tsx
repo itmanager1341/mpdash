@@ -29,11 +29,11 @@ export default function ApiKeysManager() {
     try {
       console.log("Fetching API keys...");
       
-      // First ensure the database function exists for creating tables
+      // First ensure the database function exists
       try {
-        await supabase.functions.invoke('create-api-keys-table', {});
-      } catch (rpcError) {
-        console.log("Note: create-api-keys-table function may not exist yet:", rpcError);
+        await supabase.functions.invoke('create-api-keys-function', {});
+      } catch (initError) {
+        console.log("Note: create-api-keys-function may not be ready yet:", initError);
         // This is expected on first run, we'll continue anyway
       }
       
@@ -185,7 +185,7 @@ export default function ApiKeysManager() {
             </TabsContent>
             
             <TabsContent value="other" className="space-y-6">
-              <ApiKeyForm onSuccess={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="other" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => 
                   !["perplexity", "openai", "fred"].includes(key.service.toLowerCase())

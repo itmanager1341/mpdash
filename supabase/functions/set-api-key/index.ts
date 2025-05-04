@@ -79,19 +79,57 @@ serve(async (req) => {
       );
     }
     
-    // Check if table exists and create if not
-    const { error: checkError } = await supabase
-      .from('api_keys')
-      .select('count')
-      .limit(1);
-      
-    if (checkError && checkError.message.includes('relation "public.api_keys" does not exist')) {
-      // Call the create function via RPC
-      const { error: createError } = await supabase.rpc('create_api_keys_table');
-      
-      if (createError) {
-        throw new Error(`Failed to create api_keys table: ${createError.message}`);
+    // Ensure the api_keys table exists
+    try {
+      // Check if table exists and create if not
+      const { error: checkError } = await supabase
+        .from('api_keys')
+        .select('count')
+        .limit(1);
+        
+      if (checkError && checkError.message.includes('relation "public.api_keys" does not exist')) {
+        console.log("Creating api_keys table as it doesn't exist");
+        
+        // Create the table directly with SQL
+        const { error: createTableError } = await supabase.rpc('create_table_if_not_exists', {
+          table_name: 'api_keys',
+          table_definition: `
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name TEXT NOT NULL,
+            service TEXT NOT NULL,
+            key_masked TEXT NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+          `
+        });
+        
+        if (createTableError) {
+          // If RPC fails, try direct SQL (requires more permissions)
+          const { error: sqlError } = await supabase.sql(`
+            CREATE TABLE IF NOT EXISTS public.api_keys (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              name TEXT NOT NULL,
+              service TEXT NOT NULL,
+              key_masked TEXT NOT NULL,
+              is_active BOOLEAN NOT NULL DEFAULT TRUE,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+          `);
+          
+          if (sqlError) {
+            throw new Error(`Failed to create api_keys table: ${sqlError.message}`);
+          }
+        }
       }
+    } catch (tableError) {
+      console.error("Error creating table:", tableError);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          message: `Failed to ensure api_keys table exists: ${tableError instanceof Error ? tableError.message : 'Unknown error'}`
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
     // Generate a new UUID for the API key record

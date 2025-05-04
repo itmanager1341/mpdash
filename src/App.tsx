@@ -1,86 +1,55 @@
 
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { useEffect } from "react";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Toaster } from "@/components/ui/sonner";
+import Index from "@/pages/Index";
+import ContentCalendar from "@/pages/ContentCalendar";
+import MPDailyPlanner from "@/pages/MPDailyPlanner";
+import MagazinePlanner from "@/pages/MagazinePlanner";
+import Performance from "@/pages/Performance";
+import AdminSettings from "@/pages/AdminSettings";
+import NotFound from "@/pages/NotFound";
 import { supabase } from "@/integrations/supabase/client";
-import Index from "./pages/Index";
-import MPDailyPlanner from "./pages/MPDailyPlanner";
-import MagazinePlanner from "./pages/MagazinePlanner";
-import ContentCalendar from "./pages/ContentCalendar";
-import Performance from "./pages/Performance";
-import AdminSettings from "./pages/AdminSettings";
-import NotFound from "./pages/NotFound";
-import { toast } from "sonner";
 
+// Create a client
 const queryClient = new QueryClient();
 
-const App = () => {
-  const [isInitializing, setIsInitializing] = useState(true);
+// Initialize router
+const router = createBrowserRouter([
+  { path: "/", element: <Index /> },
+  { path: "/content-calendar", element: <ContentCalendar /> },
+  { path: "/mpdaily-planner", element: <MPDailyPlanner /> },
+  { path: "/magazine-planner", element: <MagazinePlanner /> },
+  { path: "/performance", element: <Performance /> },
+  { path: "/admin-settings", element: <AdminSettings /> },
+  { path: "*", element: <NotFound /> }
+]);
 
+function App() {
   useEffect(() => {
-    // Ensure necessary tables are created
+    // Initialize database tables
     const initializeDatabase = async () => {
+      console.info("Initializing database tables...");
       try {
-        console.log("Initializing database tables...");
-        
-        // Initialize the database tables using edge function
-        const { data, error } = await supabase.functions.invoke('create-api-keys-table', {});
-        
-        if (error) {
-          console.error("Error initializing API keys table:", error);
-          toast.error("Failed to initialize database tables. Some features may not work properly.");
-        } else {
-          console.log("API keys table initialization completed");
-        }
-        
-        // Add more table initialization here as needed
-        
-        console.log("Database initialization completed");
+        // Call edge function to create API keys table and helper function
+        await supabase.functions.invoke('create-api-keys-function', {});
       } catch (error) {
-        console.error("Error initializing database:", error);
-        toast.error("Error initializing database. Please try refreshing the page.");
-      } finally {
-        setIsInitializing(false);
+        console.error("Error initializing API keys table:", error);
       }
+      console.info("Database initialization completed");
     };
     
+    // Run initialization on startup
     initializeDatabase();
   }, []);
 
-  // Don't render the app until initialization is complete
-  if (isInitializing) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="flex flex-col items-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-          <div className="text-lg font-medium text-muted-foreground">Initializing application...</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/mpdaily-planner" element={<MPDailyPlanner />} />
-            <Route path="/magazine-planner" element={<MagazinePlanner />} />
-            <Route path="/content-calendar" element={<ContentCalendar />} />
-            <Route path="/performance" element={<Performance />} />
-            <Route path="/admin" element={<AdminSettings />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <RouterProvider router={router} />
+      <Toaster />
     </QueryClientProvider>
   );
-};
+}
 
 export default App;
