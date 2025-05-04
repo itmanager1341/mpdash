@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -128,8 +129,26 @@ async function handleCreateApiKey(supabase: any, body: ApiKeyRequest, corsHeader
   try {
     secretName = getSecretNameForService(service);
     
-    // Set the secret using Supabase Management API
-    await setSecretValue(secretName, key);
+    // Set the secret using Deno.env approach for now (safer fallback)
+    console.log(`Setting secret ${secretName}...`);
+    
+    // Extract project ID from the URL
+    // The project ID is available in the SUPABASE_URL which follows the format:
+    // https://{project_id}.supabase.co
+    const urlParts = supabaseUrl.split('.');
+    if (urlParts.length < 3) {
+      throw new Error(`Invalid SUPABASE_URL format: ${supabaseUrl}`);
+    }
+    
+    const projectId = urlParts[0].replace('https://', '');
+    if (!projectId) {
+      throw new Error('Could not extract project ID from SUPABASE_URL');
+    }
+    
+    console.log(`Extracted project ID: ${projectId}`);
+    
+    // Store the secret using Admin API
+    await setSecretValueDirect(projectId, serviceRoleKey, secretName, key);
     console.log(`Successfully set secret: ${secretName}`);
   } catch (secretError) {
     console.error('Error setting secret:', secretError);
@@ -198,34 +217,20 @@ async function handleCreateApiKey(supabase: any, body: ApiKeyRequest, corsHeader
   }
 }
 
-// Function to set a secret value using Supabase Admin API
-async function setSecretValue(secretName: string, secretValue: string): Promise<void> {
-  const supabaseId = Deno.env.get('SUPABASE_PROJECT_ID') || '';
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-  
-  if (!supabaseId) {
-    throw new Error('Missing SUPABASE_PROJECT_ID environment variable');
+// Function to directly set a secret value using Supabase Management API with explicit project ID
+async function setSecretValueDirect(projectId: string, serviceRoleKey: string, secretName: string, secretValue: string): Promise<void> {
+  if (!projectId) {
+    throw new Error('Missing project ID');
   }
   
   if (!serviceRoleKey) {
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable');
+    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
   }
   
-  // Set the secret directly using Deno.env in Supabase Edge Functions environment
-  // This is a workaround since we can't modify environment variables at runtime
-  // In production, this simulates setting the secret and the actual value will be used
-  
-  // Attempt to verify if we can access the current environment variables
-  const currentSecrets = Object.keys(Deno.env.toObject()).filter(key => 
-    !key.startsWith('SUPABASE_') && 
-    !['HOME', 'PATH', 'HOSTNAME'].includes(key)
-  );
-  
-  console.log(`Current environment has ${currentSecrets.length} secrets`);
-  console.log(`Setting secret: ${secretName}`);
+  console.log(`Setting secret ${secretName} for project ${projectId}`);
   
   // Using the Admin API to set secrets for Edge Functions
-  const response = await fetch(`https://api.supabase.com/v1/projects/${supabaseId}/secrets`, {
+  const response = await fetch(`https://api.supabase.com/v1/projects/${projectId}/secrets`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${serviceRoleKey}`,
@@ -238,10 +243,16 @@ async function setSecretValue(secretName: string, secretValue: string): Promise<
   });
   
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorText = "";
+    try {
+      errorText = await response.text();
+    } catch (e) {
+      errorText = "Could not extract error text";
+    }
+    
     console.error(`Failed to set secret: ${response.status} ${response.statusText}`);
     console.error(`Error details: ${errorText}`);
-    throw new Error(`Failed to set secret: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to set secret: ${response.status} ${response.statusText} - ${errorText}`);
   }
   
   const result = await response.json();
