@@ -244,13 +244,13 @@ export default function ApiKeysManager() {
                   <Label htmlFor="prompt-template">Prompt Template</Label>
                   <Textarea
                     id="prompt-template"
-                    placeholder="You are an expert financial journalist analyzing mortgage industry news. Summarize the following article and highlight key trends relevant to mortgage professionals: {{content}}"
+                    placeholder="You are an expert financial journalist analyzing mortgage industry news. Summarize the following article and highlight key trends relevant to mortgage professionals: {{articleContent}}"
                     className="min-h-32"
                     value={newPromptTemplate}
                     onChange={(e) => setNewPromptTemplate(e.target.value)}
                   />
                   <p className="text-sm text-muted-foreground">
-                    Use {{content}} as a placeholder for dynamic content
+                    Use {{articleContent}} as a placeholder for dynamic content
                   </p>
                 </div>
               </div>
