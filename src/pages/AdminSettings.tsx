@@ -2,6 +2,7 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import NewsImporter from "@/components/admin/NewsImporter";
+import ApiKeysManager from "@/components/admin/ApiKeysManager";
 
 export default function AdminSettings() {
   return (
@@ -14,6 +15,7 @@ export default function AdminSettings() {
       <Tabs defaultValue="import" className="w-full">
         <TabsList className="mb-6">
           <TabsTrigger value="import">Data Import</TabsTrigger>
+          <TabsTrigger value="api">API & AI</TabsTrigger>
           <TabsTrigger value="sources">Sources</TabsTrigger>
           <TabsTrigger value="clusters">Keyword Clusters</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
@@ -21,6 +23,10 @@ export default function AdminSettings() {
         
         <TabsContent value="import" className="space-y-6">
           <NewsImporter />
+        </TabsContent>
+        
+        <TabsContent value="api" className="space-y-6">
+          <ApiKeysManager />
         </TabsContent>
         
         <TabsContent value="sources">
