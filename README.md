@@ -1,73 +1,57 @@
-# Welcome to your Lovable project
 
-## Project info
+# MP Editorial Dashboard
 
-**URL**: https://lovable.dev/projects/161e8f48-3335-4eeb-97b5-5e13da9abf5d
+## Setup
 
-## How can I edit this code?
+### Required API Keys
 
-There are several ways of editing your application.
+To use all features of the MP Editorial Dashboard, you need to configure the following API keys in your Supabase project:
 
-**Use Lovable**
+1. **OpenAI API Key**: Used for generating article content and summaries.
+   - Get your key from: https://platform.openai.com/api-keys
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/161e8f48-3335-4eeb-97b5-5e13da9abf5d) and start prompting.
+2. **Perplexity API Key**: Used for fetching trending news articles.
+   - Get your key from: https://www.perplexity.ai/settings/api
 
-Changes made via Lovable will be committed automatically to this repo.
+3. **FRED API Key**: Used for fetching economic data.
+   - Get your key from: https://fred.stlouisfed.org/docs/api/api_key.html
 
-**Use your preferred IDE**
+### Setting Up API Keys in Supabase
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+1. Go to your Supabase project dashboard
+2. Navigate to Settings > API > Edge Functions
+3. Add the following secrets:
+   - `OPENAI_API_KEY`: Your OpenAI API key
+   - `PERPLEXITY_API_KEY`: Your Perplexity API key
+   - `FRED_API_KEY`: Your FRED API key
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Features
 
-Follow these steps:
+- **Today's Briefing**: AI-curated news articles based on relevance and priority
+- **MPDaily Planner**: Email newsletter planning and scheduling
+- **Magazine Planner**: Content planning for magazine issues
+- **Content Calendar**: Visual planning for all content types
+- **Performance Dashboard**: Analytics and metrics for published content
+- **Admin Settings**: Configure API keys, AI settings, and automation
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Development
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Running Locally
 
-# Step 3: Install the necessary dependencies.
-npm i
+1. Clone the repository
+2. Install dependencies with `npm install`
+3. Start the development server with `npm run dev`
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+### Adding News Items
 
-**Edit a file directly in GitHub**
+1. Use the News Importer in Admin Settings to manually add news items
+2. Enable scheduled imports to automatically fetch news from Perplexity API
+3. Set minimum relevance score to filter out less important news
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Troubleshooting
 
-**Use GitHub Codespaces**
+If you encounter issues with the API connections, check the following:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/161e8f48-3335-4eeb-97b5-5e13da9abf5d) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+1. Verify that your API keys are correctly configured in Supabase
+2. Check the Supabase Edge Function logs for any errors
+3. Ensure you have sufficient API quota remaining
