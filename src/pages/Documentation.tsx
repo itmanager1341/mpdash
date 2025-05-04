@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from "react";
-import { FileText, Edit, Search } from "lucide-react";
+import { FileText, Edit, Search, Info } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -11,8 +11,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import DocumentViewer from "@/components/documentation/DocumentViewer";
 import DocumentEditor from "@/components/documentation/DocumentEditor";
+import { useMobile } from "@/hooks/use-mobile";
 
 // Define knowledge file types
 type KnowledgeFile = {
@@ -21,6 +24,7 @@ type KnowledgeFile = {
   filePath: string;
   category: "core" | "domain" | "technical" | "user";
   description: string;
+  lastUpdated?: string;
 };
 
 const knowledgeFiles: KnowledgeFile[] = [
@@ -29,71 +33,82 @@ const knowledgeFiles: KnowledgeFile[] = [
     title: "Application Overview",
     filePath: "app.knowledge.md",
     category: "core",
-    description: "Overall application structure, features, and architecture"
+    description: "Overall application structure, features, and architecture",
+    lastUpdated: "2025-03-15"
   },
   {
     id: "api-management",
     title: "API Management",
     filePath: "api-management.knowledge.md",
     category: "core",
-    description: "API key management system, supported services, and usage patterns"
+    description: "API key management system, supported services, and usage patterns",
+    lastUpdated: "2025-04-02"
   },
   {
     id: "news-workflow",
     title: "News Workflow",
     filePath: "news-workflow.knowledge.md",
     category: "core",
-    description: "News importing, approval, and generation processes"
+    description: "News importing, approval, and generation processes",
+    lastUpdated: "2025-04-10"
   },
   {
     id: "mortgage-industry",
     title: "Mortgage Industry",
     filePath: "mortgage-industry.knowledge.md",
     category: "domain",
-    description: "Key terms, concepts, and trends in the mortgage industry"
+    description: "Key terms, concepts, and trends in the mortgage industry",
+    lastUpdated: "2025-03-28"
   },
   {
     id: "editorial-workflow",
     title: "Editorial Workflow",
     filePath: "editorial-workflow.knowledge.md",
     category: "domain",
-    description: "Editorial workflows, content types, and publication standards"
+    description: "Editorial workflows, content types, and publication standards",
+    lastUpdated: "2025-04-18"
   },
   {
     id: "supabase-integration",
     title: "Supabase Integration",
     filePath: "supabase-integration.knowledge.md",
     category: "technical",
-    description: "Database schema, edge functions, and API usage patterns"
+    description: "Database schema, edge functions, and API usage patterns",
+    lastUpdated: "2025-03-22"
   },
   {
     id: "ai-integration",
     title: "AI Integration",
     filePath: "ai-integration.knowledge.md",
     category: "technical",
-    description: "How we use OpenAI and Perplexity APIs, prompt patterns, and best practices"
+    description: "How we use OpenAI and Perplexity APIs, prompt patterns, and best practices",
+    lastUpdated: "2025-04-05"
   },
   {
     id: "admin-guide",
     title: "Administrator Guide",
     filePath: "admin-guide.knowledge.md",
     category: "user",
-    description: "How to configure and administer the system"
+    description: "How to configure and administer the system",
+    lastUpdated: "2025-04-12"
   },
   {
     id: "editor-guide",
     title: "Editor Guide",
     filePath: "editor-guide.knowledge.md",
     category: "user",
-    description: "How editors should use the different features of the platform"
+    description: "How editors should use the different features of the platform",
+    lastUpdated: "2025-04-20"
   }
 ];
 
 export default function Documentation() {
+  const isMobile = useMobile();
   const [selectedFile, setSelectedFile] = useState<KnowledgeFile | null>(null);
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentCategory, setCurrentCategory] = useState<"all" | "core" | "domain" | "technical" | "user">("all");
+  const [openFileInfo, setOpenFileInfo] = useState(false);
 
   // Fetch document content
   const { data: documentContent, isLoading } = useQuery({
@@ -136,7 +151,7 @@ export default function Documentation() {
   }, [filteredFiles, selectedFile]);
 
   // Handle document save
-  const handleSaveDocument = async (content: string) => {
+  const handleSaveDocument = async (content: string, title: string) => {
     if (!selectedFile) return;
     
     try {
@@ -149,6 +164,45 @@ export default function Documentation() {
     }
   };
 
+  // File info component that shows in either dialog or drawer based on device
+  const FileInfoContent = () => (
+    <>
+      {selectedFile && (
+        <>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold">Document Details</h3>
+              <p className="text-sm text-muted-foreground">Information about this document</p>
+            </div>
+            <Separator />
+            <dl className="space-y-4">
+              <div>
+                <dt className="text-sm font-medium">Title</dt>
+                <dd className="text-base">{selectedFile.title}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium">Category</dt>
+                <dd className="text-base capitalize">{selectedFile.category}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium">File Path</dt>
+                <dd className="text-base font-mono text-sm bg-muted p-1 rounded">{selectedFile.filePath}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium">Last Updated</dt>
+                <dd className="text-base">{selectedFile.lastUpdated || "Unknown"}</dd>
+              </div>
+              <div>
+                <dt className="text-sm font-medium">Description</dt>
+                <dd className="text-base">{selectedFile.description}</dd>
+              </div>
+            </dl>
+          </div>
+        </>
+      )}
+    </>
+  );
+
   return (
     <DashboardLayout>
       <div className="container mx-auto p-4">
@@ -156,24 +210,24 @@ export default function Documentation() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">Documentation & Guides</h1>
             {selectedFile && mode === "view" && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setMode("edit")}
-              >
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Document
-              </Button>
-            )}
-            {selectedFile && mode === "edit" && (
-              <Button 
-                variant="default" 
-                size="sm" 
-                onClick={() => setMode("view")}
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                View Document
-              </Button>
+              <div className="flex space-x-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setOpenFileInfo(true)}
+                >
+                  <Info className="mr-2 h-4 w-4" />
+                  Info
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setMode("edit")}
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+              </div>
             )}
           </div>
           
@@ -249,11 +303,15 @@ export default function Documentation() {
                 ) : selectedFile ? (
                   mode === "view" ? (
                     <ScrollArea className="h-[60vh] pr-4">
-                      <DocumentViewer content={documentContent || ""} />
+                      <DocumentViewer 
+                        content={documentContent || ""} 
+                        lastUpdated={selectedFile.lastUpdated}
+                      />
                     </ScrollArea>
                   ) : (
                     <DocumentEditor 
                       initialContent={documentContent || ""} 
+                      initialTitle={selectedFile.title}
                       onSave={handleSaveDocument} 
                       onCancel={() => setMode("view")}
                     />
@@ -272,6 +330,31 @@ export default function Documentation() {
           </div>
         </div>
       </div>
+
+      {/* Responsive file info dialog/drawer */}
+      {isMobile ? (
+        <Drawer open={openFileInfo} onOpenChange={setOpenFileInfo}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Document Information</DrawerTitle>
+              <DrawerDescription>Details about the selected document</DrawerDescription>
+            </DrawerHeader>
+            <div className="p-4">
+              <FileInfoContent />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={openFileInfo} onOpenChange={setOpenFileInfo}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Document Information</DialogTitle>
+              <DialogDescription>Details about the selected document</DialogDescription>
+            </DialogHeader>
+            <FileInfoContent />
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 }
