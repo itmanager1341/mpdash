@@ -11,6 +11,7 @@ import Performance from "@/pages/Performance";
 import AdminSettings from "@/pages/AdminSettings";
 import NotFound from "@/pages/NotFound";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 // Create a client
 const queryClient = new QueryClient();
@@ -31,13 +32,26 @@ function App() {
     // Initialize database tables
     const initializeDatabase = async () => {
       console.info("Initializing database tables...");
+      
       try {
         // Call edge function to create API keys table and helper function
-        await supabase.functions.invoke('create-api-keys-function', {});
+        const { error } = await supabase.functions.invoke('create-api-keys-function', {});
+        
+        if (error) {
+          console.error("Error initializing database:", error);
+          toast.error("Error initializing database", { 
+            description: "Some features may not work correctly. Please try refreshing the page."
+          });
+          return;
+        }
+        
+        console.info("Database initialization completed successfully");
       } catch (error) {
-        console.error("Error initializing API keys table:", error);
+        console.error("Exception during database initialization:", error);
+        toast.error("Error initializing database", { 
+          description: "An unexpected error occurred. Some features may not work correctly."
+        });
       }
-      console.info("Database initialization completed");
     };
     
     // Run initialization on startup

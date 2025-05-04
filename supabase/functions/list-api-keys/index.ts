@@ -24,40 +24,51 @@ serve(async (req) => {
       const { error: checkError } = await supabase
         .from('api_keys')
         .select('count')
-        .limit(1);
+        .limit(1)
+        .catch(e => {
+          console.error("Check table error:", e);
+          return { error: e };
+        });
         
       if (checkError && checkError.message.includes('relation "public.api_keys" does not exist')) {
         console.log("api_keys table does not exist, creating it...");
         
-        // Create the table directly with SQL
-        const { error: createTableError } = await supabase.rpc('create_table_if_not_exists', {
-          table_name: 'api_keys',
-          table_definition: `
+        // Create the table directly
+        const createTableQuery = `
+          CREATE TABLE IF NOT EXISTS public.api_keys (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name TEXT NOT NULL,
             service TEXT NOT NULL,
             key_masked TEXT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-          `
-        });
+          )
+        `;
         
-        if (createTableError) {
-          // If RPC fails, try direct SQL (requires more permissions)
-          const { error: sqlError } = await supabase.sql(`
-            CREATE TABLE IF NOT EXISTS public.api_keys (
-              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-              name TEXT NOT NULL,
-              service TEXT NOT NULL,
-              key_masked TEXT NOT NULL,
-              is_active BOOLEAN NOT NULL DEFAULT TRUE,
-              created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-            )
-          `);
+        try {
+          // Using Deno's Postgres client as a fallback
+          const pgConnection = Deno.env.get('SUPABASE_DB_URL');
           
-          if (sqlError) {
-            throw new Error(`Failed to create api_keys table: ${sqlError.message}`);
+          if (!pgConnection) {
+            throw new Error("Cannot access database directly - missing connection string");
           }
+          
+          // Import Postgres client dynamically
+          const { Pool } = await import("https://deno.land/x/postgres@v0.17.0/mod.ts");
+          
+          const pool = new Pool(pgConnection, 1, true);
+          const connection = await pool.connect();
+          
+          try {
+            await connection.queryObject(createTableQuery);
+            console.log("Table created successfully via Postgres client");
+          } finally {
+            connection.release();
+            await pool.end();
+          }
+        } catch (pgError) {
+          console.error("Failed to create table with Postgres client:", pgError);
+          throw new Error(`Failed to create api_keys table: ${pgError.message}`);
         }
         
         // Return empty keys array as the table was just created
@@ -67,6 +78,7 @@ serve(async (req) => {
         );
       }
     } catch (error) {
+      console.error("Error checking table:", error);
       throw new Error(`Failed to check or create api_keys table: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
