@@ -79,7 +79,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Settings">
-                    <a href="/admin">
+                    <a href="/admin-settings">
                       <Settings />
                       <span>Admin Settings</span>
                     </a>
