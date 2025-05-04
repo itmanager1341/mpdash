@@ -3,7 +3,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Send, Calendar } from "lucide-react";
+import { Send, Calendar, Globe, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 interface ArticleApprovalProps {
   newsItem: {
@@ -11,22 +13,19 @@ interface ArticleApprovalProps {
     headline: string;
   };
   onApproved: () => void;
-  approvalCount: number;
-  setApprovalCount: (count: number) => void;
 }
 
 export default function ArticleApproval({ 
   newsItem, 
-  onApproved, 
-  approvalCount, 
-  setApprovalCount 
+  onApproved
 }: ArticleApprovalProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
   
-  const generateContentWithOpenAI = async (newsItemId: string, target: 'mpdaily' | 'magazine') => {
+  const generateContentWithOpenAI = async (newsItemId: string, destinations: string[]) => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-article', {
-        body: { newsItemId, target }
+        body: { newsItemId, destinations }
       });
       
       if (error) throw error;
@@ -37,9 +36,17 @@ export default function ArticleApproval({
     }
   };
 
-  const handleApproveForDaily = async () => {
-    if (approvalCount >= 5) {
-      toast.error("Maximum daily approval limit reached (5)");
+  const toggleDestination = (destination: string) => {
+    setSelectedDestinations(prev => 
+      prev.includes(destination) 
+        ? prev.filter(d => d !== destination) 
+        : [...prev, destination]
+    );
+  };
+
+  const handleApprove = async () => {
+    if (selectedDestinations.length === 0) {
+      toast.error("Please select at least one destination");
       return;
     }
 
@@ -48,20 +55,18 @@ export default function ArticleApproval({
       // Update the news item status in Supabase
       const { error: updateError } = await supabase
         .from('news')
-        .update({ status: 'queued_mpdaily' })
+        .update({ 
+          status: 'approved',
+          destinations: selectedDestinations
+        })
         .eq('id', newsItem.id);
       
       if (updateError) throw updateError;
       
-      // Generate content with OpenAI
-      await generateContentWithOpenAI(newsItem.id, 'mpdaily');
+      // Generate content with OpenAI - only if destinations are selected
+      await generateContentWithOpenAI(newsItem.id, selectedDestinations);
       
-      // Increment approval count
-      const newCount = approvalCount + 1;
-      setApprovalCount(newCount);
-      localStorage.setItem('approvalCount', newCount.toString());
-      
-      toast.success("Article approved for MPDaily");
+      toast.success("Article approved for selected destinations");
       onApproved();
     } catch (err) {
       console.error("Error approving article:", err);
@@ -71,50 +76,80 @@ export default function ArticleApproval({
     }
   };
 
-  const handleRouteToMagazine = async () => {
+  const handleDismiss = async () => {
     setIsProcessing(true);
     try {
       // Update the news item status in Supabase
       const { error: updateError } = await supabase
         .from('news')
-        .update({ status: 'queued_magazine' })
+        .update({ status: 'dismissed' })
         .eq('id', newsItem.id);
       
       if (updateError) throw updateError;
       
-      // Generate content with OpenAI
-      await generateContentWithOpenAI(newsItem.id, 'magazine');
-      
-      toast.success("Article routed to Magazine Planner");
+      toast.success("Article dismissed");
       onApproved();
     } catch (err) {
-      console.error("Error routing article:", err);
-      toast.error("Failed to route article");
+      console.error("Error dismissing article:", err);
+      toast.error("Failed to dismiss article");
     } finally {
       setIsProcessing(false);
     }
   };
 
   return (
-    <div className="flex gap-2 w-full">
-      <Button 
-        variant="default" 
-        className="flex-1"
-        disabled={approvalCount >= 5 || isProcessing}
-        onClick={handleApproveForDaily}
-      >
-        <Send className="mr-1 h-4 w-4" />
-        {isProcessing ? "Processing..." : "Approve"}
-      </Button>
-      <Button 
-        variant="outline" 
-        className="flex-1"
-        disabled={isProcessing}
-        onClick={handleRouteToMagazine}
-      >
-        <Calendar className="mr-1 h-4 w-4" />
-        {isProcessing ? "Processing..." : "Magazine"}
-      </Button>
+    <div className="space-y-4 w-full">
+      {/* Destination selection */}
+      <div className="flex flex-wrap gap-4">
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="mpdaily" 
+            checked={selectedDestinations.includes('mpdaily')}
+            onCheckedChange={() => toggleDestination('mpdaily')} 
+          />
+          <Label htmlFor="mpdaily" className="cursor-pointer">MPDaily</Label>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="website" 
+            checked={selectedDestinations.includes('website')}
+            onCheckedChange={() => toggleDestination('website')} 
+          />
+          <Label htmlFor="website" className="cursor-pointer">Website</Label>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Checkbox 
+            id="magazine" 
+            checked={selectedDestinations.includes('magazine')}
+            onCheckedChange={() => toggleDestination('magazine')} 
+          />
+          <Label htmlFor="magazine" className="cursor-pointer">Magazine</Label>
+        </div>
+      </div>
+      
+      {/* Action buttons */}
+      <div className="flex gap-2 w-full">
+        <Button 
+          variant="default" 
+          className="flex-1"
+          disabled={selectedDestinations.length === 0 || isProcessing}
+          onClick={handleApprove}
+        >
+          <Send className="mr-1 h-4 w-4" />
+          {isProcessing ? "Processing..." : "Approve"}
+        </Button>
+        <Button 
+          variant="ghost" 
+          className="flex-1"
+          disabled={isProcessing}
+          onClick={handleDismiss}
+        >
+          <X className="mr-1 h-4 w-4" />
+          {isProcessing ? "Processing..." : "Dismiss"}
+        </Button>
+      </div>
     </div>
   );
 }

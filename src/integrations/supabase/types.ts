@@ -40,12 +40,15 @@ export type Database = {
         Row: {
           content_variants: Json | null
           created_at: string | null
+          destinations: string[] | null
           embedding: string | null
           fred_data: Json | null
           id: string
           linked_prior_articles: string[] | null
+          publication_targets: string[] | null
           published_at: string | null
           related_trends: string[] | null
+          source_news_id: string | null
           status: string | null
           title: string
           updated_at: string | null
@@ -53,12 +56,15 @@ export type Database = {
         Insert: {
           content_variants?: Json | null
           created_at?: string | null
+          destinations?: string[] | null
           embedding?: string | null
           fred_data?: Json | null
           id?: string
           linked_prior_articles?: string[] | null
+          publication_targets?: string[] | null
           published_at?: string | null
           related_trends?: string[] | null
+          source_news_id?: string | null
           status?: string | null
           title: string
           updated_at?: string | null
@@ -66,17 +72,28 @@ export type Database = {
         Update: {
           content_variants?: Json | null
           created_at?: string | null
+          destinations?: string[] | null
           embedding?: string | null
           fred_data?: Json | null
           id?: string
           linked_prior_articles?: string[] | null
+          publication_targets?: string[] | null
           published_at?: string | null
           related_trends?: string[] | null
+          source_news_id?: string | null
           status?: string | null
           title?: string
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "articles_source_news_id_fkey"
+            columns: ["source_news_id"]
+            isOneToOne: false
+            referencedRelation: "news"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       editor_briefs: {
         Row: {
@@ -176,6 +193,7 @@ export type Database = {
       }
       news: {
         Row: {
+          destinations: string[] | null
           headline: string
           id: string
           is_competitor_covered: boolean | null
@@ -188,6 +206,7 @@ export type Database = {
           url: string
         }
         Insert: {
+          destinations?: string[] | null
           headline: string
           id?: string
           is_competitor_covered?: boolean | null
@@ -200,6 +219,7 @@ export type Database = {
           url: string
         }
         Update: {
+          destinations?: string[] | null
           headline?: string
           id?: string
           is_competitor_covered?: boolean | null
@@ -245,7 +265,17 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      news_approval_stats: {
+        Row: {
+          approval_date: string | null
+          dismissed_count: number | null
+          magazine_count: number | null
+          mpdaily_count: number | null
+          total_reviewed: number | null
+          website_count: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       binary_quantize: {

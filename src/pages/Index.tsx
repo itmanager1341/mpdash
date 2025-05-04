@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
@@ -21,12 +22,12 @@ interface NewsItem {
   matched_clusters: string[];
   timestamp: string;
   status: string | null;
+  destinations: string[] | null;
 }
 
 const Index = () => {
   const [selectedItem, setSelectedItem] = useState<NewsItem | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [approvalCount, setApprovalCount] = useState(0);
 
   const { data: newsItems, isLoading, error, refetch } = useQuery({
     queryKey: ['news'],
@@ -42,12 +43,6 @@ const Index = () => {
       return data as NewsItem[];
     }
   });
-
-  useEffect(() => {
-    // For demo purposes - in production this would come from database count
-    setApprovalCount(localStorage.getItem('approvalCount') ? 
-      parseInt(localStorage.getItem('approvalCount') as string) : 0);
-  }, []);
 
   const openDetailView = (item: NewsItem) => {
     setSelectedItem(item);
@@ -76,16 +71,10 @@ const Index = () => {
     <DashboardLayout>
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Today's Briefing</h1>
-        <div className="flex justify-between items-center">
+        <div>
           <p className="text-muted-foreground">
             AI-curated article suggestions based on trending topics and keyword clusters
           </p>
-          <div className="bg-secondary/30 rounded-full px-4 py-1 flex items-center gap-2">
-            <span className="text-sm">Daily approvals:</span>
-            <Badge variant={approvalCount >= 5 ? "destructive" : "outline"} className="font-bold">
-              {approvalCount}/5
-            </Badge>
-          </div>
         </div>
       </div>
       
@@ -149,8 +138,6 @@ const Index = () => {
                 <ArticleApproval 
                   newsItem={item} 
                   onApproved={refetch}
-                  approvalCount={approvalCount}
-                  setApprovalCount={setApprovalCount}
                 />
                 <Button 
                   variant="ghost" 
@@ -217,8 +204,6 @@ const Index = () => {
                     refetch();
                     setIsSheetOpen(false);
                   }}
-                  approvalCount={approvalCount}
-                  setApprovalCount={setApprovalCount}
                 />
                 <Button 
                   variant="ghost" 
