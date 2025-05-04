@@ -54,12 +54,12 @@ serve(async (req) => {
     }
 
     // Ensure the api_keys table exists
-    await ensureApiKeysTableExists(supabase);
+    await ensureApiKeysTableExists(supabase, supabaseUrl, serviceRoleKey);
     
     // Process the operation
     switch (operation) {
       case 'create':
-        return await handleCreateApiKey(supabase, body, corsHeaders);
+        return await handleCreateApiKey(supabase, body, corsHeaders, supabaseUrl, serviceRoleKey);
       case 'list':
         return await handleListApiKeys(supabase, corsHeaders);
       case 'delete':
@@ -87,7 +87,7 @@ serve(async (req) => {
   }
 });
 
-async function ensureApiKeysTableExists(supabase: any): Promise<void> {
+async function ensureApiKeysTableExists(supabase: any, supabaseUrl: string, serviceRoleKey: string): Promise<void> {
   try {
     // Check if the table exists by attempting to query it
     const { error } = await supabase
@@ -96,7 +96,73 @@ async function ensureApiKeysTableExists(supabase: any): Promise<void> {
       .limit(1);
       
     if (error && error.message.includes('relation "public.api_keys" does not exist')) {
-      throw new Error("The api_keys table does not exist. Please run the database setup SQL.");
+      console.log("Creating api_keys table as it doesn't exist");
+      
+      // Create the table directly
+      const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS public.api_keys (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          name TEXT NOT NULL,
+          service TEXT NOT NULL,
+          key_masked TEXT NOT NULL,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `;
+      
+      try {
+        // Extract project ID from the URL
+        const urlParts = supabaseUrl.split('.');
+        if (urlParts.length < 3) {
+          throw new Error(`Invalid SUPABASE_URL format: ${supabaseUrl}`);
+        }
+        
+        const projectId = urlParts[0].replace('https://', '');
+        if (!projectId) {
+          throw new Error('Could not extract project ID from SUPABASE_URL');
+        }
+        
+        // Using the pgrest API to execute SQL
+        const response = await fetch(`${supabaseUrl}/rest/v1/rpc/exec`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': serviceRoleKey,
+            'Authorization': `Bearer ${serviceRoleKey}`,
+          },
+          body: JSON.stringify({
+            source: createTableQuery
+          }),
+        });
+        
+        if (!response.ok) {
+          // If the RPC method doesn't exist or fails, try using Deno's Postgres client as a fallback
+          const pgConnection = Deno.env.get('SUPABASE_DB_URL');
+          
+          if (!pgConnection) {
+            throw new Error("Cannot access database directly - missing connection string");
+          }
+          
+          // Import Postgres client dynamically
+          const { Pool } = await import("https://deno.land/x/postgres@v0.17.0/mod.ts");
+          
+          const pool = new Pool(pgConnection, 1, true);
+          const connection = await pool.connect();
+          
+          try {
+            await connection.queryObject(createTableQuery);
+            console.log("Table created successfully via Postgres client");
+          } finally {
+            connection.release();
+            await pool.end();
+          }
+        } else {
+          console.log("Table created successfully via REST API");
+        }
+      } catch (pgError) {
+        console.error("Error creating table:", pgError);
+        throw new Error(`Failed to create api_keys table: ${pgError instanceof Error ? pgError.message : 'Unknown error'}`);
+      }
     }
   } catch (error) {
     console.error("Error ensuring api_keys table exists:", error);
@@ -104,7 +170,13 @@ async function ensureApiKeysTableExists(supabase: any): Promise<void> {
   }
 }
 
-async function handleCreateApiKey(supabase: any, body: ApiKeyRequest, corsHeaders: Record<string, string>): Promise<Response> {
+async function handleCreateApiKey(
+  supabase: any, 
+  body: ApiKeyRequest, 
+  corsHeaders: Record<string, string>,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<Response> {
   const { name, key, service } = body;
   
   // Validate input
@@ -129,23 +201,13 @@ async function handleCreateApiKey(supabase: any, body: ApiKeyRequest, corsHeader
   try {
     secretName = getSecretNameForService(service);
     
-    // Set the secret using Deno.env approach for now (safer fallback)
-    console.log(`Setting secret ${secretName}...`);
-    
     // Extract project ID from the URL
-    // The project ID is available in the SUPABASE_URL which follows the format:
-    // https://{project_id}.supabase.co
-    const urlParts = supabaseUrl.split('.');
-    if (urlParts.length < 3) {
-      throw new Error(`Invalid SUPABASE_URL format: ${supabaseUrl}`);
-    }
-    
-    const projectId = urlParts[0].replace('https://', '');
+    const projectId = supabaseUrl.split('.')[0].replace('https://', '');
     if (!projectId) {
       throw new Error('Could not extract project ID from SUPABASE_URL');
     }
     
-    console.log(`Extracted project ID: ${projectId}`);
+    console.log(`Setting secret ${secretName} for project ${projectId}`);
     
     // Store the secret using Admin API
     await setSecretValueDirect(projectId, serviceRoleKey, secretName, key);
@@ -254,9 +316,6 @@ async function setSecretValueDirect(projectId: string, serviceRoleKey: string, s
     console.error(`Error details: ${errorText}`);
     throw new Error(`Failed to set secret: ${response.status} ${response.statusText} - ${errorText}`);
   }
-  
-  const result = await response.json();
-  console.log(`Secret ${secretName} set successfully`);
 }
 
 async function handleListApiKeys(supabase: any, corsHeaders: Record<string, string>): Promise<Response> {
@@ -342,7 +401,7 @@ async function handleDeleteApiKey(supabase: any, body: ApiKeyRequest, corsHeader
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error in delete-api-key function:', error);
+    console.error('Error in delete API key operation:', error);
     
     return new Response(
       JSON.stringify({ 
@@ -413,7 +472,7 @@ async function handleToggleApiKey(supabase: any, body: ApiKeyRequest, corsHeader
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error in toggle-api-key-status function:', error);
+    console.error('Error in toggle API key status operation:', error);
     
     return new Response(
       JSON.stringify({ 
@@ -532,10 +591,27 @@ async function testPerplexityKey(apiKey: string) {
 
     if (!response.ok) {
       const error = await response.text();
+      const statusCode = response.status;
+      
+      let errorMessage = `API error: ${response.status} ${response.statusText}`;
+      let errorDetails = error;
+      
+      // Provide more specific error messages based on status codes
+      if (statusCode === 401) {
+        errorMessage = 'Authentication failed: Invalid API key';
+        errorDetails = 'The API key appears to be invalid or has been revoked. Please check your key and try again.';
+      } else if (statusCode === 403) {
+        errorMessage = 'Access forbidden: Insufficient permissions';
+        errorDetails = 'Your API key does not have permission to access this resource.';
+      } else if (statusCode === 429) {
+        errorMessage = 'Rate limit exceeded';
+        errorDetails = 'You have made too many requests. Please wait and try again later.';
+      }
+      
       return {
         success: false,
-        message: `Perplexity API returned an error: ${response.status} ${response.statusText}`,
-        details: error
+        message: errorMessage,
+        details: errorDetails
       };
     }
 
@@ -575,10 +651,24 @@ async function testOpenAIKey(apiKey: string) {
 
     if (!response.ok) {
       const error = await response.text();
+      const statusCode = response.status;
+      
+      let errorMessage = `API error: ${response.status} ${response.statusText}`;
+      let errorDetails = error;
+      
+      // Provide more specific error messages based on status codes
+      if (statusCode === 401) {
+        errorMessage = 'Authentication failed: Invalid API key';
+        errorDetails = 'The API key appears to be invalid or has been revoked. Please check your key and try again.';
+      } else if (statusCode === 429) {
+        errorMessage = 'Rate limit exceeded';
+        errorDetails = 'You have made too many requests. Please wait and try again later.';
+      }
+      
       return {
         success: false,
-        message: `OpenAI API returned an error: ${response.status} ${response.statusText}`,
-        details: error
+        message: errorMessage,
+        details: errorDetails
       };
     }
 
@@ -605,10 +695,24 @@ async function testFredKey(apiKey: string) {
 
     if (!response.ok) {
       const error = await response.text();
+      const statusCode = response.status;
+      
+      let errorMessage = `API error: ${response.status} ${response.statusText}`;
+      let errorDetails = error;
+      
+      // Provide more specific error messages based on status codes
+      if (statusCode === 400 || statusCode === 401) {
+        errorMessage = 'Authentication failed: Invalid API key';
+        errorDetails = 'The API key appears to be invalid or has been revoked. Please check your key and try again.';
+      } else if (statusCode === 429) {
+        errorMessage = 'Rate limit exceeded';
+        errorDetails = 'You have made too many requests. Please wait and try again later.';
+      }
+      
       return {
         success: false,
-        message: `FRED API returned an error: ${response.status} ${response.statusText}`,
-        details: error
+        message: errorMessage,
+        details: errorDetails
       };
     }
 
@@ -616,7 +720,7 @@ async function testFredKey(apiKey: string) {
     return {
       success: true,
       message: 'FRED API key is valid',
-      sample_result: `Retrieved data for series: ${data.seriess[0]?.title || 'Unknown'}`
+      sample_result: `Retrieved data for series: ${data.seriess?.[0]?.title || 'Unknown'}`
     };
   } catch (error) {
     return {
