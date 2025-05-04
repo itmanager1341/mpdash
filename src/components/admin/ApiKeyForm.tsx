@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { supabase } from "@/integrations/supabase/client";
 
 interface ApiKeyFormProps {
-  onSuccess: () => void;
+  onSuccess: () => Promise<void>;
   service?: string;
 }
 
@@ -132,7 +132,7 @@ export default function ApiKeyForm({ onSuccess, service = "perplexity" }: ApiKey
       });
 
       // Trigger parent component refresh
-      onSuccess();
+      await onSuccess();
     } catch (error) {
       console.error("Error adding API key:", error);
       toast.error(`Failed to add API key: ${error instanceof Error ? error.message : 'Unknown error'}`);

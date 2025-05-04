@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,7 +107,7 @@ export default function ApiKeysList({ apiKeys, isLoading, onRefresh }: ApiKeysLi
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={onRefresh}
+          onClick={() => onRefresh()}
           disabled={isLoading}
         >
           {isLoading ? (

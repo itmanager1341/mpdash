@@ -22,7 +22,7 @@ export default function ApiKeysManager() {
     data: apiKeys = [], 
     isLoading: isFetching, 
     error: fetchError, 
-    refetch: fetchApiKeys 
+    refetch: refetchApiKeys 
   } = useQuery({
     queryKey: ['apiKeys'],
     queryFn: async () => {
@@ -40,6 +40,12 @@ export default function ApiKeysManager() {
     },
     refetchOnWindowFocus: false
   });
+
+  // Create a wrapper function that returns Promise<void>
+  const fetchApiKeys = async (): Promise<void> => {
+    await refetchApiKeys();
+    return; // Explicitly return void
+  };
 
   const serviceHasKey = (service: string): boolean => {
     return apiKeys.some(key => key.service.toLowerCase() === service.toLowerCase() && key.is_active);
@@ -133,43 +139,43 @@ export default function ApiKeysManager() {
             </TabsList>
             
             <TabsContent value="perplexity" className="space-y-6">
-              <ApiKeyTester service="perplexity" onRefresh={() => fetchApiKeys()} />
-              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="perplexity" />
+              <ApiKeyTester service="perplexity" onRefresh={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="perplexity" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "perplexity")}
                 isLoading={isFetching}
-                onRefresh={() => fetchApiKeys()}
+                onRefresh={fetchApiKeys}
               />
             </TabsContent>
             
             <TabsContent value="openai" className="space-y-6">
-              <ApiKeyTester service="openai" onRefresh={() => fetchApiKeys()} />
-              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="openai" />
+              <ApiKeyTester service="openai" onRefresh={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="openai" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "openai")}
                 isLoading={isFetching}
-                onRefresh={() => fetchApiKeys()}
+                onRefresh={fetchApiKeys}
               />
             </TabsContent>
             
             <TabsContent value="fred" className="space-y-6">
-              <ApiKeyTester service="fred" onRefresh={() => fetchApiKeys()} />
-              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="fred" />
+              <ApiKeyTester service="fred" onRefresh={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="fred" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "fred")}
                 isLoading={isFetching}
-                onRefresh={() => fetchApiKeys()}
+                onRefresh={fetchApiKeys}
               />
             </TabsContent>
             
             <TabsContent value="other" className="space-y-6">
-              <ApiKeyForm onSuccess={() => fetchApiKeys()} service="other" />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="other" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => 
                   !["perplexity", "openai", "fred"].includes(key.service.toLowerCase())
                 )}
                 isLoading={isFetching}
-                onRefresh={() => fetchApiKeys()}
+                onRefresh={fetchApiKeys}
               />
             </TabsContent>
           </Tabs>
