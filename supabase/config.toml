@@ -9,3 +9,7 @@ enabled = true
 [api.functions.api-keys]
 enabled = true
 verify_jwt = true
+
+[api.functions.set-api-key]
+enabled = true
+verify_jwt = true

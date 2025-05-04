@@ -126,10 +126,18 @@ export default function ApiKeyForm({ onSuccess, service = "perplexity" }: ApiKey
       setKeyName("");
       setKeyValue("");
       
-      // Notify success
-      toast.success("API key added successfully", {
-        description: `The ${serviceInfo[selectedService].name} API key has been securely stored`
-      });
+      // Notify success with appropriate message
+      if (data.secret_stored) {
+        toast.success("API key added successfully", {
+          description: `The ${serviceInfo[selectedService].name} API key has been securely stored`
+        });
+      } else {
+        // The metadata was stored but the secret wasn't
+        toast.success("API key added with warning", {
+          description: `The ${serviceInfo[selectedService].name} API key metadata was saved, but the secret couldn't be stored. The API may not function until this is resolved.`,
+          duration: 6000
+        });
+      }
 
       // Trigger parent component refresh
       await onSuccess();

@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -59,7 +58,7 @@ serve(async (req) => {
     // Process the operation
     switch (operation) {
       case 'create':
-        return await handleCreateApiKey(supabase, body, corsHeaders, supabaseUrl, serviceRoleKey);
+        return await handleCreateApiKey(supabase, body, corsHeaders, supabaseUrl);
       case 'list':
         return await handleListApiKeys(supabase, corsHeaders);
       case 'delete':
@@ -106,6 +105,7 @@ async function ensureApiKeysTableExists(supabase: any, supabaseUrl: string, serv
           service TEXT NOT NULL,
           key_masked TEXT NOT NULL,
           is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          secret_stored BOOLEAN NOT NULL DEFAULT FALSE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )
       `;
@@ -174,8 +174,7 @@ async function handleCreateApiKey(
   supabase: any, 
   body: ApiKeyRequest, 
   corsHeaders: Record<string, string>,
-  supabaseUrl: string,
-  serviceRoleKey: string
+  supabaseUrl: string
 ): Promise<Response> {
   const { name, key, service } = body;
   
@@ -198,6 +197,8 @@ async function handleCreateApiKey(
   
   // Store API key in the project secrets
   let secretName = '';
+  let secretStored = false;
+  
   try {
     secretName = getSecretNameForService(service);
     
@@ -209,19 +210,20 @@ async function handleCreateApiKey(
     
     console.log(`Setting secret ${secretName} for project ${projectId}`);
     
+    // Store the secret using Admin API with the new SB_ADMIN_KEY
+    const adminKey = Deno.env.get('SB_ADMIN_KEY');
+    if (!adminKey) {
+      throw new Error('Missing SB_ADMIN_KEY. Please add this secret to your Supabase Edge Function secrets.');
+    }
+    
     // Store the secret using Admin API
-    await setSecretValueDirect(projectId, serviceRoleKey, secretName, key);
+    await setSecretValueWithAdminKey(projectId, adminKey, secretName, key);
+    secretStored = true;
     console.log(`Successfully set secret: ${secretName}`);
   } catch (secretError) {
     console.error('Error setting secret:', secretError);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: `Failed to store API key as a secret: ${secretError instanceof Error ? secretError.message : 'Unknown error'}`,
-        details: "The API key could not be stored as a Supabase secret. Please check your Supabase configuration."
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    // We'll continue with database storage even if setting the secret fails
+    console.warn('Secret storage failed but continuing with database storage');
   }
   
   // Check if we need to deactivate other keys for the same service
@@ -250,7 +252,8 @@ async function handleCreateApiKey(
         name: name,
         service: service,
         key_masked: keyMasked,
-        is_active: true
+        is_active: true,
+        secret_stored: secretStored
       })
       .select()
       .single();
@@ -263,7 +266,8 @@ async function handleCreateApiKey(
       JSON.stringify({ 
         success: true, 
         message: `${service} API key stored successfully`,
-        key: insertedKey
+        key: insertedKey,
+        secret_stored: secretStored
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -279,23 +283,23 @@ async function handleCreateApiKey(
   }
 }
 
-// Function to directly set a secret value using Supabase Management API with explicit project ID
-async function setSecretValueDirect(projectId: string, serviceRoleKey: string, secretName: string, secretValue: string): Promise<void> {
+// New function that uses the Admin Key instead of service role key
+async function setSecretValueWithAdminKey(projectId: string, adminKey: string, secretName: string, secretValue: string): Promise<void> {
   if (!projectId) {
     throw new Error('Missing project ID');
   }
   
-  if (!serviceRoleKey) {
-    throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY');
+  if (!adminKey) {
+    throw new Error('Missing SB_ADMIN_KEY');
   }
   
-  console.log(`Setting secret ${secretName} for project ${projectId}`);
+  console.log(`Setting secret ${secretName} for project ${projectId} using admin key`);
   
   // Using the Admin API to set secrets for Edge Functions
   const response = await fetch(`https://api.supabase.com/v1/projects/${projectId}/secrets`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${serviceRoleKey}`,
+      'Authorization': `Bearer ${adminKey}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -316,6 +320,12 @@ async function setSecretValueDirect(projectId: string, serviceRoleKey: string, s
     console.error(`Error details: ${errorText}`);
     throw new Error(`Failed to set secret: ${response.status} ${response.statusText} - ${errorText}`);
   }
+}
+
+// Keep existing function for backward compatibility but don't use it
+async function setSecretValueDirect(projectId: string, serviceRoleKey: string, secretName: string, secretValue: string): Promise<void> {
+  console.log('This function is deprecated, use setSecretValueWithAdminKey instead');
+  throw new Error('This function is deprecated, use setSecretValueWithAdminKey instead');
 }
 
 async function handleListApiKeys(supabase: any, corsHeaders: Record<string, string>): Promise<Response> {

@@ -56,6 +56,8 @@ serve(async (req) => {
     
     // Store API key in the project secrets
     let secretName = '';
+    let secretStored = false;
+    
     try {
       switch (service.toLowerCase()) {
         case 'perplexity':
@@ -85,13 +87,19 @@ serve(async (req) => {
         throw new Error('Could not extract project ID from SUPABASE_URL');
       }
       
-      // Store the secret using Admin API
+      // Get admin key
+      const adminKey = Deno.env.get('SB_ADMIN_KEY');
+      if (!adminKey) {
+        throw new Error('Missing SB_ADMIN_KEY. Please add this secret to your Supabase Edge Function secrets.');
+      }
+      
       console.log(`Setting secret ${secretName} for project ${projectId}`);
       
+      // Store the secret using Admin API
       const response = await fetch(`https://api.supabase.com/v1/projects/${projectId}/secrets`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${serviceRoleKey}`,
+          'Authorization': `Bearer ${adminKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -107,6 +115,7 @@ serve(async (req) => {
         throw new Error(`Failed to set secret: ${response.status} ${response.statusText}`);
       }
       
+      secretStored = true;
       console.log(`Successfully stored ${secretName}`);
     } catch (secretError) {
       console.error('Error setting secret:', secretError);
@@ -134,6 +143,7 @@ serve(async (req) => {
             service TEXT NOT NULL,
             key_masked TEXT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            secret_stored BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
           )
         `;
@@ -205,6 +215,7 @@ serve(async (req) => {
           service: service,
           key_masked: keyMasked,
           is_active: true,
+          secret_stored: secretStored,
           created_at: new Date().toISOString()
         });
         
@@ -227,6 +238,7 @@ serve(async (req) => {
         success: true, 
         message: `${service} API key stored successfully`,
         id: uuid,
+        secret_stored: secretStored
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
