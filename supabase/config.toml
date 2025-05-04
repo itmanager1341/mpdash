@@ -14,3 +14,6 @@ verify_jwt = true
 enabled = true
 verify_jwt = true
 
+[api.functions.set-api-key]
+enabled = true
+verify_jwt = true
