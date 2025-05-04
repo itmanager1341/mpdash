@@ -16,6 +16,7 @@ serve(async (req) => {
     const perplexityKey = Deno.env.get('PERPLEXITY_API_KEY');
     
     if (!perplexityKey) {
+      console.log('Perplexity API key not found in environment variables');
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -41,21 +42,24 @@ serve(async (req) => {
     // Test the Perplexity API key with a simple query
     try {
       console.log('Testing Perplexity API connection...');
+      console.log('Key starts with: ' + perplexityKey.substring(0, 5) + '...');
       
-      const response = await fetch('https://api.perplexity.ai/news/search', {
+      const response = await fetch('https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${perplexityKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          query: 'mortgage rates current trends',
-          max_results: 2,
-          filter: {
-            time_range: '1d', // Last day
-            countries: ['us']
-          }
-        })
+          model: 'llama-3.1-sonar-small-128k-online',
+          messages: [
+            {
+              role: 'user',
+              content: 'Say "API key is valid" if you can read this message.'
+            }
+          ],
+          max_tokens: 20
+        }),
       });
       
       if (!response.ok) {
@@ -82,23 +86,11 @@ serve(async (req) => {
       
       const data = await response.json();
       
-      if (!data.results || data.results.length === 0) {
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: 'Perplexity API key is valid, but no results were found for the query',
-            details: 'The API connection is working correctly, but no matching news articles were found.'
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
       return new Response(
         JSON.stringify({ 
           success: true, 
           message: 'Perplexity API key is valid',
-          sample_result: `Found ${data.results.length} articles. Example: "${data.results[0].title}"`,
-          details: `Connection successful. ${data.results.length} relevant mortgage news articles were found in the last 24 hours.`
+          sample_result: data.choices[0].message.content
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

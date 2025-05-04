@@ -381,10 +381,12 @@ async function handleTestApiKey(body: ApiKeyRequest, corsHeaders: Record<string,
     const apiKey = Deno.env.get(secretName);
     
     if (!apiKey) {
+      console.log(`No API key found for ${service}. Secret name: ${secretName}`);
       return new Response(
         JSON.stringify({
           success: false,
-          message: `No API key found for ${service}`
+          message: `No API key found for ${service}`,
+          details: `The API key for ${service} is not set in project secrets. Please add a key using the form below.`
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

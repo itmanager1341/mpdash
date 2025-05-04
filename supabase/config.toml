@@ -9,3 +9,8 @@ enabled = true
 [api.functions.api-keys]
 enabled = true
 verify_jwt = true
+
+[api.functions.test-perplexity-key]
+enabled = true
+verify_jwt = true
+

@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle, AlertCircle, TestTube2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface ApiKeyTesterProps {
   service: string;
@@ -50,14 +51,24 @@ export default function ApiKeyTester({ service, onRefresh }: ApiKeyTesterProps) 
         details: data.sample_result || data.details
       });
       
-      if (data.success && onRefresh) {
-        await onRefresh();
+      if (data.success) {
+        toast.success(`${serviceName} API connection successful`);
+        if (onRefresh) {
+          await onRefresh();
+        }
+      } else if (data.message?.includes("No API key found")) {
+        toast.error(`No ${serviceName} API key found`, {
+          description: "Please add an API key first using the form below."
+        });
       }
     } catch (error) {
       console.error(`Error testing ${service} API key:`, error);
       setTestResult({
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+      toast.error(`Error testing ${serviceName} API key`, {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
       });
     } finally {
       setIsLoading(false);
