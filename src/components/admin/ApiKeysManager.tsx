@@ -31,9 +31,9 @@ export default function ApiKeysManager() {
       
       // First ensure the database function exists for creating tables
       try {
-        await supabase.rpc('create_api_keys_table');
+        await supabase.functions.invoke('create-api-keys-table', {});
       } catch (rpcError) {
-        console.log("Note: create_api_keys_table function may not exist yet:", rpcError);
+        console.log("Note: create-api-keys-table function may not exist yet:", rpcError);
         // This is expected on first run, we'll continue anyway
       }
       
@@ -156,7 +156,7 @@ export default function ApiKeysManager() {
             
             <TabsContent value="perplexity" className="space-y-6">
               <ApiKeyTester service="perplexity" />
-              <ApiKeyForm onSuccess={fetchApiKeys} defaultService="perplexity" />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="perplexity" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "perplexity")}
                 isLoading={isFetching}
@@ -166,7 +166,7 @@ export default function ApiKeysManager() {
             
             <TabsContent value="openai" className="space-y-6">
               <ApiKeyTester service="openai" />
-              <ApiKeyForm onSuccess={fetchApiKeys} defaultService="openai" />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="openai" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "openai")}
                 isLoading={isFetching}
@@ -176,7 +176,7 @@ export default function ApiKeysManager() {
             
             <TabsContent value="fred" className="space-y-6">
               <ApiKeyTester service="fred" />
-              <ApiKeyForm onSuccess={fetchApiKeys} defaultService="fred" />
+              <ApiKeyForm onSuccess={fetchApiKeys} service="fred" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "fred")}
                 isLoading={isFetching}

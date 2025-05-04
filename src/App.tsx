@@ -26,8 +26,8 @@ const App = () => {
       try {
         console.log("Initializing database tables...");
         
-        // Initialize the database tables
-        const { data, error } = await supabase.rpc('create_api_keys_table');
+        // Initialize the database tables using edge function instead of RPC
+        const { data, error } = await supabase.functions.invoke('create-api-keys-table', {});
         
         if (!error) {
           console.log("API keys table initialization completed");
