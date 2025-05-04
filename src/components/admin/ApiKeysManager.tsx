@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -249,7 +250,7 @@ export default function ApiKeysManager() {
                     onChange={(e) => setNewPromptTemplate(e.target.value)}
                   />
                   <p className="text-sm text-muted-foreground">
-                    Use {{placeholder}} for dynamic content
+                    Use {{`placeholder`}} for dynamic content
                   </p>
                 </div>
               </div>
