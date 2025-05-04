@@ -10,12 +10,14 @@ import { ChevronUp, ChevronDown, KeyRound } from "lucide-react";
 import ApiKeyForm from "./ApiKeyForm";
 import ApiKeysList, { ApiKey } from "./ApiKeysList";
 import ApiKeyTester from "./ApiKeyTester";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 export default function ApiKeysManager() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [isCollapsibleOpen, setIsCollapsibleOpen] = useState(true);
   const [selectedService, setSelectedService] = useState("perplexity");
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApiKeys();
@@ -23,13 +25,24 @@ export default function ApiKeysManager() {
 
   const fetchApiKeys = async () => {
     setIsFetching(true);
+    setFetchError(null);
     try {
       console.log("Fetching API keys...");
+      
+      // First ensure the database function exists for creating tables
+      try {
+        await supabase.rpc('create_api_keys_table');
+      } catch (rpcError) {
+        console.log("Note: create_api_keys_table function may not exist yet:", rpcError);
+        // This is expected on first run, we'll continue anyway
+      }
+      
       // Call the edge function to get API keys
       const { data, error } = await supabase.functions.invoke('list-api-keys', {});
       
       if (error) {
         console.error("Error fetching API keys:", error);
+        setFetchError(`Failed to fetch API keys: ${error.message}`);
         toast.error(`Error fetching API keys: ${error.message}`);
         return;
       }
@@ -42,7 +55,9 @@ export default function ApiKeysManager() {
       }
     } catch (error) {
       console.error("Exception when fetching API keys:", error);
-      toast.error(`Failed to fetch API keys: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setFetchError(`Failed to fetch API keys: ${errorMessage}`);
+      toast.error(`Failed to fetch API keys: ${errorMessage}`);
     } finally {
       setIsFetching(false);
     }
@@ -74,6 +89,23 @@ export default function ApiKeysManager() {
         </CollapsibleTrigger>
         
         <CollapsibleContent className="p-6 bg-card">
+          {fetchError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>Error fetching API keys</AlertTitle>
+              <AlertDescription>
+                {fetchError}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={fetchApiKeys} 
+                  className="ml-2"
+                >
+                  Try Again
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <Tabs defaultValue="perplexity" onValueChange={setSelectedService} className="w-full">
             <TabsList className="mb-6 w-full justify-start">
               <TabsTrigger value="perplexity" className="relative">
@@ -124,7 +156,7 @@ export default function ApiKeysManager() {
             
             <TabsContent value="perplexity" className="space-y-6">
               <ApiKeyTester service="perplexity" />
-              <ApiKeyForm onSuccess={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} defaultService="perplexity" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "perplexity")}
                 isLoading={isFetching}
@@ -134,7 +166,7 @@ export default function ApiKeysManager() {
             
             <TabsContent value="openai" className="space-y-6">
               <ApiKeyTester service="openai" />
-              <ApiKeyForm onSuccess={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} defaultService="openai" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "openai")}
                 isLoading={isFetching}
@@ -144,7 +176,7 @@ export default function ApiKeysManager() {
             
             <TabsContent value="fred" className="space-y-6">
               <ApiKeyTester service="fred" />
-              <ApiKeyForm onSuccess={fetchApiKeys} />
+              <ApiKeyForm onSuccess={fetchApiKeys} defaultService="fred" />
               <ApiKeysList 
                 apiKeys={apiKeys.filter(key => key.service.toLowerCase() === "fred")}
                 isLoading={isFetching}

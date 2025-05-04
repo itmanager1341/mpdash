@@ -13,6 +13,7 @@ import ContentCalendar from "./pages/ContentCalendar";
 import Performance from "./pages/Performance";
 import AdminSettings from "./pages/AdminSettings";
 import NotFound from "./pages/NotFound";
+import { toast } from "sonner";
 
 const queryClient = new QueryClient();
 
@@ -25,13 +26,14 @@ const App = () => {
       try {
         console.log("Initializing database tables...");
         
-        // Initialize the API keys table
-        const apiKeysResult = await supabase.functions.invoke('create-api-keys-table', {});
+        // Initialize the database tables
+        const { data, error } = await supabase.rpc('create_api_keys_table');
         
-        if (!apiKeysResult.error) {
-          console.log("API keys table initialization completed:", apiKeysResult.data);
+        if (!error) {
+          console.log("API keys table initialization completed");
         } else {
-          console.error("Error initializing API keys table:", apiKeysResult.error);
+          console.error("Error initializing API keys table:", error);
+          toast.error("Failed to initialize database tables. Some features may not work properly.");
         }
         
         // Add more table initialization here as needed
@@ -39,6 +41,7 @@ const App = () => {
         console.log("Database initialization completed");
       } catch (error) {
         console.error("Error initializing database:", error);
+        toast.error("Error initializing database. Please try refreshing the page.");
       } finally {
         setIsInitializing(false);
       }

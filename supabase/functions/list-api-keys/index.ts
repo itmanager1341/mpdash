@@ -19,8 +19,24 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Ensure the api_keys table exists before querying
-    await ensureApiKeysTableExists(supabase);
+    // First check if the table exists
+    const { error: checkError } = await supabase
+      .from('api_keys')
+      .select('count')
+      .limit(1);
+      
+    if (checkError && checkError.message.includes('relation "public.api_keys" does not exist')) {
+      console.log("api_keys table does not exist, creating it...");
+      
+      // Call the create_api_keys_table function
+      const { error: createError } = await supabase.rpc('create_api_keys_table');
+      
+      if (createError) {
+        throw new Error(`Failed to create api_keys table via RPC: ${createError.message}`);
+      }
+    } else if (checkError) {
+      console.error("Error checking if api_keys table exists:", checkError);
+    }
     
     // Get API keys with proper sorting and error handling
     const { data: apiKeys, error } = await supabase
@@ -59,44 +75,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Helper function to ensure the api_keys table exists
-async function ensureApiKeysTableExists(supabase) {
-  try {
-    // Try to query the table first to see if it exists
-    const { error: queryError } = await supabase
-      .from('api_keys')
-      .select('count')
-      .limit(1);
-      
-    if (queryError && queryError.message.includes('relation "public.api_keys" does not exist')) {
-      console.log('api_keys table does not exist, creating it...');
-      
-      // Table doesn't exist, create it
-      const { error: createError } = await supabase.sql(`
-        CREATE TABLE IF NOT EXISTS api_keys (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          name TEXT NOT NULL,
-          service TEXT NOT NULL,
-          key_masked TEXT NOT NULL,
-          is_active BOOLEAN NOT NULL DEFAULT TRUE,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-      `);
-      
-      if (createError) {
-        throw new Error(`Failed to create api_keys table: ${createError.message}`);
-      }
-      
-      console.log('api_keys table created successfully');
-      return { success: true, message: 'Table created successfully', keys: [] };
-    } else if (queryError) {
-      throw new Error(`Error checking if api_keys table exists: ${queryError.message}`);
-    } else {
-      console.log('api_keys table already exists');
-    }
-  } catch (error) {
-    console.error('Error in ensureApiKeysTableExists:', error);
-    throw error;
-  }
-}
