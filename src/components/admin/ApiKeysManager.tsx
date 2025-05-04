@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,10 +12,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useForm } from "react-hook-form";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AlertCircle, CheckCircle } from "lucide-react";
 
 type ApiKey = {
   id: string;
@@ -44,9 +43,30 @@ export default function ApiKeysManager() {
   const [newPromptUsage, setNewPromptUsage] = useState("news_analysis");
   const [isOpenKeys, setIsOpenKeys] = useState(true);
   const [isOpenPrompts, setIsOpenPrompts] = useState(true);
+  const [isEdgeFunctionTested, setIsEdgeFunctionTested] = useState(false);
+  const [testResult, setTestResult] = useState<{success: boolean, message: string} | null>(null);
 
-  // Fetch API keys and prompt templates would go here in a real implementation
-  // useEffect(() => { fetchApiKeys(); fetchPromptTemplates(); }, []);
+  useEffect(() => {
+    fetchApiKeys();
+  }, []);
+
+  const fetchApiKeys = async () => {
+    try {
+      // Call the edge function to get API keys
+      const { data, error } = await supabase.functions.invoke('list-api-keys', {});
+      
+      if (error) {
+        console.error("Error fetching API keys:", error);
+        return;
+      }
+      
+      if (data && Array.isArray(data.keys)) {
+        setApiKeys(data.keys);
+      }
+    } catch (error) {
+      console.error("Error fetching API keys:", error);
+    }
+  };
 
   const handleAddApiKey = async () => {
     if (!newKeyName || !newKeyValue || !newKeyService) {
@@ -56,24 +76,105 @@ export default function ApiKeysManager() {
 
     setIsLoading(true);
     try {
-      // In a real implementation, this would be stored in Supabase or in env vars
-      // For this demo, we'd just update the state
-      const maskedKey = newKeyValue.substring(0, 3) + "..." + newKeyValue.substring(newKeyValue.length - 4);
-      const newKey = {
-        id: Date.now().toString(),
-        name: newKeyName,
-        key_masked: maskedKey,
-        service: newKeyService,
-        is_active: true
-      };
+      // Call edge function to store the API key
+      const { data, error } = await supabase.functions.invoke('set-api-key', {
+        body: {
+          name: newKeyName,
+          key: newKeyValue,
+          service: newKeyService
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // Refresh the list of API keys
+      await fetchApiKeys();
       
-      setApiKeys([...apiKeys, newKey]);
       setNewKeyName("");
       setNewKeyValue("");
       toast.success("API key added successfully");
     } catch (error) {
       console.error("Error adding API key:", error);
-      toast.error("Failed to add API key");
+      toast.error(`Failed to add API key: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteApiKey = async (keyId: string) => {
+    try {
+      // Call edge function to delete the API key
+      const { error } = await supabase.functions.invoke('delete-api-key', {
+        body: { id: keyId }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // Refresh the list of API keys
+      await fetchApiKeys();
+      toast.success("API key deleted successfully");
+    } catch (error) {
+      console.error("Error deleting API key:", error);
+      toast.error("Failed to delete API key");
+    }
+  };
+
+  const handleToggleKeyStatus = async (keyId: string, currentStatus: boolean) => {
+    try {
+      // Call edge function to toggle the API key status
+      const { error } = await supabase.functions.invoke('toggle-api-key-status', {
+        body: { 
+          id: keyId,
+          is_active: !currentStatus 
+        }
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      // Refresh the list of API keys
+      await fetchApiKeys();
+      toast.success(`API key ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
+    } catch (error) {
+      console.error("Error toggling API key status:", error);
+      toast.error("Failed to update API key status");
+    }
+  };
+
+  const testPerplexityApiKey = async () => {
+    setIsLoading(true);
+    try {
+      // Call the edge function to test the Perplexity API key
+      const { data, error } = await supabase.functions.invoke('test-perplexity-key', {});
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      setTestResult({
+        success: data.success,
+        message: data.message
+      });
+      
+      setIsEdgeFunctionTested(true);
+      
+      if (data.success) {
+        toast.success("Perplexity API key is working correctly!");
+      } else {
+        toast.error(`API key test failed: ${data.message}`);
+      }
+    } catch (error) {
+      console.error("Error testing API key:", error);
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+      toast.error("Failed to test API key");
     } finally {
       setIsLoading(false);
     }
@@ -161,15 +262,45 @@ export default function ApiKeysManager() {
                 </div>
               </div>
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex flex-col sm:flex-row gap-2">
               <Button 
                 onClick={handleAddApiKey} 
                 disabled={isLoading || !newKeyName || !newKeyValue}
               >
                 {isLoading ? "Adding..." : "Add API Key"}
               </Button>
+              
+              {newKeyService === "perplexity" && (
+                <Button
+                  onClick={testPerplexityApiKey}
+                  variant="outline"
+                  disabled={isLoading}
+                >
+                  Test Perplexity Connection
+                </Button>
+              )}
             </CardFooter>
           </Card>
+
+          {isEdgeFunctionTested && testResult && (
+            <div className={`mt-4 p-4 rounded-md border ${testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+              <div className="flex items-start">
+                {testResult.success ? (
+                  <CheckCircle className="w-5 h-5 text-green-500 mr-2 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-red-500 mr-2 mt-0.5" />
+                )}
+                <div>
+                  <h4 className={`font-medium ${testResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                    {testResult.success ? 'API Key Test Successful' : 'API Key Test Failed'}
+                  </h4>
+                  <p className={`text-sm ${testResult.success ? 'text-green-600' : 'text-red-600'}`}>
+                    {testResult.message}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6">
             <h4 className="text-lg font-medium mb-4">Stored API Keys</h4>
@@ -183,9 +314,17 @@ export default function ApiKeysManager() {
                       <p className="text-sm text-muted-foreground">Key: {key.key_masked}</p>
                     </div>
                     <div className="flex gap-2">
-                      <Checkbox checked={key.is_active} />
-                      <Button variant="outline" size="sm">Edit</Button>
-                      <Button variant="destructive" size="sm">Delete</Button>
+                      <Checkbox 
+                        checked={key.is_active} 
+                        onCheckedChange={() => handleToggleKeyStatus(key.id, key.is_active)}
+                      />
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={() => handleDeleteApiKey(key.id)}
+                      >
+                        Delete
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -250,7 +389,7 @@ export default function ApiKeysManager() {
                     onChange={(e) => setNewPromptTemplate(e.target.value)}
                   />
                   <p className="text-sm text-muted-foreground">
-                    Use {"{{"}"placeholder{"}}}"} for dynamic content
+                    Use {"{{"}{`placeholder`}{"}}"} for dynamic content
                   </p>
                 </div>
               </div>

@@ -1,45 +1,185 @@
 
+# A string used to distinguish different Supabase projects on the same host. Defaults to the
+# working directory name when running `supabase init`.
 project_id = "grebpkcwmurbxorodiyb"
 
 [api]
-enabled = true
+# Port to use for the API URL.
 port = 54321
+# Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
+# endpoints. public and storage are always included.
 schemas = ["public", "storage", "graphql_public"]
+# Extra schemas to add to the search_path of every request. public is always included.
+extra_search_path = ["public", "extensions"]
+# The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
+# for accidental or malicious requests.
+max_rows = 1000
 
 [db]
+# Port to use for the local database URL.
 port = 54322
-shadow_port = 54320
+# Port used by database to listen on. Default: db.port + 1
+server_port = 54323
+# The database major version to use. This has to be the same as your remote database's. Run `SHOW
+# server_version;` on the remote database to check.
 major_version = 15
 
 [studio]
-enabled = true
-port = 54323
-api_url = "http://localhost"
-
-[inbucket]
-enabled = true
+# Port to use for Supabase Studio.
 port = 54324
 
-[auth]
-enabled = true
-site_url = "http://localhost:3000"
+# Email testing server. Emails sent with the local dev setup are not actually delivered, rather they
+# are monitored, and you can view the emails that would have been delivered from the web interface.
+[inbucket]
+# Port to use for the email testing server web interface.
+port = 54325
+smtp_port = 54326
+pop3_port = 54327
 
 [storage]
-enabled = true
+# The maximum file size allowed (e.g. "5MB", "500KB").
+file_size_limit = "50MiB"
 
-[realtime]
-enabled = true
+[auth]
+# The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
+# in emails.
+site_url = "http://localhost:3000"
+# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
+additional_redirect_urls = ["https://localhost:3000"]
+# How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
+jwt_expiry = 3600
+# Allow/disallow new user signups to your project.
+enable_signup = true
+# If enabled, a user will be required to confirm any email change on both the old, and new email
+# addresses. If disabled, only the new email is required to confirm.
+double_confirm_changes = true
+# If enabled, users need to confirm their email address before signing in.
+enable_confirmations = false
 
-[analytics]
-enabled = true
-port = 54327
+# Configure Edge Functions
+[functions]
+# Port to use for Functions.
+port = 54321
+# Default database connection string used for Edge Functions.
+# This will be used as the default database connection string unless overridden
+database_url = "postgres://postgres:postgres@localhost:54322/postgres"
+# Enable/disable Node.js Edge Functions.
+node_runtime = true
+# Enable/disable Deno Edge Functions.
+deno_runtime = true
 
-[vector]
-enabled = true
-
-[edge_functions]
-enabled = true
-
-[[edge_functions.function]]
-name = "generate-article"
+[functions.set-api-key]
 verify_jwt = true
+
+[functions.test-perplexity-key]
+verify_jwt = true
+
+[functions.list-api-keys]
+verify_jwt = true
+
+[functions.delete-api-key]
+verify_jwt = true
+
+[functions.toggle-api-key-status]
+verify_jwt = true
+
+# Configure Postgres functions to create tables we need
+<lov-write file_path="supabase/migrations/20250504121212_api_keys_functions.sql">
+-- Create function to check if api_keys table exists
+CREATE OR REPLACE FUNCTION public.get_tables()
+RETURNS TABLE(table_name text)
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+    SELECT table_name::text 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public';
+$$;
+
+-- Create function to create api_keys table
+CREATE OR REPLACE FUNCTION public.create_api_keys_table()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    CREATE TABLE IF NOT EXISTS public.api_keys (
+        id UUID PRIMARY KEY,
+        name TEXT NOT NULL,
+        service TEXT NOT NULL,
+        key_masked TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+    );
+
+    -- Grant access to authenticated users
+    GRANT ALL ON public.api_keys TO authenticated;
+    GRANT ALL ON public.api_keys TO service_role;
+END;
+$$;
+
+-- Create wrapper function for both operations
+CREATE OR REPLACE FUNCTION public.create_api_keys_table_if_not_exists()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    table_exists BOOLEAN;
+BEGIN
+    -- Check if the table exists
+    SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        AND table_name = 'api_keys'
+    ) INTO table_exists;
+    
+    -- Create the table if it doesn't exist
+    IF NOT table_exists THEN
+        PERFORM public.create_api_keys_table();
+        RETURN TRUE;
+    END IF;
+    
+    RETURN FALSE;
+END;
+$$;
+
+-- Enable RLS on api_keys table and create policies
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        AND table_name = 'api_keys'
+    ) THEN
+        -- Enable row level security
+        ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
+        
+        -- Drop policies if they exist
+        DROP POLICY IF EXISTS "Authenticated users can view api_keys" ON public.api_keys;
+        DROP POLICY IF EXISTS "Authenticated users can insert api_keys" ON public.api_keys;
+        DROP POLICY IF EXISTS "Authenticated users can update api_keys" ON public.api_keys;
+        DROP POLICY IF EXISTS "Authenticated users can delete api_keys" ON public.api_keys;
+        
+        -- Create policies
+        CREATE POLICY "Authenticated users can view api_keys"
+        ON public.api_keys FOR SELECT
+        TO authenticated
+        USING (true);
+        
+        CREATE POLICY "Authenticated users can insert api_keys"
+        ON public.api_keys FOR INSERT
+        TO authenticated
+        WITH CHECK (true);
+        
+        CREATE POLICY "Authenticated users can update api_keys"
+        ON public.api_keys FOR UPDATE
+        TO authenticated
+        USING (true);
+        
+        CREATE POLICY "Authenticated users can delete api_keys"
+        ON public.api_keys FOR DELETE
+        TO authenticated
+        USING (true);
+    END IF;
+END$$;
