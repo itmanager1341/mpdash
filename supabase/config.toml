@@ -1,11 +1,25 @@
 
-# This file configures Supabase Edge Functions.
 project_id = "grebpkcwmurbxorodiyb"
 
 [api]
 enabled = true
+port = 8080
+schemas = ["public", "storage"]
 
-[api.functions]
-[api.functions.api-keys]
+[db]
+port = 5432
+
+[realtime]
 enabled = true
+
+[storage]
+enabled = true
+
+[auth]
+enabled = true
+port = 9999
+uri_allow_list = ["https://localhost:3000"]
+
+[functions]
+[functions.test-llm-prompt]
 verify_jwt = true

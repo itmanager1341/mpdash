@@ -191,6 +191,48 @@ export type Database = {
         }
         Relationships: []
       }
+      llm_prompts: {
+        Row: {
+          created_at: string | null
+          function_name: string
+          id: string
+          include_clusters: boolean | null
+          include_sources_map: boolean | null
+          include_tracking_summary: boolean | null
+          is_active: boolean | null
+          last_updated_by: string | null
+          model: string
+          prompt_text: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          function_name: string
+          id?: string
+          include_clusters?: boolean | null
+          include_sources_map?: boolean | null
+          include_tracking_summary?: boolean | null
+          is_active?: boolean | null
+          last_updated_by?: string | null
+          model: string
+          prompt_text: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          function_name?: string
+          id?: string
+          include_clusters?: boolean | null
+          include_sources_map?: boolean | null
+          include_tracking_summary?: boolean | null
+          is_active?: boolean | null
+          last_updated_by?: string | null
+          model?: string
+          prompt_text?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       news: {
         Row: {
           destinations: string[] | null
