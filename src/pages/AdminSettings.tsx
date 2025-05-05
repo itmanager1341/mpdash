@@ -2,6 +2,7 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import NewsImporter from "@/components/admin/NewsImporter";
+import NewsTextConverter from "@/components/admin/NewsTextConverter";
 import ApiKeysManager from "@/components/admin/ApiKeysManager";
 import { Button } from "@/components/ui/button";
 import { FileText, Settings } from "lucide-react";
@@ -28,6 +29,7 @@ export default function AdminSettings() {
         </TabsList>
         
         <TabsContent value="import" className="space-y-6">
+          <NewsTextConverter />
           <NewsImporter />
         </TabsContent>
         
