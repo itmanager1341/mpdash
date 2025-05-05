@@ -18,6 +18,7 @@ interface Article {
   created_at: string;
   destinations: string[];
   source_news_id: string;
+  published_at: string | null;
 }
 
 const MagazinePlanner = () => {
@@ -26,6 +27,7 @@ const MagazinePlanner = () => {
   const { data: articles, isLoading, error, refetch } = useQuery({
     queryKey: ['magazine-articles'],
     queryFn: async () => {
+      console.log("Fetching Magazine articles");
       // Fetch articles for magazine destination only
       const { data, error } = await supabase
         .from('articles')
@@ -33,7 +35,12 @@ const MagazinePlanner = () => {
         .contains('destinations', ['magazine'])
         .order('created_at', { ascending: false });
       
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error("Error fetching Magazine articles:", error);
+        throw new Error(error.message);
+      }
+      
+      console.log("Magazine articles fetched:", data);
       return data as Article[];
     }
   });
@@ -42,7 +49,10 @@ const MagazinePlanner = () => {
     try {
       const { error } = await supabase
         .from('articles')
-        .update({ status: 'published', published_at: new Date().toISOString() })
+        .update({ 
+          status: 'published', 
+          published_at: new Date().toISOString() 
+        })
         .eq('id', articleId);
         
       if (error) throw error;
@@ -60,6 +70,7 @@ const MagazinePlanner = () => {
       case 'published':
         return 'bg-green-100 text-green-800 border-green-200';
       case 'queued':
+      case 'queued_magazine':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
         return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -91,122 +102,112 @@ const MagazinePlanner = () => {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-10">
-          <p className="text-muted-foreground">Loading articles...</p>
-        </div>
-      ) : error ? (
-        <div className="bg-destructive/10 text-destructive p-4 rounded-md">
-          <p>Error loading articles. Please try refreshing.</p>
-        </div>
-      ) : (
-        <Tabs value={viewMode} className="w-full">
-          <TabsContent value="kanban" className="mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <h2 className="text-lg font-semibold mb-3 px-2">Queued</h2>
-                <div className="space-y-3">
-                  {articles?.filter(a => a.status === 'queued').map((article) => (
-                    <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-start">
-                          <Badge className={getArticleStatusColor(article.status)}>
-                            {article.status || 'Draft'}
+      <Tabs value={viewMode}>
+        <TabsContent value="kanban" className="mt-0">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <h2 className="text-lg font-semibold mb-3 px-2">Queued</h2>
+              <div className="space-y-3">
+                {articles?.filter(a => a.status === 'queued_magazine' || a.status === 'queued').map((article) => (
+                  <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between items-start">
+                        <Badge className={getArticleStatusColor(article.status)}>
+                          Queued
+                        </Badge>
+                      </div>
+                      <CardTitle className="text-lg">{article.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {article.destinations && article.destinations.map((dest) => (
+                          <Badge key={dest} variant="outline" className="text-xs">
+                            {dest}
                           </Badge>
-                        </div>
-                        <CardTitle className="text-lg">{article.title}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {article.destinations && article.destinations.map((dest) => (
-                            <Badge key={dest} variant="outline" className="text-xs">
-                              {dest}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="mt-4 flex justify-end space-x-2">
-                          <Button variant="outline" size="sm">Edit</Button>
-                          <Button 
-                            variant="default" 
-                            size="sm"
-                            onClick={() => handlePublish(article.id)}
-                          >
-                            Publish
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {articles?.filter(a => a.status === 'queued').length === 0 && (
-                    <div className="bg-muted/50 rounded-md p-4 text-center">
-                      <p className="text-sm text-muted-foreground">No queued articles</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div>
-                <h2 className="text-lg font-semibold mb-3 px-2">Published</h2>
-                <div className="space-y-3">
-                  {articles?.filter(a => a.status === 'published').map((article) => (
-                    <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-start">
-                          <Badge className={getArticleStatusColor(article.status)}>
-                            Published
-                          </Badge>
-                        </div>
-                        <CardTitle className="text-lg">{article.title}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {article.destinations && article.destinations.map((dest) => (
-                            <Badge key={dest} variant="outline" className="text-xs">
-                              {dest}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="mt-4 flex justify-end">
-                          <Button variant="outline" size="sm">View</Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                  {articles?.filter(a => a.status === 'published').length === 0 && (
-                    <div className="bg-muted/50 rounded-md p-4 text-center">
-                      <p className="text-sm text-muted-foreground">No published articles</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div>
-                <h2 className="text-lg font-semibold mb-3 px-2">Archive</h2>
-                <div className="space-y-3">
+                        ))}
+                      </div>
+                      <div className="mt-4 flex justify-end space-x-2">
+                        <Button variant="outline" size="sm">Edit</Button>
+                        <Button 
+                          variant="default" 
+                          size="sm"
+                          onClick={() => handlePublish(article.id)}
+                        >
+                          Publish
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {articles?.filter(a => a.status === 'queued_magazine' || a.status === 'queued').length === 0 && (
                   <div className="bg-muted/50 rounded-md p-4 text-center">
-                    <p className="text-sm text-muted-foreground">Archived articles will appear here</p>
+                    <p className="text-sm text-muted-foreground">No queued articles</p>
                   </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <h2 className="text-lg font-semibold mb-3 px-2">Published</h2>
+              <div className="space-y-3">
+                {articles?.filter(a => a.status === 'published').map((article) => (
+                  <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between items-start">
+                        <Badge className={getArticleStatusColor(article.status)}>
+                          Published
+                        </Badge>
+                      </div>
+                      <CardTitle className="text-lg">{article.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {article.destinations && article.destinations.map((dest) => (
+                          <Badge key={dest} variant="outline" className="text-xs">
+                            {dest}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <Button variant="outline" size="sm">View</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {articles?.filter(a => a.status === 'published').length === 0 && (
+                  <div className="bg-muted/50 rounded-md p-4 text-center">
+                    <p className="text-sm text-muted-foreground">No published articles</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <h2 className="text-lg font-semibold mb-3 px-2">Archive</h2>
+              <div className="space-y-3">
+                <div className="bg-muted/50 rounded-md p-4 text-center">
+                  <p className="text-sm text-muted-foreground">Archived articles will appear here</p>
                 </div>
               </div>
             </div>
-          </TabsContent>
-          
-          <TabsContent value="calendar" className="mt-0">
-            <Card>
-              <CardHeader>
-                <CardTitle>Publication Calendar</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="p-8 text-center">
-                  <p className="text-muted-foreground">
-                    Calendar view will be implemented in a future update.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      )}
+          </div>
+        </TabsContent>
+        
+        <TabsContent value="calendar" className="mt-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>Publication Calendar</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="p-8 text-center">
+                <p className="text-muted-foreground">
+                  Calendar view will be implemented in a future update.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </DashboardLayout>
   );
 };

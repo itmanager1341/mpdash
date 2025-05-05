@@ -18,6 +18,7 @@ interface Article {
   created_at: string;
   destinations: string[];
   source_news_id: string;
+  published_at: string | null;
 }
 
 const MPDailyPlanner = () => {
@@ -26,13 +27,19 @@ const MPDailyPlanner = () => {
   const { data: articles, isLoading, error, refetch } = useQuery({
     queryKey: ['articles', 'mpdaily'],
     queryFn: async () => {
+      console.log("Fetching MPDaily articles");
       const { data, error } = await supabase
         .from('articles')
         .select('*')
         .contains('destinations', ['mpdaily'])
         .order('created_at', { ascending: false });
       
-      if (error) throw new Error(error.message);
+      if (error) {
+        console.error("Error fetching MPDaily articles:", error);
+        throw new Error(error.message);
+      }
+      
+      console.log("MPDaily articles fetched:", data);
       return data as Article[];
     }
   });
@@ -41,7 +48,10 @@ const MPDailyPlanner = () => {
     try {
       const { error } = await supabase
         .from('articles')
-        .update({ status: 'published' })
+        .update({ 
+          status: 'published',
+          published_at: new Date().toISOString()
+        })
         .eq('id', id);
 
       if (error) throw error;
@@ -59,6 +69,7 @@ const MPDailyPlanner = () => {
       case 'published':
         return 'bg-green-100 text-green-800 border-green-200';
       case 'queued':
+      case 'queued_mpdaily':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
         return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -90,7 +101,7 @@ const MPDailyPlanner = () => {
         </div>
       </div>
 
-      <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "schedule")}>
+      <Tabs value={viewMode}>
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
             <p className="text-muted-foreground">Loading articles...</p>
@@ -109,8 +120,15 @@ const MPDailyPlanner = () => {
                       <CardHeader className="pb-2">
                         <div className="flex justify-between items-start">
                           <Badge className={getArticleStatusColor(article.status)}>
-                            {article.status || 'Draft'}
+                            {article.status === 'published' ? 'Published' : 
+                             article.status === 'queued_mpdaily' ? 'Queued' :
+                             article.status || 'Draft'}
                           </Badge>
+                          {article.published_at && (
+                            <span className="text-xs text-muted-foreground">
+                              Published: {new Date(article.published_at).toLocaleDateString()}
+                            </span>
+                          )}
                         </div>
                         <CardTitle className="text-lg">{article.title}</CardTitle>
                       </CardHeader>
@@ -129,7 +147,7 @@ const MPDailyPlanner = () => {
                             variant="default" 
                             size="sm"
                             disabled={article.status === 'published'}
-                            onClick={() => handlePublish(article.id)}
+                            onClick={() => article.status !== 'published' && handlePublish(article.id)}
                           >
                             {article.status === 'published' ? 'Published' : 'Publish'}
                           </Button>
