@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { FileText, Edit, Search, Info } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -50,6 +51,14 @@ const knowledgeFiles: KnowledgeFile[] = [
     category: "core",
     description: "News importing, approval, and generation processes",
     lastUpdated: "2025-04-10"
+  },
+  {
+    id: "ai-models",
+    title: "AI Models & LLMs",
+    filePath: "ai-models-reference.knowledge.md",
+    category: "technical",
+    description: "AI models and LLMs used throughout the platform with workflow integration details",
+    lastUpdated: "2025-05-05"
   },
   {
     id: "mortgage-industry",
