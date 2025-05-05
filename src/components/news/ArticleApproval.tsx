@@ -43,7 +43,7 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
         .from("news")
         .update({ 
           status: newsStatus, 
-          destinations: supabase.utils.toArray(destination)
+          destinations: [destination] // Use array directly instead of supabase.utils.toArray
         })
         .eq("id", newsItem.id);
       
