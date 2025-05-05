@@ -15,7 +15,7 @@ interface NewsItem {
   headline: string;
   summary: string;
   status: string | null;
-  created_at: string;
+  created_at?: string; // Make created_at optional
   timestamp: string;
   source: string;
   url: string;

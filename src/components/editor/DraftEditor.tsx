@@ -23,6 +23,7 @@ interface NewsItem {
   id: string;
   headline: string;
   summary: string;
+  source?: string; // Make source optional
   content_variants?: {
     title?: string;
     summary?: string;
@@ -30,6 +31,7 @@ interface NewsItem {
     full_content?: string;
   };
   status: string | null;
+  url?: string; // Add url field
 }
 
 interface DraftEditorProps {
@@ -86,10 +88,12 @@ const DraftEditor = ({ newsItem, open, onOpenChange, onSave }: DraftEditorProps)
 
   // Function to format the preview HTML
   const getPreviewHtml = () => {
+    const sourceText = newsItem.source ? `Source: ${newsItem.source}` : '';
+    
     return `
       <div class="max-w-3xl mx-auto">
         <h1 class="text-2xl font-bold mb-4">${title}</h1>
-        <div class="text-sm text-gray-600 mb-4">Source: ${newsItem.source}</div>
+        <div class="text-sm text-gray-600 mb-4">${sourceText}</div>
         <p class="mb-6">${summary}</p>
         <p class="mb-6"><em>${cta}</em></p>
         <div class="prose">
