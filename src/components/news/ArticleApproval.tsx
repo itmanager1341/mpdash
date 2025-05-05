@@ -37,13 +37,15 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
     try {
       setIsApproving(true);
       
+      const normalizedDestination = destination.toLowerCase();
+      
       // 1. Update news status with appropriate destination-based status
-      const newsStatus = `queued_${destination}`;
+      const newsStatus = `queued_${normalizedDestination}`;
       const { error: newsUpdateError } = await supabase
         .from("news")
         .update({ 
           status: newsStatus, 
-          destinations: [destination] // Use array directly instead of supabase.utils.toArray
+          destinations: [normalizedDestination] 
         })
         .eq("id", newsItem.id);
       
@@ -58,13 +60,14 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
             summary: newsItem.summary
           },
           status: newsStatus,
-          destinations: [destination],
+          destinations: [normalizedDestination],
           source_news_id: newsItem.id,
           related_trends: newsItem.matched_clusters
         });
       
       if (articleError) throw articleError;
 
+      console.log(`Article approved for ${normalizedDestination} with status ${newsStatus}`);
       toast.success(`Article approved for ${destination}`);
       onApproved();
       

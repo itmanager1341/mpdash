@@ -28,19 +28,44 @@ const MPDailyPlanner = () => {
     queryKey: ['articles', 'mpdaily'],
     queryFn: async () => {
       console.log("Fetching MPDaily articles");
-      const { data, error } = await supabase
+      
+      // Try two different queries to ensure we catch all relevant articles
+      const { data: destinationData, error: destinationError } = await supabase
         .from('articles')
         .select('*')
         .contains('destinations', ['mpdaily'])
         .order('created_at', { ascending: false });
       
-      if (error) {
-        console.error("Error fetching MPDaily articles:", error);
-        throw new Error(error.message);
+      if (destinationError) {
+        console.error("Error fetching MPDaily articles by destination:", destinationError);
+        throw new Error(destinationError.message);
       }
       
-      console.log("MPDaily articles fetched:", data);
-      return data as Article[];
+      // Also check for articles with status containing 'mpdaily'
+      const { data: statusData, error: statusError } = await supabase
+        .from('articles')
+        .select('*')
+        .ilike('status', '%mpdaily%')
+        .order('created_at', { ascending: false });
+      
+      if (statusError) {
+        console.error("Error fetching MPDaily articles by status:", statusError);
+        throw new Error(statusError.message);
+      }
+      
+      // Combine results, removing duplicates by ID
+      const combinedResults = [...(destinationData || [])];
+      
+      if (statusData) {
+        statusData.forEach(statusItem => {
+          if (!combinedResults.some(item => item.id === statusItem.id)) {
+            combinedResults.push(statusItem);
+          }
+        });
+      }
+      
+      console.log("MPDaily articles fetched:", combinedResults);
+      return combinedResults as Article[];
     }
   });
 
