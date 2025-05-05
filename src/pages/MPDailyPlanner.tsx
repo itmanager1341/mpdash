@@ -10,95 +10,74 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
-interface Article {
+interface NewsItem {
   id: string;
-  title: string;
-  content_variants: any;
+  headline: string;
+  summary: string;
   status: string | null;
-  created_at: string;
+  created_at?: string;
+  timestamp: string;
   destinations: string[];
-  source_news_id: string;
-  published_at: string | null;
+  source: string;
+  matched_clusters?: string[];
+  url: string;
 }
 
 const MPDailyPlanner = () => {
   const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
 
-  const { data: articles, isLoading, error, refetch } = useQuery({
-    queryKey: ['articles', 'mpdaily'],
+  const { data: newsItems, isLoading, error, refetch } = useQuery({
+    queryKey: ['news', 'mpdaily'],
     queryFn: async () => {
-      console.log("Fetching MPDaily articles");
+      console.log("Fetching MPDaily news items");
       
-      // Try two different queries to ensure we catch all relevant articles
-      const { data: destinationData, error: destinationError } = await supabase
-        .from('articles')
+      // Query news items that have been approved for MPDaily
+      const { data, error } = await supabase
+        .from('news')
         .select('*')
-        .contains('destinations', ['mpdaily'])
-        .order('created_at', { ascending: false });
+        .or('status.ilike.%mpdaily%,destinations.cs.{mpdaily}')
+        .order('timestamp', { ascending: false });
       
-      if (destinationError) {
-        console.error("Error fetching MPDaily articles by destination:", destinationError);
-        throw new Error(destinationError.message);
+      if (error) {
+        console.error("Error fetching MPDaily news items:", error);
+        throw new Error(error.message);
       }
       
-      // Also check for articles with status containing 'mpdaily'
-      const { data: statusData, error: statusError } = await supabase
-        .from('articles')
-        .select('*')
-        .ilike('status', '%mpdaily%')
-        .order('created_at', { ascending: false });
-      
-      if (statusError) {
-        console.error("Error fetching MPDaily articles by status:", statusError);
-        throw new Error(statusError.message);
-      }
-      
-      // Combine results, removing duplicates by ID
-      const combinedResults = [...(destinationData || [])];
-      
-      if (statusData) {
-        statusData.forEach(statusItem => {
-          if (!combinedResults.some(item => item.id === statusItem.id)) {
-            combinedResults.push(statusItem);
-          }
-        });
-      }
-      
-      console.log("MPDaily articles fetched:", combinedResults);
-      return combinedResults as Article[];
+      console.log("MPDaily news items fetched:", data);
+      return data as NewsItem[];
     }
   });
 
   const handlePublish = async (id: string) => {
     try {
       const { error } = await supabase
-        .from('articles')
+        .from('news')
         .update({ 
           status: 'published',
-          published_at: new Date().toISOString()
         })
         .eq('id', id);
 
       if (error) throw error;
       
-      toast.success("Article published successfully");
+      toast.success("Item published successfully");
       refetch();
     } catch (err) {
-      console.error("Error publishing article:", err);
-      toast.error("Failed to publish article");
+      console.error("Error publishing item:", err);
+      toast.error("Failed to publish item");
     }
   };
 
-  const getArticleStatusColor = (status: string | null) => {
-    switch (status) {
-      case 'published':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'queued':
-      case 'queued_mpdaily':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      default:
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+  const getStatusColor = (status: string | null) => {
+    if (!status) return 'bg-blue-100 text-blue-800 border-blue-200';
+    
+    if (status.includes('published')) {
+      return 'bg-green-100 text-green-800 border-green-200';
     }
+    if (status.includes('queued')) {
+      return 'bg-amber-100 text-amber-800 border-amber-200';
+    }
+    
+    return 'bg-blue-100 text-blue-800 border-blue-200';
   };
 
   return (
@@ -129,52 +108,53 @@ const MPDailyPlanner = () => {
       <Tabs value={viewMode}>
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
-            <p className="text-muted-foreground">Loading articles...</p>
+            <p className="text-muted-foreground">Loading content...</p>
           </div>
         ) : error ? (
           <div className="bg-destructive/10 text-destructive p-4 rounded-md">
-            <p>Error loading articles. Please try refreshing.</p>
+            <p>Error loading content. Please try refreshing.</p>
           </div>
         ) : (
           <>
             <TabsContent value="list">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {articles && articles.length > 0 ? (
-                  articles.map((article) => (
-                    <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                {newsItems && newsItems.length > 0 ? (
+                  newsItems.map((item) => (
+                    <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
                       <CardHeader className="pb-2">
                         <div className="flex justify-between items-start">
-                          <Badge className={getArticleStatusColor(article.status)}>
-                            {article.status === 'published' ? 'Published' : 
-                             article.status === 'queued_mpdaily' ? 'Queued' :
-                             article.status || 'Draft'}
+                          <Badge className={getStatusColor(item.status)}>
+                            {item.status === 'published' ? 'Published' : 
+                             item.status?.includes('queued') ? 'Queued' :
+                             item.status || 'Draft'}
                           </Badge>
-                          {article.published_at && (
-                            <span className="text-xs text-muted-foreground">
-                              Published: {new Date(article.published_at).toLocaleDateString()}
-                            </span>
-                          )}
                         </div>
-                        <CardTitle className="text-lg">{article.title}</CardTitle>
+                        <CardTitle className="text-lg">{item.headline}</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm text-muted-foreground mb-4">
-                          {article.content_variants?.summary 
-                            ? article.content_variants.summary.substring(0, 100) + '...'
+                          {item.summary 
+                            ? item.summary.substring(0, 100) + '...'
                             : 'No summary available'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Created: {new Date(article.created_at).toLocaleDateString()}
+                          Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
                         </p>
                         <div className="mt-4 flex justify-end space-x-2">
-                          <Button variant="outline" size="sm">Edit</Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => window.open(item.url, '_blank')}
+                          >
+                            View Source
+                          </Button>
                           <Button 
                             variant="default" 
                             size="sm"
-                            disabled={article.status === 'published'}
-                            onClick={() => article.status !== 'published' && handlePublish(article.id)}
+                            disabled={item.status === 'published'}
+                            onClick={() => item.status !== 'published' && handlePublish(item.id)}
                           >
-                            {article.status === 'published' ? 'Published' : 'Publish'}
+                            {item.status === 'published' ? 'Published' : 'Publish'}
                           </Button>
                         </div>
                       </CardContent>
@@ -182,10 +162,10 @@ const MPDailyPlanner = () => {
                   ))
                 ) : (
                   <div className="col-span-3 bg-muted/50 rounded-md p-8 text-center">
-                    <h3 className="text-xl font-semibold mb-2">No articles for MPDaily</h3>
+                    <h3 className="text-xl font-semibold mb-2">No content for MPDaily</h3>
                     <p className="text-muted-foreground">
-                      There are no articles currently assigned to MPDaily. 
-                      Approve some articles from Today's Briefing.
+                      There are no items currently approved for MPDaily. 
+                      Approve some items from Today's Briefing.
                     </p>
                   </div>
                 )}
