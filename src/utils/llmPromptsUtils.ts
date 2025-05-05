@@ -36,8 +36,13 @@ export async function createPrompt(promptData: LlmPromptFormData): Promise<LlmPr
     .from("llm_prompts")
     .insert([
       {
-        ...promptData,
-        is_active: promptData.is_active ?? true,
+        function_name: promptData.function_name,
+        model: promptData.model,
+        prompt_text: promptData.prompt_text,
+        include_clusters: promptData.include_clusters,
+        include_tracking_summary: promptData.include_tracking_summary,
+        include_sources_map: promptData.include_sources_map,
+        is_active: promptData.is_active,
         last_updated_by: "system" // Replace with actual user info when auth is implemented
       }
     ])

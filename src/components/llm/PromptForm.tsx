@@ -1,4 +1,3 @@
-
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -70,10 +69,32 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
   const onSubmit = async (data: z.infer<typeof promptFormSchema>) => {
     try {
       if (isEditing && prompt) {
-        await updatePrompt(prompt.id, data);
+        // Ensure we're passing all required fields for the update
+        const updateData: LlmPromptFormData = {
+          function_name: data.function_name,
+          model: data.model,
+          prompt_text: data.prompt_text,
+          include_clusters: data.include_clusters,
+          include_tracking_summary: data.include_tracking_summary,
+          include_sources_map: data.include_sources_map,
+          is_active: data.is_active,
+        };
+        
+        await updatePrompt(prompt.id, updateData);
         toast.success("Prompt updated successfully");
       } else {
-        await createPrompt(data);
+        // Ensure we're passing all required fields for creation
+        const createData: LlmPromptFormData = {
+          function_name: data.function_name,
+          model: data.model,
+          prompt_text: data.prompt_text,
+          include_clusters: data.include_clusters,
+          include_tracking_summary: data.include_tracking_summary,
+          include_sources_map: data.include_sources_map,
+          is_active: data.is_active,
+        };
+        
+        await createPrompt(createData);
         toast.success("Prompt created successfully");
       }
       onSuccess();
