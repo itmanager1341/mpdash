@@ -20,7 +20,7 @@ interface LlmPromptFormData {
   include_clusters: boolean;
   include_tracking_summary: boolean;
   include_sources_map: boolean;
-  is_active?: boolean;
+  is_active: boolean;
 }
 
 interface LlmTestInput {

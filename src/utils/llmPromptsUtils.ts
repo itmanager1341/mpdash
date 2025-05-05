@@ -31,12 +31,13 @@ export async function getPromptById(id: string): Promise<LlmPrompt | null> {
   return data;
 }
 
-export async function createPrompt(promptData: Omit<LlmPrompt, "id" | "created_at" | "updated_at" | "last_updated_by">): Promise<LlmPrompt> {
+export async function createPrompt(promptData: LlmPromptFormData): Promise<LlmPrompt> {
   const { data, error } = await supabase
     .from("llm_prompts")
     .insert([
       {
         ...promptData,
+        is_active: promptData.is_active ?? true,
         last_updated_by: "system" // Replace with actual user info when auth is implemented
       }
     ])
@@ -51,7 +52,7 @@ export async function createPrompt(promptData: Omit<LlmPrompt, "id" | "created_a
   return data;
 }
 
-export async function updatePrompt(id: string, promptData: Partial<LlmPrompt>): Promise<LlmPrompt> {
+export async function updatePrompt(id: string, promptData: Partial<LlmPromptFormData>): Promise<LlmPrompt> {
   const { data, error } = await supabase
     .from("llm_prompts")
     .update({
