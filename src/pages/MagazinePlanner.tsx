@@ -10,71 +10,81 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
-interface Article {
+interface NewsItem {
   id: string;
-  title: string;
-  content_variants: any;
+  headline: string;
+  summary: string;
   status: string | null;
   created_at: string;
-  destinations: string[];
-  source_news_id: string;
-  published_at: string | null;
+  timestamp: string;
+  source: string;
+  url: string;
+  matched_clusters?: string[];
 }
 
 const MagazinePlanner = () => {
   const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");
 
-  const { data: articles, isLoading, error, refetch } = useQuery({
-    queryKey: ['magazine-articles'],
+  const { data: newsItems, isLoading, error, refetch } = useQuery({
+    queryKey: ['magazine-news'],
     queryFn: async () => {
-      console.log("Fetching Magazine articles");
-      // Fetch articles for magazine destination only
+      console.log("Fetching Magazine news items");
+      
+      // Fetch news items for magazine destination only
       const { data, error } = await supabase
-        .from('articles')
+        .from('news')
         .select('*')
-        .contains('destinations', ['magazine'])
-        .order('created_at', { ascending: false });
+        .or('status.eq.approved_magazine,status.eq.drafted_magazine,status.eq.published_magazine')
+        .order('timestamp', { ascending: false });
       
       if (error) {
-        console.error("Error fetching Magazine articles:", error);
+        console.error("Error fetching Magazine news items:", error);
         throw new Error(error.message);
       }
       
-      console.log("Magazine articles fetched:", data);
-      return data as Article[];
+      console.log("Magazine news items fetched:", data);
+      return data as NewsItem[];
     }
   });
 
-  const handlePublish = async (articleId: string) => {
+  const handlePublish = async (newsId: string) => {
     try {
       const { error } = await supabase
-        .from('articles')
+        .from('news')
         .update({ 
-          status: 'published', 
-          published_at: new Date().toISOString() 
+          status: 'published_magazine'
         })
-        .eq('id', articleId);
+        .eq('id', newsId);
         
       if (error) throw error;
       
-      toast.success("Article published successfully");
+      toast.success("Item published successfully");
       refetch();
     } catch (err) {
-      console.error('Error publishing article:', err);
-      toast.error("Failed to publish article");
+      console.error('Error publishing item:', err);
+      toast.error("Failed to publish item");
     }
   };
 
-  const getArticleStatusColor = (status: string | null) => {
+  const getStatusColor = (status: string | null) => {
     switch (status) {
-      case 'published':
+      case 'published_magazine':
         return 'bg-green-100 text-green-800 border-green-200';
-      case 'queued':
-      case 'queued_magazine':
+      case 'drafted_magazine':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'approved_magazine':
         return 'bg-amber-100 text-amber-800 border-amber-200';
       default:
         return 'bg-blue-100 text-blue-800 border-blue-200';
     }
+  };
+
+  const getStatusLabel = (status: string | null) => {
+    if (!status) return 'New';
+    if (status === 'approved_magazine') return 'Approved';
+    if (status === 'drafted_magazine') return 'Draft Ready';
+    if (status === 'published_magazine') return 'Published';
+    return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   return (
@@ -106,32 +116,76 @@ const MagazinePlanner = () => {
         <TabsContent value="kanban" className="mt-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <h2 className="text-lg font-semibold mb-3 px-2">Queued</h2>
+              <h2 className="text-lg font-semibold mb-3 px-2">Approved</h2>
               <div className="space-y-3">
-                {articles?.filter(a => a.status === 'queued_magazine' || a.status === 'queued').map((article) => (
-                  <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                {newsItems?.filter(a => a.status === 'approved_magazine').map((item) => (
+                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
-                        <Badge className={getArticleStatusColor(article.status)}>
-                          Queued
+                        <Badge className={getStatusColor(item.status)}>
+                          {getStatusLabel(item.status)}
                         </Badge>
                       </div>
-                      <CardTitle className="text-lg">{article.title}</CardTitle>
+                      <CardTitle className="text-lg">{item.headline}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {article.destinations && article.destinations.map((dest) => (
-                          <Badge key={dest} variant="outline" className="text-xs">
-                            {dest}
-                          </Badge>
-                        ))}
-                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        {item.summary 
+                          ? item.summary.substring(0, 100) + '...'
+                          : 'No summary available'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                      </p>
                       <div className="mt-4 flex justify-end space-x-2">
-                        <Button variant="outline" size="sm">Edit</Button>
+                        <Button variant="outline" size="sm" onClick={() => window.open(item.url, '_blank')}>
+                          View Source
+                        </Button>
+                        <Button variant="default" size="sm">
+                          Create Brief
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                {newsItems?.filter(a => a.status === 'approved_magazine').length === 0 && (
+                  <div className="bg-muted/50 rounded-md p-4 text-center">
+                    <p className="text-sm text-muted-foreground">No approved articles</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <h2 className="text-lg font-semibold mb-3 px-2">Drafted</h2>
+              <div className="space-y-3">
+                {newsItems?.filter(a => a.status === 'drafted_magazine').map((item) => (
+                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between items-start">
+                        <Badge className={getStatusColor(item.status)}>
+                          {getStatusLabel(item.status)}
+                        </Badge>
+                      </div>
+                      <CardTitle className="text-lg">{item.headline}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        {item.summary 
+                          ? item.summary.substring(0, 100) + '...'
+                          : 'No summary available'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                      </p>
+                      <div className="mt-4 flex justify-end space-x-2">
+                        <Button variant="outline" size="sm">
+                          Edit
+                        </Button>
                         <Button 
                           variant="default" 
                           size="sm"
-                          onClick={() => handlePublish(article.id)}
+                          onClick={() => handlePublish(item.id)}
                         >
                           Publish
                         </Button>
@@ -139,9 +193,9 @@ const MagazinePlanner = () => {
                     </CardContent>
                   </Card>
                 ))}
-                {articles?.filter(a => a.status === 'queued_magazine' || a.status === 'queued').length === 0 && (
+                {newsItems?.filter(a => a.status === 'drafted_magazine').length === 0 && (
                   <div className="bg-muted/50 rounded-md p-4 text-center">
-                    <p className="text-sm text-muted-foreground">No queued articles</p>
+                    <p className="text-sm text-muted-foreground">No drafted articles</p>
                   </div>
                 )}
               </div>
@@ -150,44 +204,36 @@ const MagazinePlanner = () => {
             <div>
               <h2 className="text-lg font-semibold mb-3 px-2">Published</h2>
               <div className="space-y-3">
-                {articles?.filter(a => a.status === 'published').map((article) => (
-                  <Card key={article.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                {newsItems?.filter(a => a.status === 'published_magazine').map((item) => (
+                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
-                        <Badge className={getArticleStatusColor(article.status)}>
-                          Published
+                        <Badge className={getStatusColor(item.status)}>
+                          {getStatusLabel(item.status)}
                         </Badge>
                       </div>
-                      <CardTitle className="text-lg">{article.title}</CardTitle>
+                      <CardTitle className="text-lg">{item.headline}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex flex-wrap gap-1 mb-2">
-                        {article.destinations && article.destinations.map((dest) => (
-                          <Badge key={dest} variant="outline" className="text-xs">
-                            {dest}
-                          </Badge>
-                        ))}
-                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        {item.summary 
+                          ? item.summary.substring(0, 100) + '...'
+                          : 'No summary available'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                      </p>
                       <div className="mt-4 flex justify-end">
                         <Button variant="outline" size="sm">View</Button>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
-                {articles?.filter(a => a.status === 'published').length === 0 && (
+                {newsItems?.filter(a => a.status === 'published_magazine').length === 0 && (
                   <div className="bg-muted/50 rounded-md p-4 text-center">
                     <p className="text-sm text-muted-foreground">No published articles</p>
                   </div>
                 )}
-              </div>
-            </div>
-            
-            <div>
-              <h2 className="text-lg font-semibold mb-3 px-2">Archive</h2>
-              <div className="space-y-3">
-                <div className="bg-muted/50 rounded-md p-4 text-center">
-                  <p className="text-sm text-muted-foreground">Archived articles will appear here</p>
-                </div>
               </div>
             </div>
           </div>

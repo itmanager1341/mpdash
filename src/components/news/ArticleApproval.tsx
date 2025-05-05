@@ -22,7 +22,6 @@ interface NewsItem {
   matched_clusters: string[];
   timestamp: string;
   status: string | null;
-  destinations: string[] | null;
 }
 
 interface ArticleApprovalProps {
@@ -39,33 +38,16 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
       
       const normalizedDestination = destination.toLowerCase();
       
-      // 1. Update news status with appropriate destination-based status
-      const newsStatus = `queued_${normalizedDestination}`;
+      // Update news status with appropriate destination-based status
+      const newsStatus = `approved_${normalizedDestination}`;
       const { error: newsUpdateError } = await supabase
         .from("news")
         .update({ 
-          status: newsStatus, 
-          destinations: [normalizedDestination] 
+          status: newsStatus,
         })
         .eq("id", newsItem.id);
       
       if (newsUpdateError) throw newsUpdateError;
-
-      // 2. Create a new article entry
-      const { error: articleError } = await supabase
-        .from("articles")
-        .insert({
-          title: newsItem.headline,
-          content_variants: {
-            summary: newsItem.summary
-          },
-          status: newsStatus,
-          destinations: [normalizedDestination],
-          source_news_id: newsItem.id,
-          related_trends: newsItem.matched_clusters
-        });
-      
-      if (articleError) throw articleError;
 
       console.log(`Article approved for ${normalizedDestination} with status ${newsStatus}`);
       toast.success(`Article approved for ${destination}`);
@@ -103,10 +85,6 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
         <DropdownMenuItem onClick={() => approveForDestination("magazine")}>
           <Newspaper className="h-4 w-4 mr-2" />
           Magazine
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => approveForDestination("website")}>
-          <Newspaper className="h-4 w-4 mr-2" />
-          Website
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

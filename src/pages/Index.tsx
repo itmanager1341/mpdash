@@ -22,7 +22,6 @@ interface NewsItem {
   matched_clusters: string[];
   timestamp: string;
   status: string | null;
-  destinations: string[] | null;
 }
 
 const Index = () => {

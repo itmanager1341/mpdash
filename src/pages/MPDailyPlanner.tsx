@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, List } from "lucide-react";
+import { Calendar, Edit, List } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,15 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import DraftEditor from "@/components/editor/DraftEditor";
 
 interface NewsItem {
   id: string;
   headline: string;
   summary: string;
   status: string | null;
+  content_variants?: any;
   created_at?: string;
   timestamp: string;
-  destinations: string[];
   source: string;
   matched_clusters?: string[];
   url: string;
@@ -25,6 +26,8 @@ interface NewsItem {
 
 const MPDailyPlanner = () => {
   const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
+  const [selectedItem, setSelectedItem] = useState<NewsItem | null>(null);
+  const [isDraftEditorOpen, setIsDraftEditorOpen] = useState(false);
 
   const { data: newsItems, isLoading, error, refetch } = useQuery({
     queryKey: ['news', 'mpdaily'],
@@ -35,7 +38,7 @@ const MPDailyPlanner = () => {
       const { data, error } = await supabase
         .from('news')
         .select('*')
-        .or('status.ilike.%mpdaily%,destinations.cs.{mpdaily}')
+        .or('status.eq.approved_mpdaily,status.eq.drafted_mpdaily,status.eq.published_mpdaily')
         .order('timestamp', { ascending: false });
       
       if (error) {
@@ -53,7 +56,7 @@ const MPDailyPlanner = () => {
       const { error } = await supabase
         .from('news')
         .update({ 
-          status: 'published',
+          status: 'published_mpdaily',
         })
         .eq('id', id);
 
@@ -67,17 +70,33 @@ const MPDailyPlanner = () => {
     }
   };
 
+  const openDraftEditor = (item: NewsItem) => {
+    setSelectedItem(item);
+    setIsDraftEditorOpen(true);
+  };
+
   const getStatusColor = (status: string | null) => {
     if (!status) return 'bg-blue-100 text-blue-800 border-blue-200';
     
     if (status.includes('published')) {
       return 'bg-green-100 text-green-800 border-green-200';
     }
-    if (status.includes('queued')) {
+    if (status.includes('drafted')) {
+      return 'bg-purple-100 text-purple-800 border-purple-200';
+    }
+    if (status.includes('approved')) {
       return 'bg-amber-100 text-amber-800 border-amber-200';
     }
     
     return 'bg-blue-100 text-blue-800 border-blue-200';
+  };
+
+  const getStatusLabel = (status: string | null) => {
+    if (!status) return 'New';
+    if (status === 'approved_mpdaily') return 'Approved';
+    if (status === 'drafted_mpdaily') return 'Draft Ready';
+    if (status === 'published_mpdaily') return 'Published';
+    return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   return (
@@ -124,18 +143,14 @@ const MPDailyPlanner = () => {
                       <CardHeader className="pb-2">
                         <div className="flex justify-between items-start">
                           <Badge className={getStatusColor(item.status)}>
-                            {item.status === 'published' ? 'Published' : 
-                             item.status?.includes('queued') ? 'Queued' :
-                             item.status || 'Draft'}
+                            {getStatusLabel(item.status)}
                           </Badge>
                         </div>
-                        <CardTitle className="text-lg">{item.headline}</CardTitle>
+                        <CardTitle className="text-lg">{item.content_variants?.title || item.headline}</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm text-muted-foreground mb-4">
-                          {item.summary 
-                            ? item.summary.substring(0, 100) + '...'
-                            : 'No summary available'}
+                          {item.content_variants?.summary || item.summary?.substring(0, 100) + '...' || 'No summary available'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
@@ -148,14 +163,42 @@ const MPDailyPlanner = () => {
                           >
                             View Source
                           </Button>
-                          <Button 
-                            variant="default" 
-                            size="sm"
-                            disabled={item.status === 'published'}
-                            onClick={() => item.status !== 'published' && handlePublish(item.id)}
-                          >
-                            {item.status === 'published' ? 'Published' : 'Publish'}
-                          </Button>
+                          
+                          {item.status === 'approved_mpdaily' && (
+                            <Button 
+                              variant="default" 
+                              size="sm"
+                              onClick={() => openDraftEditor(item)}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Write Draft
+                            </Button>
+                          )}
+                          
+                          {item.status === 'drafted_mpdaily' && (
+                            <>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => openDraftEditor(item)}
+                              >
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit Draft
+                              </Button>
+                              
+                              <Button 
+                                variant="default" 
+                                size="sm"
+                                onClick={() => handlePublish(item.id)}
+                              >
+                                Publish
+                              </Button>
+                            </>
+                          )}
+                          
+                          {item.status === 'published_mpdaily' && (
+                            <Badge variant="outline">Published</Badge>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -189,6 +232,16 @@ const MPDailyPlanner = () => {
           </>
         )}
       </Tabs>
+
+      {/* Draft Editor */}
+      {selectedItem && (
+        <DraftEditor
+          newsItem={selectedItem}
+          open={isDraftEditorOpen}
+          onOpenChange={setIsDraftEditorOpen}
+          onSave={refetch}
+        />
+      )}
     </DashboardLayout>
   );
 };
