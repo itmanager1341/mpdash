@@ -68,7 +68,6 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
           
         if (articleCreateError) throw articleCreateError;
         
-        console.log(`Article saved as reference content`);
         toast.success(`Article saved as reference content`);
       } else {
         // For regular publication destinations (mpdaily, magazine)
@@ -99,7 +98,6 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
         
         if (newsUpdateError) throw newsUpdateError;
 
-        console.log(`Article approved for ${normalizedDestination} with status ${newsStatus}`);
         toast.success(`Article approved for ${destination}`);
       }
       
@@ -120,7 +118,11 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="flex-1" disabled={isApproving || isProcessed}>
+        <Button 
+          className="flex-1" 
+          disabled={isApproving || isProcessed}
+          variant={isProcessed ? "secondary" : "default"}
+        >
           {isApproving ? (
             "Processing..."
           ) : isProcessed ? (

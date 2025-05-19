@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator 
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import AddNewsDialog from "@/components/news/AddNewsDialog";
 
 interface NewsItem {
   id: string;
@@ -44,6 +45,7 @@ const Index = () => {
   const [selectedItem, setSelectedItem] = useState<NewsItem | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"pending" | "all">("pending");
+  const [isAddNewsDialogOpen, setIsAddNewsDialogOpen] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     showProcessed: false,
     sources: [],
@@ -155,6 +157,12 @@ const Index = () => {
     return { variant: "outline" as const, label: status };
   };
 
+  const handleAddNewsSuccess = () => {
+    setIsAddNewsDialogOpen(false);
+    refetch();
+    toast.success("News item added successfully");
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8">
@@ -219,7 +227,11 @@ const Index = () => {
             </DropdownMenuContent>
           </DropdownMenu>
           
-          <Button size="sm" variant="outline">
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={() => setIsAddNewsDialogOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Add News
           </Button>
@@ -254,7 +266,7 @@ const Index = () => {
           const statusBadge = getStatusBadge(item.status);
           
           return (
-            <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+            <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start mb-2">
                   <Badge variant={item.perplexity_score > 7 ? "default" : "outline"}>
@@ -276,7 +288,8 @@ const Index = () => {
                   <span>{new Date(item.timestamp).toLocaleDateString()}</span>
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              
+              <CardContent className="flex-1">
                 <p className="text-sm line-clamp-3">{item.summary}</p>
                 <div className="mt-3 flex flex-wrap gap-1">
                   {item.matched_clusters?.map((cluster, index) => (
@@ -286,7 +299,8 @@ const Index = () => {
                   ))}
                 </div>
               </CardContent>
-              <CardFooter className="flex flex-col space-y-2">
+              
+              <CardFooter className="flex flex-col space-y-2 pt-2">
                 <Button 
                   variant="link" 
                   className="w-full justify-start p-0 h-auto" 
@@ -295,19 +309,31 @@ const Index = () => {
                   View full details
                 </Button>
                 <div className="flex gap-2 w-full">
-                  <ArticleApproval 
-                    newsItem={item} 
-                    onApproved={refetch}
-                  />
-                  {!item.status || item.status === "suggested" ? (
+                  {(!item.status || item.status === "suggested") && (
+                    <ArticleApproval 
+                      newsItem={item} 
+                      onApproved={refetch}
+                    />
+                  )}
+                  {item.status ? (
+                    <Button 
+                      variant="secondary" 
+                      size="icon"
+                      className="w-10 h-10 flex-shrink-0"
+                      disabled={true}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  ) : (
                     <Button 
                       variant="ghost" 
                       size="icon"
+                      className="w-10 h-10 flex-shrink-0"
                       onClick={() => handleDismiss(item)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
-                  ) : null}
+                  )}
                 </div>
               </CardFooter>
             </Card>
@@ -374,31 +400,40 @@ const Index = () => {
               </div>
               
               <div className="mt-6 space-y-2">
-                <ArticleApproval 
-                  newsItem={selectedItem} 
-                  onApproved={() => {
-                    refetch();
-                    setIsSheetOpen(false);
-                  }}
-                />
-                
-                {!selectedItem.status || selectedItem.status === "suggested" ? (
-                  <Button 
-                    variant="ghost" 
-                    className="w-full"
-                    onClick={() => {
-                      handleDismiss(selectedItem);
-                      setIsSheetOpen(false);
-                    }}
-                  >
-                    Dismiss
-                  </Button>
-                ) : null}
+                {(!selectedItem.status || selectedItem.status === "suggested") && (
+                  <>
+                    <ArticleApproval 
+                      newsItem={selectedItem} 
+                      onApproved={() => {
+                        refetch();
+                        setIsSheetOpen(false);
+                      }}
+                    />
+                    
+                    <Button 
+                      variant="ghost" 
+                      className="w-full"
+                      onClick={() => {
+                        handleDismiss(selectedItem);
+                        setIsSheetOpen(false);
+                      }}
+                    >
+                      Dismiss
+                    </Button>
+                  </>
+                )}
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Add News Dialog */}
+      <AddNewsDialog
+        open={isAddNewsDialogOpen}
+        onOpenChange={setIsAddNewsDialogOpen}
+        onSuccess={handleAddNewsSuccess}
+      />
     </DashboardLayout>
   );
 };
