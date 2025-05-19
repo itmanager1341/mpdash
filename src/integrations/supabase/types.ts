@@ -16,6 +16,7 @@ export type Database = {
           is_active: boolean
           key_masked: string
           name: string
+          secret_stored: boolean
           service: string
         }
         Insert: {
@@ -24,6 +25,7 @@ export type Database = {
           is_active?: boolean
           key_masked: string
           name: string
+          secret_stored?: boolean
           service: string
         }
         Update: {
@@ -32,6 +34,7 @@ export type Database = {
           is_active?: boolean
           key_masked?: string
           name?: string
+          secret_stored?: boolean
           service?: string
         }
         Relationships: []
