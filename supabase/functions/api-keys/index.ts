@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -283,7 +284,7 @@ async function handleCreateApiKey(
   }
 }
 
-// New function that uses the Admin Key instead of service role key
+// Updated function to fix the API call format
 async function setSecretValueWithAdminKey(projectId: string, adminKey: string, secretName: string, secretValue: string): Promise<void> {
   if (!projectId) {
     throw new Error('Missing project ID');
@@ -295,17 +296,17 @@ async function setSecretValueWithAdminKey(projectId: string, adminKey: string, s
   
   console.log(`Setting secret ${secretName} for project ${projectId} using admin key`);
   
-  // Using the Admin API to set secrets for Edge Functions
+  // Fix: The API expects an array of secrets, not a single object
   const response = await fetch(`https://api.supabase.com/v1/projects/${projectId}/secrets`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${adminKey}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
+    body: JSON.stringify([{  // Note the array wrapper here
       name: secretName,
       value: secretValue
-    })
+    }])
   });
   
   if (!response.ok) {
