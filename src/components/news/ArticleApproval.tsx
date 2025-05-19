@@ -23,6 +23,7 @@ interface NewsItem {
   matched_clusters: string[];
   timestamp: string;
   status: string | null;
+  destinations: string[] | null;
 }
 
 interface ArticleApprovalProps {
@@ -71,13 +72,28 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
         toast.success(`Article saved as reference content`);
       } else {
         // For regular publication destinations (mpdaily, magazine)
+        // First fetch the current destinations array
+        const { data: currentNewsData, error: fetchError } = await supabase
+          .from("news")
+          .select("destinations")
+          .eq("id", newsItem.id)
+          .single();
+        
+        if (fetchError) throw fetchError;
+        
+        // Update with the new destination appended
+        const updatedDestinations = [
+          ...(currentNewsData.destinations || []),
+          normalizedDestination
+        ];
+        
         // Update news status with appropriate destination-based status
         const newsStatus = `approved_${normalizedDestination}`;
         const { error: newsUpdateError } = await supabase
           .from("news")
           .update({ 
             status: newsStatus,
-            destinations: supabase.sql`array_append(destinations, ${normalizedDestination})`
+            destinations: updatedDestinations
           })
           .eq("id", newsItem.id);
         

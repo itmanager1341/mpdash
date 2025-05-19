@@ -31,6 +31,7 @@ interface NewsItem {
   matched_clusters: string[];
   timestamp: string;
   status: string | null;
+  destinations: string[] | null;
 }
 
 interface FilterOptions {
@@ -53,10 +54,11 @@ const Index = () => {
   const { data: sourcesList } = useQuery({
     queryKey: ['news-sources'],
     queryFn: async () => {
+      // First, fetch all sources where source is not null
       const { data, error } = await supabase
         .from('news')
         .select('source')
-        .is('source', 'not.null')
+        .not('source', 'is', null)
         .order('source');
       
       if (error) throw new Error(error.message);
@@ -396,6 +398,58 @@ const Index = () => {
       </Sheet>
     </DashboardLayout>
   );
+};
+
+// Add the missing functions that were referenced above
+const openDetailView = (item) => {
+  setSelectedItem(item);
+  setIsSheetOpen(true);
+};
+
+const handleDismiss = async (item) => {
+  try {
+    // Update the news item status in Supabase
+    const { error: updateError } = await supabase
+      .from('news')
+      .update({ status: 'dismissed' })
+      .eq('id', item.id);
+    
+    if (updateError) throw updateError;
+    
+    toast.success("Article dismissed");
+    refetch(); // Refresh the data
+  } catch (err) {
+    console.error("Error dismissing article:", err);
+    toast.error("Failed to dismiss article");
+  }
+};
+
+const toggleSource = (source) => {
+  setFilters(prev => {
+    const newSources = prev.sources.includes(source)
+      ? prev.sources.filter(s => s !== source)
+      : [...prev.sources, source];
+    
+    return { ...prev, sources: newSources };
+  });
+};
+
+const getStatusBadge = (status) => {
+  if (!status) return { variant: "outline" as const, label: "New" };
+  
+  if (status.includes("approved")) {
+    return { variant: "default" as const, label: "Approved" };
+  }
+  
+  if (status === "dismissed") {
+    return { variant: "secondary" as const, label: "Dismissed" };
+  }
+  
+  if (status === "referenced") {
+    return { variant: "outline" as const, label: "Reference" };
+  }
+  
+  return { variant: "outline" as const, label: status };
 };
 
 export default Index;
