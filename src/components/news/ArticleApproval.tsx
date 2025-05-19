@@ -1,13 +1,14 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Newspaper } from "lucide-react";
+import { CheckCircle2, Newspaper, BookOpen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
@@ -38,41 +39,80 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
       
       const normalizedDestination = destination.toLowerCase();
       
-      // Update news status with appropriate destination-based status
-      const newsStatus = `approved_${normalizedDestination}`;
-      const { error: newsUpdateError } = await supabase
-        .from("news")
-        .update({ 
-          status: newsStatus,
-        })
-        .eq("id", newsItem.id);
-      
-      if (newsUpdateError) throw newsUpdateError;
+      if (normalizedDestination === "reference") {
+        // For reference, move to articles table as unpublished reference content
+        
+        // First, update news status to indicate it's being referenced
+        const { error: newsUpdateError } = await supabase
+          .from("news")
+          .update({ 
+            status: "referenced",
+          })
+          .eq("id", newsItem.id);
+        
+        if (newsUpdateError) throw newsUpdateError;
+        
+        // Then create an entry in the articles table
+        const { error: articleCreateError } = await supabase
+          .from("articles")
+          .insert({ 
+            title: newsItem.headline,
+            status: "unpublished_reference",
+            source_news_id: newsItem.id,
+            content_variants: {
+              summary: newsItem.summary
+            },
+            related_trends: newsItem.matched_clusters
+          });
+          
+        if (articleCreateError) throw articleCreateError;
+        
+        console.log(`Article saved as reference content`);
+        toast.success(`Article saved as reference content`);
+      } else {
+        // For regular publication destinations (mpdaily, magazine)
+        // Update news status with appropriate destination-based status
+        const newsStatus = `approved_${normalizedDestination}`;
+        const { error: newsUpdateError } = await supabase
+          .from("news")
+          .update({ 
+            status: newsStatus,
+            destinations: supabase.sql`array_append(destinations, ${normalizedDestination})`
+          })
+          .eq("id", newsItem.id);
+        
+        if (newsUpdateError) throw newsUpdateError;
 
-      console.log(`Article approved for ${normalizedDestination} with status ${newsStatus}`);
-      toast.success(`Article approved for ${destination}`);
+        console.log(`Article approved for ${normalizedDestination} with status ${newsStatus}`);
+        toast.success(`Article approved for ${destination}`);
+      }
+      
       onApproved();
       
     } catch (err) {
-      console.error("Error approving article:", err);
-      toast.error("Failed to approve article");
+      console.error("Error processing article:", err);
+      toast.error("Failed to process article");
     } finally {
       setIsApproving(false);
     }
   };
 
+  // Determine if the news item has already been processed
+  const isProcessed = newsItem.status !== null && 
+                      !["suggested", null].includes(newsItem.status);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="flex-1" disabled={isApproving || newsItem.status !== null}>
+        <Button className="flex-1" disabled={isApproving || isProcessed}>
           {isApproving ? (
-            "Approving..."
-          ) : newsItem.status ? (
-            "Approved"
+            "Processing..."
+          ) : isProcessed ? (
+            "Processed"
           ) : (
             <>
               <CheckCircle2 className="h-4 w-4 mr-2" />
-              Approve
+              Process
             </>
           )}
         </Button>
@@ -80,11 +120,16 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => approveForDestination("mpdaily")}>
           <Newspaper className="h-4 w-4 mr-2" />
-          MPDaily
+          Approve for MPDaily
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => approveForDestination("magazine")}>
           <Newspaper className="h-4 w-4 mr-2" />
-          Magazine
+          Approve for Magazine
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => approveForDestination("reference")}>
+          <BookOpen className="h-4 w-4 mr-2" />
+          Save as Reference
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
