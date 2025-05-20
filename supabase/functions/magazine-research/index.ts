@@ -109,7 +109,8 @@ Please provide a comprehensive research summary with the following:
         temperature: 0.3, // Lower temperature for more factual responses
         max_tokens: 2048,
         return_related_questions: true,
-        search_domain_filter: ["finance", "news", "gov"],
+        // Fix: Use domain names for search_domain_filter instead of broad categories
+        search_domain_filter: ["perplexity.ai", "wsj.com", "bloomberg.com", "mortgagenewsdaily.com"],
         search_recency_filter: "month" // Focus on recent information
       })
     });
