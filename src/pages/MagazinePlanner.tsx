@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Kanban } from "lucide-react";
@@ -9,20 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-
-interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  status: string;
-  created_at?: string; 
-  timestamp: string;
-  source: string;
-  url: string;
-  matched_clusters?: string[];
-  destinations: string[] | null;
-  content_variants?: any;
-}
+import { NewsItem } from "@/types/news";
 
 const MagazinePlanner = () => {
   const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");

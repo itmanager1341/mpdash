@@ -41,14 +41,23 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Update the news content
-    const updateData: any = { 
-      content_variants: content 
+    // Update the news content - using a JSONB column
+    const updateData: any = {};
+    
+    // Update content_variants as JSONB
+    const { data: existingRecord } = await supabaseClient
+      .from("news")
+      .select("content_variants")
+      .eq("id", id)
+      .single();
+      
+    // Merge the existing content_variants with the new content
+    updateData.content_variants = {
+      ...existingRecord?.content_variants,
+      ...content
     };
     
-    // Only update status if provided - note that with our new schema, 
-    // the status would typically be "approved" instead of the previous
-    // status values like "drafted_mpdaily"
+    // Only update status if provided
     if (newStatus) {
       updateData.status = newStatus;
     }
@@ -97,11 +106,22 @@ function createClient(supabaseUrl: string, supabaseKey: string) {
             },
           }).then((res) => res.json());
         },
-        eq: (_column: string, _value: any) => ({
-          single: () => ({
-            data: null,
-            error: null,
-          }),
+        eq: (column: string, value: any) => ({
+          single: async () => {
+            const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${column}=eq.${value}&select=${columns}`, {
+              headers: {
+                Authorization: `Bearer ${supabaseKey}`,
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+              },
+            });
+            if (!res.ok) {
+              const error = await res.json();
+              return { data: null, error };
+            }
+            const data = await res.json();
+            return { data: data[0], error: null };
+          },
         }),
       }),
       update: (data: any) => ({
@@ -131,9 +151,3 @@ function createClient(supabaseUrl: string, supabaseKey: string) {
     }),
   };
 }
-
-// Shared CORS headers
-export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,21 +17,7 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Check, FileText, Save } from "lucide-react";
-
-interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  source?: string; // Make source optional
-  content_variants?: {
-    title?: string;
-    summary?: string;
-    cta?: string;
-    full_content?: string;
-  };
-  status: string | null;
-  url?: string; // Add url field
-}
+import { NewsItem } from "@/types/news";
 
 interface DraftEditorProps {
   newsItem: NewsItem;

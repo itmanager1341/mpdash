@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -20,21 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AddNewsDialog from "@/components/news/AddNewsDialog";
-
-interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  source: string;
-  url: string;
-  perplexity_score: number;
-  is_competitor_covered: boolean;
-  matched_clusters: string[];
-  timestamp: string;
-  status: string;
-  destinations: string[] | null;
-  content_variants?: any;
-}
+import { NewsItem } from "@/types/news";
 
 interface FilterOptions {
   showProcessed: boolean;

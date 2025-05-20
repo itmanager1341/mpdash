@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Newspaper, BookOpen, Globe, X } from "lucide-react";
@@ -13,21 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
-interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  source: string;
-  url: string;
-  perplexity_score: number;
-  is_competitor_covered: boolean;
-  matched_clusters: string[];
-  timestamp: string;
-  status: string; // Now simplified: 'pending', 'approved', or 'dismissed'
-  destinations: string[] | null; // Array of 'mpdaily', 'magazine', 'website'
-  content_variants?: any;
-}
+import { NewsItem } from "@/types/news";
 
 interface ArticleApprovalProps {
   newsItem: NewsItem;

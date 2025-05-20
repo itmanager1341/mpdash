@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Edit, List } from "lucide-react";
@@ -10,20 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import DraftEditor from "@/components/editor/DraftEditor";
-
-interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  status: string;
-  content_variants?: any;
-  created_at?: string;
-  timestamp: string;
-  source: string;
-  matched_clusters?: string[];
-  url: string;
-  destinations: string[] | null;
-}
+import { NewsItem } from "@/types/news";
 
 const MPDailyPlanner = () => {
   const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
@@ -55,8 +41,7 @@ const MPDailyPlanner = () => {
 
   const handlePublish = async (id: string) => {
     try {
-      // With our simplified schema, we don't change the status when publishing
-      // We just update any content if needed
+      // With our simplified schema, we just update the content_variants
       const { error } = await supabase
         .from('news')
         .update({ 
