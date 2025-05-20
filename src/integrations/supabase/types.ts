@@ -238,6 +238,7 @@ export type Database = {
       }
       news: {
         Row: {
+          content_variants: Json | null
           destinations: string[] | null
           headline: string
           id: string
@@ -251,6 +252,7 @@ export type Database = {
           url: string
         }
         Insert: {
+          content_variants?: Json | null
           destinations?: string[] | null
           headline: string
           id?: string
@@ -264,6 +266,7 @@ export type Database = {
           url: string
         }
         Update: {
+          content_variants?: Json | null
           destinations?: string[] | null
           headline?: string
           id?: string
