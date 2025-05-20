@@ -13,6 +13,7 @@ interface RequestBody {
     cta?: string;
     full_content?: string;
     magazine_content?: string;
+    published?: boolean;
   };
   newStatus?: string;
 }
