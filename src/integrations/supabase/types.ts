@@ -281,6 +281,39 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_job_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_enabled: boolean
+          job_name: string
+          last_run: string | null
+          parameters: Json
+          schedule: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          job_name: string
+          last_run?: string | null
+          parameters?: Json
+          schedule: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_enabled?: boolean
+          job_name?: string
+          last_run?: string | null
+          parameters?: Json
+          schedule?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sources: {
         Row: {
           cluster_alignment: string[] | null
@@ -343,6 +376,19 @@ export type Database = {
           website_count: number
           dismissed_count: number
           total_reviewed: number
+        }[]
+      }
+      get_job_settings: {
+        Args: { job_name_param: string }
+        Returns: {
+          created_at: string
+          id: string
+          is_enabled: boolean
+          job_name: string
+          last_run: string | null
+          parameters: Json
+          schedule: string
+          updated_at: string
         }[]
       }
       halfvec_avg: {
@@ -408,6 +454,10 @@ export type Database = {
       sparsevec_typmod_in: {
         Args: { "": unknown[] }
         Returns: number
+      }
+      update_job_settings: {
+        Args: { job_name_param: string; settings_json: Json }
+        Returns: boolean
       }
       vector_avg: {
         Args: { "": number[] }
