@@ -15,13 +15,14 @@ interface NewsItem {
   id: string;
   headline: string;
   summary: string;
-  status: string | null;
+  status: string;
   content_variants?: any;
   created_at?: string;
   timestamp: string;
   source: string;
   matched_clusters?: string[];
   url: string;
+  destinations: string[] | null;
 }
 
 const MPDailyPlanner = () => {
@@ -38,7 +39,8 @@ const MPDailyPlanner = () => {
       const { data, error } = await supabase
         .from('news')
         .select('*')
-        .or('status.eq.approved_mpdaily,status.eq.drafted_mpdaily,status.eq.published_mpdaily')
+        .eq('status', 'approved')
+        .contains('destinations', ['mpdaily'])
         .order('timestamp', { ascending: false });
       
       if (error) {
@@ -53,10 +55,15 @@ const MPDailyPlanner = () => {
 
   const handlePublish = async (id: string) => {
     try {
+      // With our simplified schema, we don't change the status when publishing
+      // We just update any content if needed
       const { error } = await supabase
         .from('news')
         .update({ 
-          status: 'published_mpdaily',
+          content_variants: {
+            ...selectedItem?.content_variants,
+            published: true
+          }
         })
         .eq('id', id);
 
@@ -75,28 +82,14 @@ const MPDailyPlanner = () => {
     setIsDraftEditorOpen(true);
   };
 
-  const getStatusColor = (status: string | null) => {
-    if (!status) return 'bg-blue-100 text-blue-800 border-blue-200';
-    
-    if (status.includes('published')) {
-      return 'bg-green-100 text-green-800 border-green-200';
+  const getDraftStatus = (item: NewsItem) => {
+    if (item.content_variants?.published) {
+      return { color: 'bg-green-100 text-green-800 border-green-200', label: 'Published' };
     }
-    if (status.includes('drafted')) {
-      return 'bg-purple-100 text-purple-800 border-purple-200';
+    if (item.content_variants?.title || item.content_variants?.summary) {
+      return { color: 'bg-purple-100 text-purple-800 border-purple-200', label: 'Draft Ready' };
     }
-    if (status.includes('approved')) {
-      return 'bg-amber-100 text-amber-800 border-amber-200';
-    }
-    
-    return 'bg-blue-100 text-blue-800 border-blue-200';
-  };
-
-  const getStatusLabel = (status: string | null) => {
-    if (!status) return 'New';
-    if (status === 'approved_mpdaily') return 'Approved';
-    if (status === 'drafted_mpdaily') return 'Draft Ready';
-    if (status === 'published_mpdaily') return 'Published';
-    return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    return { color: 'bg-amber-100 text-amber-800 border-amber-200', label: 'Approved' };
   };
 
   return (
@@ -138,71 +131,75 @@ const MPDailyPlanner = () => {
             <TabsContent value="list">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {newsItems && newsItems.length > 0 ? (
-                  newsItems.map((item) => (
-                    <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-start">
-                          <Badge className={getStatusColor(item.status)}>
-                            {getStatusLabel(item.status)}
-                          </Badge>
-                        </div>
-                        <CardTitle className="text-lg">{item.content_variants?.title || item.headline}</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          {item.content_variants?.summary || item.summary?.substring(0, 100) + '...' || 'No summary available'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
-                        </p>
-                        <div className="mt-4 flex justify-end space-x-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => window.open(item.url, '_blank')}
-                          >
-                            View Source
-                          </Button>
-                          
-                          {item.status === 'approved_mpdaily' && (
+                  newsItems.map((item) => {
+                    const draftStatus = getDraftStatus(item);
+                    
+                    return (
+                      <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                        <CardHeader className="pb-2">
+                          <div className="flex justify-between items-start">
+                            <Badge className={draftStatus.color}>
+                              {draftStatus.label}
+                            </Badge>
+                          </div>
+                          <CardTitle className="text-lg">{item.content_variants?.title || item.headline}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            {item.content_variants?.summary || item.summary?.substring(0, 100) + '...' || 'No summary available'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                          </p>
+                          <div className="mt-4 flex justify-end space-x-2">
                             <Button 
-                              variant="default" 
+                              variant="outline" 
                               size="sm"
-                              onClick={() => openDraftEditor(item)}
+                              onClick={() => window.open(item.url, '_blank')}
                             >
-                              <Edit className="h-4 w-4 mr-2" />
-                              Write Draft
+                              View Source
                             </Button>
-                          )}
-                          
-                          {item.status === 'drafted_mpdaily' && (
-                            <>
+                            
+                            {!item.content_variants?.title && (
                               <Button 
-                                variant="outline" 
+                                variant="default" 
                                 size="sm"
                                 onClick={() => openDraftEditor(item)}
                               >
                                 <Edit className="h-4 w-4 mr-2" />
-                                Edit Draft
+                                Write Draft
                               </Button>
-                              
-                              <Button 
-                                variant="default" 
-                                size="sm"
-                                onClick={() => handlePublish(item.id)}
-                              >
-                                Publish
-                              </Button>
-                            </>
-                          )}
-                          
-                          {item.status === 'published_mpdaily' && (
-                            <Badge variant="outline">Published</Badge>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))
+                            )}
+                            
+                            {(item.content_variants?.title && !item.content_variants?.published) && (
+                              <>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => openDraftEditor(item)}
+                                >
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Draft
+                                </Button>
+                                
+                                <Button 
+                                  variant="default" 
+                                  size="sm"
+                                  onClick={() => handlePublish(item.id)}
+                                >
+                                  Publish
+                                </Button>
+                              </>
+                            )}
+                            
+                            {item.content_variants?.published && (
+                              <Badge variant="outline">Published</Badge>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })
                 ) : (
                   <div className="col-span-3 bg-muted/50 rounded-md p-8 text-center">
                     <h3 className="text-xl font-semibold mb-2">No content for MPDaily</h3>

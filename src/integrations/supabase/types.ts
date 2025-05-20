@@ -331,6 +331,17 @@ export type Database = {
         Args: { service_name: string }
         Returns: string
       }
+      get_approval_stats: {
+        Args: { start_date: string; end_date: string }
+        Returns: {
+          approval_date: string
+          mpdaily_count: number
+          magazine_count: number
+          website_count: number
+          dismissed_count: number
+          total_reviewed: number
+        }[]
+      }
       halfvec_avg: {
         Args: { "": number[] }
         Returns: unknown

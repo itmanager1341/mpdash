@@ -81,7 +81,8 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
       timestamp: newsItem.timestamp || new Date().toISOString(),
       matched_clusters: Array.isArray(newsItem.matched_clusters) ? newsItem.matched_clusters : [],
       is_competitor_covered: Boolean(newsItem.is_competitor_covered),
-      status: null, // New items start with null status
+      status: 'pending', // All new items start as pending with our new schema
+      destinations: [] // Empty destinations array
     };
     
     // Insert the news item into the database

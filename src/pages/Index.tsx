@@ -31,8 +31,9 @@ interface NewsItem {
   is_competitor_covered: boolean;
   matched_clusters: string[];
   timestamp: string;
-  status: string | null;
+  status: string;
   destinations: string[] | null;
+  content_variants?: any;
 }
 
 interface FilterOptions {
@@ -81,7 +82,7 @@ const Index = () => {
       
       // Apply status filter based on view mode
       if (viewMode === "pending") {
-        query = query.is('status', null);
+        query = query.eq('status', 'pending');
       }
       
       // Apply source filter if any sources are selected
@@ -114,7 +115,10 @@ const Index = () => {
       // Update the news item status in Supabase
       const { error: updateError } = await supabase
         .from('news')
-        .update({ status: 'dismissed' })
+        .update({ 
+          status: 'dismissed',
+          destinations: [] // Clear destinations when dismissing
+        })
         .eq('id', item.id);
       
       if (updateError) throw updateError;
@@ -139,19 +143,22 @@ const Index = () => {
   };
 
   // Function to get appropriate badge variant based on status
-  const getStatusBadge = (status: string | null) => {
-    if (!status) return { variant: "outline" as const, label: "New" };
-    
-    if (status.includes("approved")) {
-      return { variant: "default" as const, label: "Approved" };
+  const getStatusBadge = (status: string, destinations: string[] | null) => {
+    if (status === 'pending') return { variant: "outline" as const, label: "New" };
+    if (status === 'approved') {
+      // Check specific destinations
+      const destinationLabels = (destinations || [])
+        .filter(d => d !== 'website') // Website is implied for all approved articles
+        .map(d => d.charAt(0).toUpperCase() + d.slice(1));
+      
+      const label = destinationLabels.length > 0 
+        ? `Approved: ${destinationLabels.join(', ')}` 
+        : "Approved";
+      
+      return { variant: "default" as const, label };
     }
-    
-    if (status === "dismissed") {
+    if (status === 'dismissed') {
       return { variant: "secondary" as const, label: "Dismissed" };
-    }
-    
-    if (status === "referenced") {
-      return { variant: "outline" as const, label: "Reference" };
     }
     
     return { variant: "outline" as const, label: status };
@@ -263,7 +270,7 @@ const Index = () => {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {newsItems?.map((item) => {
-          const statusBadge = getStatusBadge(item.status);
+          const statusBadge = getStatusBadge(item.status, item.destinations);
           
           return (
             <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
@@ -309,13 +316,13 @@ const Index = () => {
                   View full details
                 </Button>
                 <div className="flex gap-2 w-full">
-                  {(!item.status || item.status === "suggested") && (
+                  {item.status === "pending" && (
                     <ArticleApproval 
                       newsItem={item} 
                       onApproved={refetch}
                     />
                   )}
-                  {item.status ? (
+                  {item.status !== "pending" ? (
                     <Button 
                       variant="secondary" 
                       size="icon"
@@ -376,15 +383,29 @@ const Index = () => {
                   <div>
                     <h3 className="text-sm font-medium">Status</h3>
                     <div className="mt-2">
-                      {selectedItem.status ? (
-                        <Badge variant={getStatusBadge(selectedItem.status).variant} className="text-sm">
-                          {getStatusBadge(selectedItem.status).label}
+                      {selectedItem.status && (
+                        <Badge 
+                          variant={getStatusBadge(selectedItem.status, selectedItem.destinations).variant} 
+                          className="text-sm"
+                        >
+                          {getStatusBadge(selectedItem.status, selectedItem.destinations).label}
                         </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-sm">New</Badge>
                       )}
                     </div>
                   </div>
+
+                  {selectedItem.destinations && selectedItem.destinations.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium">Destinations</h3>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {selectedItem.destinations.map((destination, index) => (
+                          <Badge key={index} variant="secondary" className="capitalize">
+                            {destination}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   
                   <div>
                     <h3 className="text-sm font-medium">Matched Clusters</h3>
@@ -400,7 +421,7 @@ const Index = () => {
               </div>
               
               <div className="mt-6 space-y-2">
-                {(!selectedItem.status || selectedItem.status === "suggested") && (
+                {selectedItem.status === "pending" && (
                   <>
                     <ArticleApproval 
                       newsItem={selectedItem} 
@@ -408,18 +429,8 @@ const Index = () => {
                         refetch();
                         setIsSheetOpen(false);
                       }}
+                      mode="multiselect"
                     />
-                    
-                    <Button 
-                      variant="ghost" 
-                      className="w-full"
-                      onClick={() => {
-                        handleDismiss(selectedItem);
-                        setIsSheetOpen(false);
-                      }}
-                    >
-                      Dismiss
-                    </Button>
                   </>
                 )}
               </div>

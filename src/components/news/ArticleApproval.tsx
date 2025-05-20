@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, Newspaper, BookOpen } from "lucide-react";
+import { CheckCircle2, Newspaper, BookOpen, Globe, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
@@ -9,8 +9,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 interface NewsItem {
   id: string;
@@ -22,38 +24,47 @@ interface NewsItem {
   is_competitor_covered: boolean;
   matched_clusters: string[];
   timestamp: string;
-  status: string | null;
-  destinations: string[] | null;
+  status: string; // Now simplified: 'pending', 'approved', or 'dismissed'
+  destinations: string[] | null; // Array of 'mpdaily', 'magazine', 'website'
+  content_variants?: any;
 }
 
 interface ArticleApprovalProps {
   newsItem: NewsItem;
   onApproved: () => void;
+  mode?: "dropdown" | "multiselect";
 }
 
-const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
+const ArticleApproval = ({ newsItem, onApproved, mode = "dropdown" }: ArticleApprovalProps) => {
   const [isApproving, setIsApproving] = useState(false);
+  const [selectedDestinations, setSelectedDestinations] = useState<string[]>(
+    newsItem.destinations || []
+  );
 
-  const approveForDestination = async (destination: string) => {
+  // Check if the item has already been processed
+  const isProcessed = newsItem.status !== "pending";
+
+  const approveForDestinations = async (destinations: string[] = []) => {
     try {
       setIsApproving(true);
       
-      const normalizedDestination = destination.toLowerCase();
+      // Always include website as a destination
+      const uniqueDestinations = Array.from(new Set([...destinations, "website"]));
       
-      if (normalizedDestination === "reference") {
-        // For reference, move to articles table as unpublished reference content
-        
-        // First, update news status to indicate it's being referenced
-        const { error: newsUpdateError } = await supabase
-          .from("news")
-          .update({ 
-            status: "referenced",
-          })
-          .eq("id", newsItem.id);
-        
-        if (newsUpdateError) throw newsUpdateError;
-        
-        // Then create an entry in the articles table
+      // Update the news item with its new status and destinations
+      const { error } = await supabase
+        .from("news")
+        .update({ 
+          status: "approved",
+          destinations: uniqueDestinations
+        })
+        .eq("id", newsItem.id);
+      
+      if (error) throw error;
+      
+      // Create reference entry if needed
+      if (destinations.includes("reference")) {
+        // Create an entry in the articles table for reference
         const { error: articleCreateError } = await supabase
           .from("articles")
           .insert({ 
@@ -67,40 +78,15 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
           });
           
         if (articleCreateError) throw articleCreateError;
-        
-        toast.success(`Article saved as reference content`);
-      } else {
-        // For regular publication destinations (mpdaily, magazine)
-        // First fetch the current destinations array
-        const { data: currentNewsData, error: fetchError } = await supabase
-          .from("news")
-          .select("destinations")
-          .eq("id", newsItem.id)
-          .single();
-        
-        if (fetchError) throw fetchError;
-        
-        // Update with the new destination appended
-        const updatedDestinations = [
-          ...(currentNewsData.destinations || []),
-          normalizedDestination
-        ];
-        
-        // Update news status with appropriate destination-based status
-        const newsStatus = `approved_${normalizedDestination}`;
-        const { error: newsUpdateError } = await supabase
-          .from("news")
-          .update({ 
-            status: newsStatus,
-            destinations: updatedDestinations
-          })
-          .eq("id", newsItem.id);
-        
-        if (newsUpdateError) throw newsUpdateError;
-
-        toast.success(`Article approved for ${destination}`);
       }
       
+      // Format destination list for toast message
+      const destinationNames = uniqueDestinations
+        .filter(d => d !== "website")  // Don't show website in toast, it's implicit
+        .map(d => d.charAt(0).toUpperCase() + d.slice(1))
+        .join(", ");
+      
+      toast.success(`Article approved for ${destinationNames || "Website"}`);
       onApproved();
       
     } catch (err) {
@@ -111,10 +97,121 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
     }
   };
 
-  // Determine if the news item has already been processed
-  const isProcessed = newsItem.status !== null && 
-                      !["suggested", null].includes(newsItem.status);
+  const handleCheckboxChange = (destination: string, checked: boolean) => {
+    setSelectedDestinations(prev => 
+      checked 
+        ? [...prev, destination] 
+        : prev.filter(d => d !== destination)
+    );
+  };
 
+  const saveMultiselect = async () => {
+    await approveForDestinations(selectedDestinations);
+  };
+
+  const dismissArticle = async () => {
+    try {
+      setIsApproving(true);
+      
+      // Update the news item to dismissed status
+      const { error } = await supabase
+        .from("news")
+        .update({ 
+          status: "dismissed",
+          destinations: [] // Clear destinations when dismissing
+        })
+        .eq("id", newsItem.id);
+      
+      if (error) throw error;
+      
+      toast.success("Article dismissed");
+      onApproved();
+      
+    } catch (err) {
+      console.error("Error dismissing article:", err);
+      toast.error("Failed to dismiss article");
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  // For multiselect mode, render checkboxes
+  if (mode === "multiselect") {
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-col gap-1.5">
+          <div className="font-medium text-sm">Destinations:</div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`mpdaily-${newsItem.id}`}
+                checked={selectedDestinations.includes("mpdaily")}
+                onChange={e => handleCheckboxChange("mpdaily", e.target.checked)}
+                className="rounded text-primary"
+              />
+              <label htmlFor={`mpdaily-${newsItem.id}`} className="text-sm flex items-center">
+                <Newspaper className="h-3.5 w-3.5 mr-1" />
+                MPDaily
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`magazine-${newsItem.id}`}
+                checked={selectedDestinations.includes("magazine")}
+                onChange={e => handleCheckboxChange("magazine", e.target.checked)}
+                className="rounded text-primary"
+              />
+              <label htmlFor={`magazine-${newsItem.id}`} className="text-sm flex items-center">
+                <BookOpen className="h-3.5 w-3.5 mr-1" />
+                Magazine
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id={`reference-${newsItem.id}`}
+                checked={selectedDestinations.includes("reference")}
+                onChange={e => handleCheckboxChange("reference", e.target.checked)}
+                className="rounded text-primary"
+              />
+              <label htmlFor={`reference-${newsItem.id}`} className="text-sm flex items-center">
+                <BookOpen className="h-3.5 w-3.5 mr-1" />
+                Reference
+              </label>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            <Globe className="h-3 w-3 inline mr-1" />
+            Website will be included automatically
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1 justify-end">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={dismissArticle}
+            disabled={isApproving}
+          >
+            <X className="h-4 w-4 mr-1" />
+            Dismiss
+          </Button>
+          <Button 
+            variant="default" 
+            size="sm"
+            onClick={saveMultiselect}
+            disabled={isApproving || selectedDestinations.length === 0}
+          >
+            {isApproving ? "Processing..." : "Approve"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // For dropdown mode, render the dropdown menu
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -136,16 +233,20 @@ const ArticleApproval = ({ newsItem, onApproved }: ArticleApprovalProps) => {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => approveForDestination("mpdaily")}>
+        <DropdownMenuItem onClick={() => approveForDestinations(["mpdaily"])}>
           <Newspaper className="h-4 w-4 mr-2" />
           Approve for MPDaily
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => approveForDestination("magazine")}>
-          <Newspaper className="h-4 w-4 mr-2" />
+        <DropdownMenuItem onClick={() => approveForDestinations(["magazine"])}>
+          <BookOpen className="h-4 w-4 mr-2" />
           Approve for Magazine
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => approveForDestinations(["mpdaily", "magazine"])}>
+          <Newspaper className="h-4 w-4 mr-2" />
+          Approve for Both
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => approveForDestination("reference")}>
+        <DropdownMenuItem onClick={() => approveForDestinations(["reference"])}>
           <BookOpen className="h-4 w-4 mr-2" />
           Save as Reference
         </DropdownMenuItem>

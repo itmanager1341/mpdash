@@ -14,12 +14,14 @@ interface NewsItem {
   id: string;
   headline: string;
   summary: string;
-  status: string | null;
-  created_at?: string; // Make created_at optional
+  status: string;
+  created_at?: string; 
   timestamp: string;
   source: string;
   url: string;
   matched_clusters?: string[];
+  destinations: string[] | null;
+  content_variants?: any;
 }
 
 const MagazinePlanner = () => {
@@ -34,7 +36,8 @@ const MagazinePlanner = () => {
       const { data, error } = await supabase
         .from('news')
         .select('*')
-        .or('status.eq.approved_magazine,status.eq.drafted_magazine,status.eq.published_magazine')
+        .eq('status', 'approved')
+        .contains('destinations', ['magazine'])
         .order('timestamp', { ascending: false });
       
       if (error) {
@@ -52,7 +55,10 @@ const MagazinePlanner = () => {
       const { error } = await supabase
         .from('news')
         .update({ 
-          status: 'published_magazine'
+          content_variants: {
+            ...(newsItems?.find(item => item.id === newsId)?.content_variants || {}),
+            published: true
+          }
         })
         .eq('id', newsId);
         
@@ -66,26 +72,21 @@ const MagazinePlanner = () => {
     }
   };
 
-  const getStatusColor = (status: string | null) => {
-    switch (status) {
-      case 'published_magazine':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'drafted_magazine':
-        return 'bg-purple-100 text-purple-800 border-purple-200';
-      case 'approved_magazine':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      default:
-        return 'bg-blue-100 text-blue-800 border-blue-200';
+  // Function to determine item workflow stage based on content_variants
+  const getItemStage = (item: NewsItem): "planning" | "draft" | "published" => {
+    if (item.content_variants?.published) {
+      return "published";
     }
+    if (item.content_variants?.full_content || item.content_variants?.magazine_content) {
+      return "draft";
+    }
+    return "planning";
   };
 
-  const getStatusLabel = (status: string | null) => {
-    if (!status) return 'New';
-    if (status === 'approved_magazine') return 'Approved';
-    if (status === 'drafted_magazine') return 'Draft Ready';
-    if (status === 'published_magazine') return 'Published';
-    return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
+  // Group items by their workflow stage
+  const planningStageItems = newsItems?.filter(item => getItemStage(item) === "planning") || [];
+  const draftStageItems = newsItems?.filter(item => getItemStage(item) === "draft") || [];
+  const publishedStageItems = newsItems?.filter(item => getItemStage(item) === "published") || [];
 
   return (
     <DashboardLayout>
@@ -116,14 +117,14 @@ const MagazinePlanner = () => {
         <TabsContent value="kanban" className="mt-0">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <h2 className="text-lg font-semibold mb-3 px-2">Approved</h2>
+              <h2 className="text-lg font-semibold mb-3 px-2">Planning</h2>
               <div className="space-y-3">
-                {newsItems?.filter(a => a.status === 'approved_magazine').map((item) => (
+                {planningStageItems.map((item) => (
                   <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
-                        <Badge className={getStatusColor(item.status)}>
-                          {getStatusLabel(item.status)}
+                        <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+                          Planning
                         </Badge>
                       </div>
                       <CardTitle className="text-lg">{item.headline}</CardTitle>
@@ -148,23 +149,23 @@ const MagazinePlanner = () => {
                     </CardContent>
                   </Card>
                 ))}
-                {newsItems?.filter(a => a.status === 'approved_magazine').length === 0 && (
+                {planningStageItems.length === 0 && (
                   <div className="bg-muted/50 rounded-md p-4 text-center">
-                    <p className="text-sm text-muted-foreground">No approved articles</p>
+                    <p className="text-sm text-muted-foreground">No articles in planning stage</p>
                   </div>
                 )}
               </div>
             </div>
             
             <div>
-              <h2 className="text-lg font-semibold mb-3 px-2">Drafted</h2>
+              <h2 className="text-lg font-semibold mb-3 px-2">Draft</h2>
               <div className="space-y-3">
-                {newsItems?.filter(a => a.status === 'drafted_magazine').map((item) => (
+                {draftStageItems.map((item) => (
                   <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
-                        <Badge className={getStatusColor(item.status)}>
-                          {getStatusLabel(item.status)}
+                        <Badge className="bg-purple-100 text-purple-800 border-purple-200">
+                          Draft Ready
                         </Badge>
                       </div>
                       <CardTitle className="text-lg">{item.headline}</CardTitle>
@@ -193,7 +194,7 @@ const MagazinePlanner = () => {
                     </CardContent>
                   </Card>
                 ))}
-                {newsItems?.filter(a => a.status === 'drafted_magazine').length === 0 && (
+                {draftStageItems.length === 0 && (
                   <div className="bg-muted/50 rounded-md p-4 text-center">
                     <p className="text-sm text-muted-foreground">No drafted articles</p>
                   </div>
@@ -204,12 +205,12 @@ const MagazinePlanner = () => {
             <div>
               <h2 className="text-lg font-semibold mb-3 px-2">Published</h2>
               <div className="space-y-3">
-                {newsItems?.filter(a => a.status === 'published_magazine').map((item) => (
+                {publishedStageItems.map((item) => (
                   <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
-                        <Badge className={getStatusColor(item.status)}>
-                          {getStatusLabel(item.status)}
+                        <Badge className="bg-green-100 text-green-800 border-green-200">
+                          Published
                         </Badge>
                       </div>
                       <CardTitle className="text-lg">{item.headline}</CardTitle>
@@ -229,7 +230,7 @@ const MagazinePlanner = () => {
                     </CardContent>
                   </Card>
                 ))}
-                {newsItems?.filter(a => a.status === 'published_magazine').length === 0 && (
+                {publishedStageItems.length === 0 && (
                   <div className="bg-muted/50 rounded-md p-4 text-center">
                     <p className="text-sm text-muted-foreground">No published articles</p>
                   </div>

@@ -46,7 +46,9 @@ serve(async (req) => {
       content_variants: content 
     };
     
-    // Only update status if provided
+    // Only update status if provided - note that with our new schema, 
+    // the status would typically be "approved" instead of the previous
+    // status values like "drafted_mpdaily"
     if (newStatus) {
       updateData.status = newStatus;
     }
