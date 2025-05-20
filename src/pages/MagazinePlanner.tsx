@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Kanban, Search, Lightbulb, PenLine, Calendar as CalendarIcon, ArrowUpRight } from "lucide-react";
+import { Calendar, Kanban, Search, Lightbulb, PenLine, CalendarIcon, ArrowUpRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -16,7 +16,8 @@ import {
   DialogHeader, 
   DialogTitle, 
   DialogTrigger, 
-  DialogDescription 
+  DialogDescription, 
+  DialogFooter 
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -28,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface KeywordCluster {
   id: string;
@@ -46,6 +48,14 @@ interface EditorBrief {
   created_at: string | null;
 }
 
+interface ResearchResult {
+  topic: string;
+  research: string;
+  keywords: string[];
+  related_questions: string[];
+  created_at: string;
+}
+
 const MagazinePlanner = () => {
   const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");
   const [selectedMonth, setSelectedMonth] = useState<string>(
@@ -53,7 +63,14 @@ const MagazinePlanner = () => {
   );
   const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>("");
-  const [selectedCluster, setSelectedCluster] = useState<string>("");
+  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [showCreateBrief, setShowCreateBrief] = useState<boolean>(false);
+  const [briefTitle, setBriefTitle] = useState<string>("");
+  const [briefSummary, setBriefSummary] = useState<string>("");
+  const [selectedNewsItem, setSelectedNewsItem] = useState<NewsItem | null>(null);
+  const [isResearching, setIsResearching] = useState<boolean>(false);
+  const [researchResult, setResearchResult] = useState<ResearchResult | null>(null);
+  const [showResearchResult, setShowResearchResult] = useState<boolean>(false);
 
   // Query for news items
   const { data: newsItems, isLoading: newsLoading, error: newsError, refetch: refetchNews } = useQuery({
@@ -136,6 +153,41 @@ const MagazinePlanner = () => {
     }
   };
 
+  const handleCreateBrief = async () => {
+    if (!briefTitle) {
+      toast.warning("Please enter a title for the brief");
+      return;
+    }
+    
+    try {
+      // Create a new editor brief
+      const { error } = await supabase
+        .from('editor_briefs')
+        .insert({
+          theme: briefTitle,
+          summary: briefSummary || `Brief for article about ${briefTitle}`,
+          outline: selectedNewsItem ? 
+            `Based on news item: ${selectedNewsItem.headline}\n\n${selectedNewsItem.summary}` : 
+            null,
+          status: 'draft',
+          sources: selectedNewsItem ? [selectedNewsItem.source] : [],
+          suggested_articles: selectedNewsItem ? [{id: selectedNewsItem.id, headline: selectedNewsItem.headline}] : []
+        });
+      
+      if (error) throw error;
+      
+      toast.success("Brief created successfully");
+      setBriefTitle("");
+      setBriefSummary("");
+      setSelectedNewsItem(null);
+      setShowCreateBrief(false);
+      refetchBriefs();
+    } catch (err) {
+      console.error('Error creating brief:', err);
+      toast.error("Failed to create brief");
+    }
+  };
+
   const handleGenerateMagazineContent = async () => {
     if (!aiPrompt) {
       toast.warning("Please enter a prompt for the AI assistant");
@@ -187,6 +239,94 @@ const MagazinePlanner = () => {
     } catch (err) {
       console.error('Error generating content:', err);
       toast.error("Failed to generate content");
+    }
+  };
+
+  const handleResearch = async () => {
+    if (!selectedCluster && !aiPrompt) {
+      toast.warning("Please enter a topic or select a keyword cluster");
+      return;
+    }
+    
+    setIsResearching(true);
+    toast.info("Researching topic...");
+    
+    try {
+      // Get the selected cluster data for more context
+      const selectedClusterData = selectedCluster ? 
+        keywordClusters?.find(c => c.id === selectedCluster) : null;
+      
+      // Prepare research parameters
+      const topic = aiPrompt || selectedClusterData?.primary_theme || "mortgage industry trends";
+      const clusters = selectedCluster ? [selectedCluster] : [];
+      const keywords = selectedClusterData?.keywords || [];
+      
+      // Call the magazine-research edge function
+      const { data, error } = await supabase.functions.invoke('magazine-research', {
+        body: { 
+          topic,
+          clusters,
+          keywords,
+          depth: "standard"
+        }
+      });
+      
+      if (error) throw error;
+      
+      // Store the research results
+      setResearchResult(data.data);
+      setShowResearchResult(true);
+      setShowAiAssistant(false);
+    } catch (err) {
+      console.error('Error researching topic:', err);
+      toast.error("Failed to research topic");
+    } finally {
+      setIsResearching(false);
+    }
+  };
+
+  const openCreateBrief = (item?: NewsItem) => {
+    if (item) {
+      setSelectedNewsItem(item);
+      setBriefTitle(item.headline);
+      setBriefSummary(item.summary || '');
+    } else {
+      setSelectedNewsItem(null);
+      setBriefTitle('');
+      setBriefSummary('');
+    }
+    setShowCreateBrief(true);
+  };
+
+  const planEditorialCalendar = async () => {
+    toast.info("Planning editorial calendar...");
+    
+    try {
+      // Get the selected cluster data for focus themes
+      const focusThemes = keywordClusters?.slice(0, 5).map(c => c.primary_theme) || [];
+      
+      // Call the plan-editorial-calendar edge function
+      const { data, error } = await supabase.functions.invoke('plan-editorial-calendar', {
+        body: { 
+          months: 6,
+          startMonth: selectedMonth,
+          focusThemes,
+          considerKeywordClusters: true,
+          avoidDuplication: true
+        }
+      });
+      
+      if (error) throw error;
+      
+      // Show success message with calendar plan
+      toast.success("Editorial calendar planned successfully");
+      console.log("Calendar plan:", data.calendar_plan);
+      
+      // Here we would typically update the UI with the calendar plan
+      // For now, we'll just log it
+    } catch (err) {
+      console.error('Error planning editorial calendar:', err);
+      toast.error("Failed to plan editorial calendar");
     }
   };
 
@@ -289,7 +429,11 @@ const MagazinePlanner = () => {
                         <Button variant="outline" size="sm" onClick={() => window.open(item.url, '_blank')}>
                           View Source
                         </Button>
-                        <Button variant="default" size="sm">
+                        <Button 
+                          variant="default" 
+                          size="sm" 
+                          onClick={() => openCreateBrief(item)}
+                        >
                           Create Brief
                         </Button>
                       </div>
@@ -505,17 +649,17 @@ const MagazinePlanner = () => {
                   </Card>
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">AI Content Suggestions</CardTitle>
+                      <CardTitle className="text-base">AI Content Planning</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <Button 
                         variant="default" 
                         size="sm" 
-                        onClick={() => setShowAiAssistant(true)}
+                        onClick={planEditorialCalendar}
                         className="w-full"
                       >
-                        <Lightbulb className="h-4 w-4 mr-2" />
-                        Generate Content Ideas
+                        <CalendarIcon className="h-4 w-4 mr-2" />
+                        Plan Editorial Calendar
                       </Button>
                     </CardContent>
                   </Card>
@@ -552,7 +696,7 @@ const MagazinePlanner = () => {
               <label htmlFor="keyword-cluster" className="text-sm font-medium mb-2 block">
                 Select Keyword Cluster for Context (Optional)
               </label>
-              <Select value={selectedCluster} onValueChange={setSelectedCluster}>
+              <Select value={selectedCluster || ""} onValueChange={setSelectedCluster}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a keyword cluster" />
                 </SelectTrigger>
@@ -586,15 +730,151 @@ const MagazinePlanner = () => {
               <Button variant="ghost" onClick={() => setShowAiAssistant(false)}>
                 Cancel
               </Button>
-              <Button 
-                variant="default" 
-                onClick={handleGenerateMagazineContent}
-                disabled={!aiPrompt}
-              >
-                Generate Content
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={handleResearch}
+                  disabled={!aiPrompt && !selectedCluster}
+                >
+                  Research Topic
+                </Button>
+                <Button 
+                  variant="default" 
+                  onClick={handleGenerateMagazineContent}
+                  disabled={!aiPrompt}
+                >
+                  Generate Content
+                </Button>
+              </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Brief Dialog */}
+      <Dialog open={showCreateBrief} onOpenChange={setShowCreateBrief}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Create Editorial Brief</DialogTitle>
+            <DialogDescription>
+              Create a new brief for a magazine article
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <label htmlFor="brief-title" className="text-sm font-medium mb-2 block">
+                Brief Title
+              </label>
+              <Input 
+                id="brief-title" 
+                value={briefTitle}
+                onChange={(e) => setBriefTitle(e.target.value)}
+                placeholder="Enter a title for this brief"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="brief-summary" className="text-sm font-medium mb-2 block">
+                Summary
+              </label>
+              <Textarea 
+                id="brief-summary" 
+                className="min-h-24 resize-y"
+                value={briefSummary}
+                onChange={(e) => setBriefSummary(e.target.value)}
+                placeholder="Enter a brief summary or key points"
+              />
+            </div>
+            
+            {selectedNewsItem && (
+              <div className="rounded-md bg-muted p-3">
+                <h4 className="text-sm font-medium mb-1">Based on News Item:</h4>
+                <p className="text-sm text-muted-foreground">{selectedNewsItem.headline}</p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreateBrief(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleCreateBrief}
+              disabled={!briefTitle}
+            >
+              Create Brief
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Research Results Dialog */}
+      <Dialog open={showResearchResult} onOpenChange={setShowResearchResult}>
+        <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Research Results: {researchResult?.topic}</DialogTitle>
+            <DialogDescription>
+              AI-powered research to help with your article
+            </DialogDescription>
+          </DialogHeader>
+          
+          {researchResult && (
+            <div className="space-y-4 py-4">
+              <div>
+                <h3 className="text-lg font-medium mb-2">Research Summary</h3>
+                <div className="rounded-md bg-muted p-4 whitespace-pre-wrap text-sm">
+                  {researchResult.research}
+                </div>
+              </div>
+              
+              {researchResult.related_questions?.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Related Questions</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {researchResult.related_questions.map((question, index) => (
+                      <li key={index} className="text-sm">{question}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {researchResult.keywords?.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-medium mb-2">Keywords</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {researchResult.keywords.map((keyword, index) => (
+                      <Badge key={index} variant="outline">{keyword}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <Separator />
+              
+              <div className="flex justify-between">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowResearchResult(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    // Create a new brief from research
+                    setBriefTitle(researchResult.topic);
+                    setBriefSummary(researchResult.research.substring(0, 500));
+                    setShowResearchResult(false);
+                    setShowCreateBrief(true);
+                  }}
+                >
+                  Create Brief from Research
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>
