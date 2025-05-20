@@ -112,20 +112,22 @@ const MPDailyPlanner = () => {
                     const hasDraft = item.content_variants?.title || item.content_variants?.summary;
                     
                     return (
-                      <Card key={item.id} variant="elevated" className="overflow-hidden">
+                      <Card key={item.id} variant="elevated" className="overflow-hidden h-[280px] flex flex-col">
                         <CardHeader className="pb-0">
-                          <CardTitle className="text-lg mb-2">
+                          <CardTitle className="text-lg mb-2 line-clamp-2">
                             {item.content_variants?.title || item.headline}
                           </CardTitle>
                         </CardHeader>
                         
-                        <CardContent className="pt-4">
-                          <p className="text-sm text-muted-foreground mb-4">
-                            {item.content_variants?.summary || item.summary?.substring(0, 100) + '...' || 'No summary available'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
-                          </p>
+                        <CardContent className="flex flex-col flex-grow justify-between pt-4">
+                          <div>
+                            <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
+                              {item.content_variants?.summary || item.summary || 'No summary available'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                            </p>
+                          </div>
                           
                           <div className="mt-4 flex justify-end space-x-2">
                             <Button 

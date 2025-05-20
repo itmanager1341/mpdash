@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Kanban } from "lucide-react";
@@ -106,24 +107,26 @@ const MagazinePlanner = () => {
               <h2 className="text-lg font-semibold mb-3 px-2">Planning</h2>
               <div className="space-y-3">
                 {planningStageItems.map((item) => (
-                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow h-[280px] flex flex-col">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
                         <Badge className="bg-amber-100 text-amber-800 border-amber-200">
                           Planning
                         </Badge>
                       </div>
-                      <CardTitle className="text-lg">{item.headline}</CardTitle>
+                      <CardTitle className="text-lg line-clamp-2">{item.headline}</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {item.summary 
-                          ? item.summary.substring(0, 100) + '...'
-                          : 'No summary available'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
-                      </p>
+                    <CardContent className="flex flex-col flex-grow justify-between pt-0">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
+                          {item.summary 
+                            ? item.summary
+                            : 'No summary available'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
                       <div className="mt-4 flex justify-end space-x-2">
                         <Button variant="outline" size="sm" onClick={() => window.open(item.url, '_blank')}>
                           View Source
@@ -147,24 +150,26 @@ const MagazinePlanner = () => {
               <h2 className="text-lg font-semibold mb-3 px-2">Draft</h2>
               <div className="space-y-3">
                 {draftStageItems.map((item) => (
-                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow h-[280px] flex flex-col">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
                         <Badge className="bg-purple-100 text-purple-800 border-purple-200">
                           Draft Ready
                         </Badge>
                       </div>
-                      <CardTitle className="text-lg">{item.headline}</CardTitle>
+                      <CardTitle className="text-lg line-clamp-2">{item.headline}</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {item.summary 
-                          ? item.summary.substring(0, 100) + '...'
-                          : 'No summary available'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
-                      </p>
+                    <CardContent className="flex flex-col flex-grow justify-between pt-0">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
+                          {item.summary 
+                            ? item.summary
+                            : 'No summary available'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
                       <div className="mt-4 flex justify-end space-x-2">
                         <Button variant="outline" size="sm">
                           Edit
@@ -192,24 +197,26 @@ const MagazinePlanner = () => {
               <h2 className="text-lg font-semibold mb-3 px-2">Published</h2>
               <div className="space-y-3">
                 {publishedStageItems.map((item) => (
-                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                  <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow h-[280px] flex flex-col">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
                         <Badge className="bg-green-100 text-green-800 border-green-200">
                           Published
                         </Badge>
                       </div>
-                      <CardTitle className="text-lg">{item.headline}</CardTitle>
+                      <CardTitle className="text-lg line-clamp-2">{item.headline}</CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        {item.summary 
-                          ? item.summary.substring(0, 100) + '...'
-                          : 'No summary available'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
-                      </p>
+                    <CardContent className="flex flex-col flex-grow justify-between pt-0">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
+                          {item.summary 
+                            ? item.summary
+                            : 'No summary available'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
+                        </p>
+                      </div>
                       <div className="mt-4 flex justify-end space-x-2">
                         <Button variant="outline" size="sm">View</Button>
                       </div>
