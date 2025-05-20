@@ -163,14 +163,156 @@ The calendar should incorporate seasonal trends in the mortgage industry, econom
     }
     
     const openaiData = await openaiResponse.json();
-    let calendarPlan;
+    let calendarPlan = [];
     
     try {
       // Parse the generated calendar plan as JSON
       const rawContent = openaiData.choices[0].message.content;
-      calendarPlan = JSON.parse(rawContent);
+      const parsedContent = JSON.parse(rawContent);
+      
+      // Extract the array of months from the response
+      // Check various possible structures the AI might return
+      if (parsedContent.editorial_calendar && Array.isArray(parsedContent.editorial_calendar)) {
+        calendarPlan = parsedContent.editorial_calendar;
+      } else if (parsedContent.months && Array.isArray(parsedContent.months)) {
+        calendarPlan = parsedContent.months;
+      } else if (Array.isArray(parsedContent)) {
+        calendarPlan = parsedContent;
+      } else {
+        // Create a standardized format from whatever structure we got
+        const months = [];
+        Object.keys(parsedContent).forEach(key => {
+          if (typeof parsedContent[key] === 'object' && parsedContent[key] !== null) {
+            // Try to extract month data in a sensible way
+            if (key.match(/^\d{4}-\d{2}$/) || key.includes('month')) {
+              // It looks like a month key
+              const monthData = parsedContent[key];
+              const monthEntry = {
+                month: key.match(/^\d{4}-\d{2}$/) ? key : startMonth, // Use the key if it's a date, otherwise use startMonth
+                theme: monthData.theme || 'Mortgage Industry Trends',
+                // Convert content categories to a standardized format
+                topics: []
+              };
+              
+              // Process feature articles
+              if (monthData.feature_articles && Array.isArray(monthData.feature_articles)) {
+                monthData.feature_articles.forEach(article => {
+                  monthEntry.topics.push({
+                    title: article.title,
+                    type: 'Feature Article',
+                    keywords: article.keywords || []
+                  });
+                });
+              }
+              
+              // Process industry analysis
+              if (monthData.industry_analysis && Array.isArray(monthData.industry_analysis)) {
+                monthData.industry_analysis.forEach(analysis => {
+                  monthEntry.topics.push({
+                    title: analysis.title,
+                    type: 'Industry Analysis',
+                    keywords: analysis.keywords || []
+                  });
+                });
+              }
+              
+              // Process market trends
+              if (monthData.market_trends || monthData.market_trend_insights) {
+                const trends = monthData.market_trends || monthData.market_trend_insights || [];
+                if (Array.isArray(trends)) {
+                  trends.forEach(trend => {
+                    monthEntry.topics.push({
+                      title: trend.title,
+                      type: 'Market Trends',
+                      keywords: trend.keywords || []
+                    });
+                  });
+                }
+              }
+              
+              // Process opinion pieces
+              if (monthData.opinion_pieces && Array.isArray(monthData.opinion_pieces)) {
+                monthData.opinion_pieces.forEach(opinion => {
+                  monthEntry.topics.push({
+                    title: opinion.title,
+                    type: 'Opinion Piece',
+                    keywords: opinion.keywords || []
+                  });
+                });
+              }
+              
+              months.push(monthEntry);
+            }
+          }
+        });
+        
+        if (months.length > 0) {
+          calendarPlan = months;
+        } else {
+          throw new Error("Could not find month data in the response");
+        }
+      }
+      
+      // Process calendarPlan to ensure it has the correct structure
+      calendarPlan = calendarPlan.map((month, index) => {
+        // If it's not the expected format, try to normalize it
+        if (!month.topics) {
+          const topics = [];
+          
+          // Add all article types to topics array
+          if (month.feature_articles) {
+            month.feature_articles.forEach(article => {
+              topics.push({
+                title: article.title,
+                type: 'Feature Article',
+                keywords: article.keywords || []
+              });
+            });
+          }
+          
+          if (month.industry_analysis) {
+            month.industry_analysis.forEach(analysis => {
+              topics.push({
+                title: analysis.title,
+                type: 'Industry Analysis',
+                keywords: analysis.keywords || []
+              });
+            });
+          }
+          
+          if (month.market_trends || month.market_trend_insights) {
+            const trends = month.market_trends || month.market_trend_insights || [];
+            trends.forEach(trend => {
+              topics.push({
+                title: trend.title,
+                type: 'Market Trends',
+                keywords: trend.keywords || []
+              });
+            });
+          }
+          
+          if (month.opinion_pieces) {
+            month.opinion_pieces.forEach(opinion => {
+              topics.push({
+                title: opinion.title,
+                type: 'Opinion Piece',
+                keywords: opinion.keywords || []
+              });
+            });
+          }
+          
+          return {
+            month: month.month || `${startMonth.substring(0, 5)}${String(parseInt(startMonth.substring(5, 7)) + index).padStart(2, '0')}`,
+            theme: month.theme || 'Mortgage Industry Insights',
+            topics
+          };
+        }
+        
+        return month;
+      });
+      
     } catch (parseError) {
-      console.error("Error parsing OpenAI output as JSON:", parseError);
+      console.error("Error parsing OpenAI output:", parseError);
       console.log("Raw output:", openaiData.choices[0].message.content);
       
       throw new Error("Failed to parse AI-generated editorial calendar");

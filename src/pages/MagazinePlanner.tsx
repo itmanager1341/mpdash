@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Kanban, Search, Lightbulb, PenLine, CalendarIcon, ArrowUpRight } from "lucide-react";
@@ -75,7 +74,7 @@ const MagazinePlanner = () => {
   );
   const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>("");
-  const [selectedCluster, setSelectedCluster] = useState<string | null>("all"); // Changed default from null to "all"
+  const [selectedCluster, setSelectedCluster] = useState<string | null>("all");
   const [showCreateBrief, setShowCreateBrief] = useState<boolean>(false);
   const [briefTitle, setBriefTitle] = useState<string>("");
   const [briefSummary, setBriefSummary] = useState<string>("");
@@ -346,23 +345,29 @@ const MagazinePlanner = () => {
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Error calling plan-editorial-calendar:", error);
+        throw error;
+      }
       
-      if (data && data.calendar_plan) {
+      if (data && data.success && Array.isArray(data.calendar_plan)) {
+        // Ensure we have a valid calendar plan array
+        console.log("Calendar plan data received:", data.calendar_plan);
         setCalendarPlan(data.calendar_plan);
         
         // Set the theme for the currently selected month
-        const currentMonthPlan = data.calendar_plan.find((plan: any) => 
-          plan.month.startsWith(selectedMonth)
+        const currentMonthPlan = data.calendar_plan.find(plan => 
+          plan.month && plan.month.startsWith(selectedMonth)
         );
         
         if (currentMonthPlan) {
-          setMonthTheme(currentMonthPlan.theme);
+          setMonthTheme(currentMonthPlan.theme || "");
         }
         
         toast.success("Editorial calendar planned successfully");
       } else {
-        throw new Error("No calendar plan returned");
+        console.error("Invalid calendar plan data:", data);
+        throw new Error(data.error || "No valid calendar plan returned");
       }
     } catch (err) {
       console.error('Error planning editorial calendar:', err);
@@ -489,12 +494,9 @@ const MagazinePlanner = () => {
   // New function to update the theme for the selected month
   const saveTheme = async () => {
     try {
-      // In a real implementation, this would save the theme to a database
-      // For now, just update the local state and show a success message
-      
       // Find and update the theme in the calendar plan
       const updatedPlan = calendarPlan.map(plan => {
-        if (plan.month.startsWith(selectedMonth)) {
+        if (plan.month && plan.month.startsWith(selectedMonth)) {
           return { ...plan, theme: monthTheme };
         }
         return plan;
@@ -543,7 +545,14 @@ const MagazinePlanner = () => {
 
   // Function to get scheduled content for a month from the calendar plan
   const getScheduledContent = () => {
-    const monthPlan = calendarPlan.find(plan => plan.month.startsWith(selectedMonth));
+    if (!calendarPlan || calendarPlan.length === 0) {
+      return [];
+    }
+    
+    const monthPlan = calendarPlan.find(plan => 
+      plan.month && plan.month.startsWith(selectedMonth)
+    );
+    
     return monthPlan?.topics || [];
   };
 
@@ -783,7 +792,9 @@ const MagazinePlanner = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {calendarPlan.length > 0 && calendarPlan.find(plan => plan.month.startsWith(selectedMonth)) ? (
+              {calendarPlan && calendarPlan.length > 0 && calendarPlan.find(plan => 
+                plan.month && plan.month.startsWith(selectedMonth)
+              ) ? (
                 <div>
                   <div className="flex justify-between items-center mb-4">
                     <div>
