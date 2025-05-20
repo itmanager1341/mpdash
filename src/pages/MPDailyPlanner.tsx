@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Edit, List } from "lucide-react";
+import { Calendar, Edit, List, Lightbulb } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,13 +9,21 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import DraftEditor from "@/components/editor/DraftEditor";
-import { NewsCard } from "@/components/news/NewsCard";
 import { NewsItem } from "@/types/news";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const MPDailyPlanner = () => {
   const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
   const [selectedItem, setSelectedItem] = useState<NewsItem | null>(null);
   const [isDraftEditorOpen, setIsDraftEditorOpen] = useState(false);
+  const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
 
   const { data: newsItems, isLoading, error, refetch } = useQuery({
     queryKey: ['news', 'mpdaily'],
@@ -68,6 +76,62 @@ const MPDailyPlanner = () => {
     setIsDraftEditorOpen(true);
   };
 
+  const handleGenerateContent = async () => {
+    if (!aiPrompt) {
+      toast.warning("Please enter a prompt for content generation");
+      return;
+    }
+    
+    toast.info("Generating content...", { duration: 2000 });
+    
+    try {
+      // Call the Supabase edge function to generate content
+      const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
+        body: {
+          prompt_text: `Create a concise email newsletter item about: ${aiPrompt}
+          
+Format your response with:
+1. An engaging headline (maximum 10 words)
+2. A brief summary (3-4 sentences maximum)
+3. A bulleted list of 2-3 key points
+4. A short call-to-action`,
+          model: 'gpt-4o-mini',
+          input_data: {
+            topic: aiPrompt
+          }
+        }
+      });
+      
+      if (error) throw error;
+      
+      // Create a dummy news item with the generated content
+      setSelectedItem({
+        id: 'temp-' + Date.now(),
+        headline: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
+        summary: typeof data.output === 'string' 
+          ? data.output.slice(0, 150) 
+          : JSON.stringify(data.output).slice(0, 150),
+        content_variants: {
+          title: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
+          summary: typeof data.output === 'string' 
+            ? data.output 
+            : JSON.stringify(data.output)
+        },
+        timestamp: new Date().toISOString(),
+        source: 'AI Generated',
+        url: '',
+        destinations: ['mpdaily']
+      });
+      
+      setIsDraftEditorOpen(true);
+      setShowAiAssistant(false);
+      setAiPrompt("");
+    } catch (err) {
+      console.error('Error generating content:', err);
+      toast.error("Failed to generate content");
+    }
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8">
@@ -78,18 +142,29 @@ const MPDailyPlanner = () => {
               Plan and organize content for the daily email newsletter
             </p>
           </div>
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "schedule")}>
-            <TabsList>
-              <TabsTrigger value="list">
-                <List className="h-4 w-4 mr-2" />
-                List View
-              </TabsTrigger>
-              <TabsTrigger value="schedule">
-                <Calendar className="h-4 w-4 mr-2" />
-                Schedule
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex gap-2">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "schedule")}>
+              <TabsList>
+                <TabsTrigger value="list">
+                  <List className="h-4 w-4 mr-2" />
+                  List View
+                </TabsTrigger>
+                <TabsTrigger value="schedule">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Schedule
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            
+            <Button 
+              variant="outline" 
+              className="ml-2 flex items-center gap-2"
+              onClick={() => setShowAiAssistant(true)}
+            >
+              <Lightbulb className="h-4 w-4" />
+              AI Assistant
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -213,6 +288,46 @@ const MPDailyPlanner = () => {
           onSave={refetch}
         />
       )}
+      
+      {/* AI Assistant Dialog */}
+      <Dialog open={showAiAssistant} onOpenChange={setShowAiAssistant}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>AI Content Assistant</DialogTitle>
+            <DialogDescription>
+              Generate newsletter content using AI
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <label htmlFor="ai-prompt" className="text-sm font-medium mb-2 block">
+                What would you like to create content about?
+              </label>
+              <textarea 
+                id="ai-prompt" 
+                className="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                placeholder="e.g., 'Create a newsletter item about recent changes to mortgage interest rates'"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+              />
+            </div>
+            
+            <div className="flex justify-between pt-4">
+              <Button variant="ghost" onClick={() => setShowAiAssistant(false)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="default" 
+                onClick={handleGenerateContent}
+                disabled={!aiPrompt}
+              >
+                Generate Content
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 };
