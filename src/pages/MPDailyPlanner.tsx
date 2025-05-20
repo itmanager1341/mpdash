@@ -111,6 +111,7 @@ Format your response with:
         summary: typeof data.output === 'string' 
           ? data.output.slice(0, 150) 
           : JSON.stringify(data.output).slice(0, 150),
+        status: 'draft', // Added status property to fix the type error
         content_variants: {
           title: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
           summary: typeof data.output === 'string' 
