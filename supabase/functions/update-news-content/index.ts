@@ -12,6 +12,7 @@ interface RequestBody {
     summary?: string;
     cta?: string;
     full_content?: string;
+    magazine_content?: string;
   };
   newStatus?: string;
 }
