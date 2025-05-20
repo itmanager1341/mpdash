@@ -73,6 +73,39 @@ VALUES (
 ON CONFLICT (job_name) DO UPDATE SET
   updated_at = now();
 
+-- Create or replace function to get job settings
+CREATE OR REPLACE FUNCTION get_job_settings(job_name_param TEXT)
+RETURNS SETOF scheduled_job_settings AS $$
+BEGIN
+  RETURN QUERY
+  SELECT * FROM scheduled_job_settings WHERE job_name = job_name_param;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create or replace function to update job settings
+CREATE OR REPLACE FUNCTION update_job_settings(job_name_param TEXT, settings_json JSONB)
+RETURNS BOOLEAN AS $$
+BEGIN
+  UPDATE scheduled_job_settings
+  SET 
+    is_enabled = COALESCE(settings_json->>'is_enabled', is_enabled::text)::boolean,
+    schedule = COALESCE(settings_json->>'schedule', schedule),
+    parameters = COALESCE(settings_json->'parameters', parameters),
+    updated_at = now()
+  WHERE job_name = job_name_param;
+  
+  -- Call the function to update the actual cron job
+  PERFORM update_news_fetch_job(
+    job_name_param,
+    (SELECT schedule FROM scheduled_job_settings WHERE job_name = job_name_param),
+    (SELECT is_enabled FROM scheduled_job_settings WHERE job_name = job_name_param),
+    (SELECT parameters FROM scheduled_job_settings WHERE job_name = job_name_param)
+  );
+  
+  RETURN FOUND;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Create trigger function to call our job updater
 CREATE OR REPLACE FUNCTION process_job_settings_change()
 RETURNS TRIGGER AS $$

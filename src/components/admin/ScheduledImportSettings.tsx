@@ -41,19 +41,31 @@ export default function ScheduledImportSettings() {
     weekly: "0 6 * * 1"     // Run at 6:00 AM every Monday
   };
 
-  // Fetch job settings from the database
+  // Fetch job settings from the database using raw SQL query
   const { data: jobSettings, isLoading: isLoadingSettings } = useQuery({
     queryKey: ['scheduled-job-settings'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('scheduled_job_settings')
-        .select('*')
-        .eq('job_name', 'daily-perplexity-news-fetch')
-        .single();
+      // Use RPC to fetch data since the table isn't in TypeScript definitions
+      const { data, error } = await supabase.rpc('get_job_settings', {
+        job_name_param: 'daily-perplexity-news-fetch'
+      }).maybeSingle();
       
       if (error) {
         console.error("Error fetching job settings:", error);
-        return null;
+        
+        // Fallback to direct SQL query if RPC fails
+        const { data: sqlData, error: sqlError } = await supabase
+          .from('scheduled_job_settings')
+          .select('*')
+          .eq('job_name', 'daily-perplexity-news-fetch')
+          .maybeSingle();
+          
+        if (sqlError) {
+          console.error("Fallback query error:", sqlError);
+          return null;
+        }
+        
+        return sqlData as unknown as ScheduledJobSettings;
       }
       
       return data as ScheduledJobSettings;
@@ -63,12 +75,22 @@ export default function ScheduledImportSettings() {
   // Update job settings in the database
   const updateSettings = useMutation({
     mutationFn: async (settings: Partial<ScheduledJobSettings>) => {
-      const { error } = await supabase
-        .from('scheduled_job_settings')
-        .update(settings)
-        .eq('job_name', 'daily-perplexity-news-fetch');
+      // Use the raw query method to avoid type issues
+      const { error } = await supabase.rpc('update_job_settings', {
+        job_name_param: 'daily-perplexity-news-fetch',
+        settings_json: settings
+      });
       
-      if (error) throw error;
+      if (error) {
+        // Fallback to direct SQL if RPC fails
+        const { error: sqlError } = await supabase
+          .from('scheduled_job_settings')
+          .update(settings)
+          .eq('job_name', 'daily-perplexity-news-fetch');
+          
+        if (sqlError) throw sqlError;
+      }
+      
       return true;
     },
     onSuccess: () => {

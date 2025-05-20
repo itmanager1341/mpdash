@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import NewsImporter from "@/components/admin/NewsImporter";
 import NewsTextConverter from "@/components/admin/NewsTextConverter";
 import ApiKeysManager from "@/components/admin/ApiKeysManager";
+import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
 import { Button } from "@/components/ui/button";
 import { FileText, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -29,6 +30,7 @@ export default function AdminSettings() {
         </TabsList>
         
         <TabsContent value="import" className="space-y-6">
+          <ScheduledImportSettings />
           <NewsTextConverter />
           <NewsImporter />
         </TabsContent>
