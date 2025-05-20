@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Kanban, Search, Lightbulb, PenLine, CalendarIcon, ArrowUpRight } from "lucide-react";
@@ -161,6 +160,8 @@ const MagazinePlanner = () => {
     
     try {
       // Create a new editor brief
+      // Fix the issue by converting the object array to string array
+      // or properly handle the JSON serialization based on how the data is stored
       const { error } = await supabase
         .from('editor_briefs')
         .insert({
@@ -171,7 +172,10 @@ const MagazinePlanner = () => {
             null,
           status: 'draft',
           sources: selectedNewsItem ? [selectedNewsItem.source] : [],
-          suggested_articles: selectedNewsItem ? [{id: selectedNewsItem.id, headline: selectedNewsItem.headline}] : []
+          // Convert the object to stringified JSON to store in string array
+          suggested_articles: selectedNewsItem ? 
+            [JSON.stringify({id: selectedNewsItem.id, headline: selectedNewsItem.headline})] : 
+            []
         });
       
       if (error) throw error;
