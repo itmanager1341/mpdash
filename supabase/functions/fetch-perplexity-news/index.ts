@@ -58,12 +58,28 @@ serve(async (req) => {
       try {
         const body = await req.json();
         options = { ...options, ...body };
+        // Ensure keywords is an array
+        if (typeof options.keywords === 'string') {
+          options.keywords = [options.keywords];
+        }
       } catch (e) {
         console.log("No request body or invalid JSON, using default options");
       }
     }
 
-    console.log(`Fetching Perplexity news with options:`, JSON.stringify(options));
+    // Log the execution
+    console.log(`Starting Perplexity news fetch with options:`, JSON.stringify(options));
+    
+    // Update the last_run timestamp in the scheduled_job_settings table
+    if (req.headers.get('user-agent')?.includes('pg_net')) {
+      // This request came from the cron job
+      await supabase
+        .from('scheduled_job_settings')
+        .update({ last_run: new Date().toISOString() })
+        .eq('job_name', 'daily-perplexity-news-fetch');
+      
+      console.log('Updated last_run timestamp for cron job');
+    }
     
     // Check for duplicates by URL
     const checkForDuplicate = async (url: string): Promise<boolean> => {
@@ -86,8 +102,8 @@ serve(async (req) => {
     // Fetch data from Perplexity
     const fetchNewsFromPerplexity = async (keyword: string): Promise<NewsItem[]> => {
       try {
-        // This is a placeholder for the actual Perplexity API call
-        // In a real implementation, you would make an API request to Perplexity
+        console.log(`Fetching news for keyword: ${keyword}`);
+        
         const response = await fetch('https://api.perplexity.ai/news/search', {
           method: 'POST',
           headers: {
@@ -96,7 +112,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             query: keyword,
-            max_results: options.limit / options.keywords.length, // Distribute the limit among keywords
+            max_results: Math.ceil(options.limit / options.keywords.length), // Distribute the limit among keywords
             filter: {
               time_range: '1d', // Last day
               min_score: options.minScore
@@ -105,20 +121,38 @@ serve(async (req) => {
         });
         
         if (!response.ok) {
-          throw new Error(`Perplexity API error: ${response.status} ${response.statusText}`);
+          const errorText = await response.text();
+          throw new Error(`Perplexity API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
         
         const data = await response.json();
-        return data.results.map((item: any) => ({
-          headline: item.title,
-          url: item.url,
-          summary: item.summary,
-          source: new URL(item.url).hostname,
-          perplexity_score: item.relevance_score,
-          timestamp: item.published_at,
-          matched_clusters: item.categories || [],
-          is_competitor_covered: false // This would need a separate check
-        }));
+        if (!data.results || !Array.isArray(data.results)) {
+          console.log(`No results for keyword "${keyword}" or unexpected response format`, data);
+          return [];
+        }
+        
+        console.log(`Received ${data.results.length} results for keyword "${keyword}"`);
+        
+        return data.results.map((item: any) => {
+          // Extract domain from URL for source
+          let source;
+          try {
+            source = new URL(item.url).hostname;
+          } catch (e) {
+            source = 'unknown';
+          }
+          
+          return {
+            headline: item.title,
+            url: item.url,
+            summary: item.summary,
+            source: source,
+            perplexity_score: item.relevance_score,
+            timestamp: item.published_at || new Date().toISOString(),
+            matched_clusters: item.categories || [],
+            is_competitor_covered: false // This would need a separate check
+          };
+        });
       } catch (error) {
         console.error(`Error fetching news for keyword "${keyword}":`, error);
         return [];
@@ -151,7 +185,14 @@ serve(async (req) => {
         }
       };
       
-      for (const item of items) {
+      // Deduplicate items by URL
+      const uniqueItems = items.filter((item, index, self) => 
+        index === self.findIndex((i) => i.url === item.url)
+      );
+      
+      console.log(`Processing ${uniqueItems.length} unique items out of ${items.length} total`);
+      
+      for (const item of uniqueItems) {
         try {
           // Skip items with low score
           if (item.perplexity_score < options.minScore) {
@@ -160,12 +201,41 @@ serve(async (req) => {
             continue;
           }
           
-          // Check for duplicates
+          // Check for duplicates in the database
           const isDuplicate = await checkForDuplicate(item.url);
           if (isDuplicate) {
             console.log(`Skipping duplicate: ${item.headline}`);
             results.skipped.duplicates++;
             continue;
+          }
+          
+          // Match to clusters in the database
+          const { data: clusters, error: clustersError } = await supabase
+            .from('keyword_clusters')
+            .select('id, keywords, primary_theme');
+            
+          if (clustersError) {
+            console.error("Error fetching clusters:", clustersError);
+          } else if (clusters) {
+            // Match article to clusters based on keywords
+            const matchedClusterIds = clusters
+              .filter(cluster => {
+                if (!cluster.keywords) return false;
+                
+                // Check if any cluster keyword appears in the headline or summary
+                return cluster.keywords.some((keyword: string) => {
+                  const keyword_lower = keyword.toLowerCase();
+                  return (
+                    item.headline.toLowerCase().includes(keyword_lower) || 
+                    (item.summary && item.summary.toLowerCase().includes(keyword_lower))
+                  );
+                });
+              })
+              .map(cluster => cluster.primary_theme);
+            
+            if (matchedClusterIds.length > 0) {
+              item.matched_clusters = [...new Set([...(item.matched_clusters || []), ...matchedClusterIds])];
+            }
           }
           
           // Insert into database
@@ -175,16 +245,18 @@ serve(async (req) => {
             summary: item.summary,
             source: item.source,
             perplexity_score: item.perplexity_score,
-            timestamp: item.timestamp || new Date().toISOString(),
+            timestamp: item.timestamp,
             matched_clusters: item.matched_clusters,
             is_competitor_covered: item.is_competitor_covered,
-            status: null
+            status: null,
+            destinations: []
           });
           
           if (error) {
             throw new Error(`Database error: ${error.message}`);
           }
           
+          console.log(`Inserted: ${item.headline}`);
           results.inserted++;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -206,6 +278,8 @@ serve(async (req) => {
     
     // Process and insert the news items
     const results = await processNewsItems(allNewsItems);
+    
+    console.log(`News fetch completed: ${results.inserted} inserted, ${results.skipped.duplicates} duplicates, ${results.skipped.lowScore} low score, ${results.errors.count} errors`);
     
     // Return the results
     return new Response(

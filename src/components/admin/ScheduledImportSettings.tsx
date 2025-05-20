@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
+// Define interfaces for database records
+interface ScheduledJobSettings {
+  id: string;
+  job_name: string;
+  is_enabled: boolean;
+  schedule: string;
+  parameters: {
+    minScore: number;
+    keywords: string[];
+    limit: number;
+  };
+  last_run: string | null;
+}
 
 export default function ScheduledImportSettings() {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,6 +30,76 @@ export default function ScheduledImportSettings() {
   const [frequency, setFrequency] = useState("daily");
   const [minScore, setMinScore] = useState("2.5");
   const [keywords, setKeywords] = useState("mortgage, housing market, federal reserve, interest rates");
+  const [limit, setLimit] = useState("20");
+  
+  const queryClient = useQueryClient();
+
+  // Map frequency to cron expression
+  const frequencyToCron = {
+    hourly: "0 * * * *",    // Run at minute 0 of every hour
+    daily: "0 6 * * *",     // Run at 6:00 AM every day
+    weekly: "0 6 * * 1"     // Run at 6:00 AM every Monday
+  };
+
+  // Fetch job settings from the database
+  const { data: jobSettings, isLoading: isLoadingSettings } = useQuery({
+    queryKey: ['scheduled-job-settings'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('scheduled_job_settings')
+        .select('*')
+        .eq('job_name', 'daily-perplexity-news-fetch')
+        .single();
+      
+      if (error) {
+        console.error("Error fetching job settings:", error);
+        return null;
+      }
+      
+      return data as ScheduledJobSettings;
+    }
+  });
+
+  // Update job settings in the database
+  const updateSettings = useMutation({
+    mutationFn: async (settings: Partial<ScheduledJobSettings>) => {
+      const { error } = await supabase
+        .from('scheduled_job_settings')
+        .update(settings)
+        .eq('job_name', 'daily-perplexity-news-fetch');
+      
+      if (error) throw error;
+      return true;
+    },
+    onSuccess: () => {
+      toast.success("Settings saved");
+      queryClient.invalidateQueries({ queryKey: ['scheduled-job-settings'] });
+    },
+    onError: (error) => {
+      console.error("Error updating job settings:", error);
+      toast.error("Failed to save settings");
+    }
+  });
+
+  // Initialize form values from database
+  useEffect(() => {
+    if (jobSettings) {
+      setIsEnabled(jobSettings.is_enabled);
+      
+      // Determine frequency from cron expression
+      if (jobSettings.schedule === "0 * * * *") {
+        setFrequency("hourly");
+      } else if (jobSettings.schedule === "0 6 * * 1") {
+        setFrequency("weekly");
+      } else {
+        setFrequency("daily"); // Default
+      }
+      
+      setMinScore(jobSettings.parameters.minScore.toString());
+      setKeywords(jobSettings.parameters.keywords.join(', '));
+      setLimit(jobSettings.parameters.limit.toString());
+    }
+  }, [jobSettings]);
 
   const handleManualRun = async () => {
     setIsLoading(true);
@@ -23,7 +108,7 @@ export default function ScheduledImportSettings() {
         body: {
           minScore: parseFloat(minScore),
           keywords: keywords.split(',').map(k => k.trim()),
-          limit: 20,
+          limit: parseInt(limit, 10),
           skipDuplicateCheck: false
         }
       });
@@ -46,16 +131,39 @@ export default function ScheduledImportSettings() {
   };
 
   const handleToggleSchedule = async () => {
-    // In a real implementation, you would update a settings table in Supabase
-    // or call an edge function to configure the scheduled job
+    updateSettings.mutate({
+      is_enabled: !isEnabled
+    });
     setIsEnabled(!isEnabled);
-    toast.success(`Scheduled import ${!isEnabled ? 'enabled' : 'disabled'}`);
   };
 
   const handleSaveSettings = () => {
-    // In a real implementation, you would update a settings table in Supabase
-    toast.success("Settings saved");
+    const keywordArray = keywords.split(',').map(k => k.trim()).filter(k => k);
+    
+    updateSettings.mutate({
+      schedule: frequencyToCron[frequency as keyof typeof frequencyToCron],
+      parameters: {
+        minScore: parseFloat(minScore),
+        keywords: keywordArray,
+        limit: parseInt(limit, 10)
+      }
+    });
   };
+
+  if (isLoadingSettings) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>Scheduled News Import</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center p-8">
+            <p className="text-muted-foreground">Loading settings...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full">
@@ -109,6 +217,22 @@ export default function ScheduledImportSettings() {
           </div>
           
           <div className="space-y-2">
+            <Label htmlFor="limit">Maximum Articles to Fetch</Label>
+            <Input
+              id="limit"
+              type="number"
+              min="1"
+              max="50"
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              disabled={!isEnabled}
+            />
+            <p className="text-xs text-muted-foreground">
+              Maximum number of articles to fetch per run (1-50)
+            </p>
+          </div>
+          
+          <div className="space-y-2">
             <Label htmlFor="keywords">Keywords (comma-separated)</Label>
             <Input
               id="keywords"
@@ -133,9 +257,9 @@ export default function ScheduledImportSettings() {
         <Button
           variant="outline"
           onClick={handleSaveSettings}
-          disabled={!isEnabled}
+          disabled={!isEnabled || updateSettings.isPending}
         >
-          Save Settings
+          {updateSettings.isPending ? "Saving..." : "Save Settings"}
         </Button>
       </CardFooter>
     </Card>
