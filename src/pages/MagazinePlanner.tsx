@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Kanban, Search, Lightbulb, PenLine, CalendarIcon, ArrowUpRight } from "lucide-react";
@@ -57,6 +58,16 @@ interface ResearchResult {
   created_at: string;
 }
 
+interface CalendarPlan {
+  month: string;
+  theme: string;
+  topics: {
+    title: string;
+    type: string;
+    keywords: string[];
+  }[];
+}
+
 const MagazinePlanner = () => {
   const [viewMode, setViewMode] = useState<"kanban" | "calendar">("kanban");
   const [selectedMonth, setSelectedMonth] = useState<string>(
@@ -64,7 +75,7 @@ const MagazinePlanner = () => {
   );
   const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>("");
-  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<string | null>("all"); // Changed default from null to "all"
   const [showCreateBrief, setShowCreateBrief] = useState<boolean>(false);
   const [briefTitle, setBriefTitle] = useState<string>("");
   const [briefSummary, setBriefSummary] = useState<string>("");
@@ -80,6 +91,12 @@ const MagazinePlanner = () => {
   const [articleContent, setArticleContent] = useState<string>("");
   const [isGeneratingArticle, setIsGeneratingArticle] = useState<boolean>(false);
   const [articleTitle, setArticleTitle] = useState<string>("");
+
+  // New state variables for calendar planning and theme editing
+  const [calendarPlan, setCalendarPlan] = useState<CalendarPlan[]>([]);
+  const [isCalendarPlanLoading, setIsCalendarPlanLoading] = useState<boolean>(false);
+  const [showEditTheme, setShowEditTheme] = useState<boolean>(false);
+  const [monthTheme, setMonthTheme] = useState<string>("");
 
   // Query for news items
   const { data: newsItems, isLoading: newsLoading, error: newsError, refetch: refetchNews } = useQuery({
@@ -170,8 +187,6 @@ const MagazinePlanner = () => {
     
     try {
       // Create a new editor brief
-      // Fix the issue by converting the object array to string array
-      // or properly handle the JSON serialization based on how the data is stored
       const { error } = await supabase
         .from('editor_briefs')
         .insert({
@@ -182,7 +197,6 @@ const MagazinePlanner = () => {
             null,
           status: 'draft',
           sources: selectedNewsItem ? [selectedNewsItem.source] : [],
-          // Convert the object to stringified JSON to store in string array
           suggested_articles: selectedNewsItem ? 
             [JSON.stringify({id: selectedNewsItem.id, headline: selectedNewsItem.headline})] : 
             []
@@ -217,7 +231,7 @@ const MagazinePlanner = () => {
           prompt_text: aiPrompt,
           model: 'gpt-4o-mini',
           input_data: {
-            cluster: selectedCluster ? 
+            cluster: selectedCluster && selectedCluster !== "all" ? 
               keywordClusters?.find(c => c.id === selectedCluster)?.primary_theme : 
               'General'
           },
@@ -267,12 +281,12 @@ const MagazinePlanner = () => {
     
     try {
       // Get the selected cluster data for more context
-      const selectedClusterData = selectedCluster ? 
+      const selectedClusterData = selectedCluster && selectedCluster !== "all" ? 
         keywordClusters?.find(c => c.id === selectedCluster) : null;
       
       // Prepare research parameters
       const topic = aiPrompt || selectedClusterData?.primary_theme || "mortgage industry trends";
-      const clusters = selectedCluster ? [selectedCluster] : [];
+      const clusters = selectedCluster && selectedCluster !== "all" ? [selectedCluster] : [];
       const keywords = selectedClusterData?.keywords || [];
       
       // Call the magazine-research edge function
@@ -312,7 +326,9 @@ const MagazinePlanner = () => {
     setShowCreateBrief(true);
   };
 
+  // Enhanced plan editorial calendar function to store and display the results
   const planEditorialCalendar = async () => {
+    setIsCalendarPlanLoading(true);
     toast.info("Planning editorial calendar...");
     
     try {
@@ -332,25 +348,37 @@ const MagazinePlanner = () => {
       
       if (error) throw error;
       
-      // Show success message with calendar plan
-      toast.success("Editorial calendar planned successfully");
-      console.log("Calendar plan:", data.calendar_plan);
-      
-      // Here we would typically update the UI with the calendar plan
-      // For now, we'll just log it
+      if (data && data.calendar_plan) {
+        setCalendarPlan(data.calendar_plan);
+        
+        // Set the theme for the currently selected month
+        const currentMonthPlan = data.calendar_plan.find((plan: any) => 
+          plan.month.startsWith(selectedMonth)
+        );
+        
+        if (currentMonthPlan) {
+          setMonthTheme(currentMonthPlan.theme);
+        }
+        
+        toast.success("Editorial calendar planned successfully");
+      } else {
+        throw new Error("No calendar plan returned");
+      }
     } catch (err) {
       console.error('Error planning editorial calendar:', err);
       toast.error("Failed to plan editorial calendar");
+    } finally {
+      setIsCalendarPlanLoading(false);
     }
   };
 
-  // New function to view brief details
+  // Function to view brief details
   const viewBriefDetails = (brief: EditorBrief) => {
     setSelectedBrief(brief);
     setShowBriefDetail(true);
   };
 
-  // New function to open the develop article dialog
+  // Function to open the develop article dialog
   const openDevelopArticle = (brief: EditorBrief) => {
     setSelectedBrief(brief);
     setArticleTitle(brief.theme);
@@ -358,7 +386,7 @@ const MagazinePlanner = () => {
     setShowDevelopArticle(true);
   };
 
-  // New function to generate article content using the generate-article edge function
+  // Function to generate article content using the generate-article edge function
   const generateArticleContent = async () => {
     if (!selectedBrief) {
       toast.error("No brief selected");
@@ -412,7 +440,7 @@ const MagazinePlanner = () => {
     }
   };
 
-  // New function to save the article to the database
+  // Function to save the article to the database
   const saveArticleDraft = async () => {
     if (!selectedBrief || !articleTitle) {
       toast.warning("Title is required");
@@ -458,6 +486,29 @@ const MagazinePlanner = () => {
     }
   };
 
+  // New function to update the theme for the selected month
+  const saveTheme = async () => {
+    try {
+      // In a real implementation, this would save the theme to a database
+      // For now, just update the local state and show a success message
+      
+      // Find and update the theme in the calendar plan
+      const updatedPlan = calendarPlan.map(plan => {
+        if (plan.month.startsWith(selectedMonth)) {
+          return { ...plan, theme: monthTheme };
+        }
+        return plan;
+      });
+      
+      setCalendarPlan(updatedPlan);
+      setShowEditTheme(false);
+      toast.success(`Theme updated for ${new Date(selectedMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })}`);
+    } catch (err) {
+      console.error('Error saving theme:', err);
+      toast.error("Failed to save theme");
+    }
+  };
+
   // Function to determine item workflow stage based on content_variants
   const getItemStage = (item: NewsItem): "planning" | "draft" | "published" => {
     if (item.content_variants?.published) {
@@ -488,6 +539,12 @@ const MagazinePlanner = () => {
     }
     
     return months;
+  };
+
+  // Function to get scheduled content for a month from the calendar plan
+  const getScheduledContent = () => {
+    const monthPlan = calendarPlan.find(plan => plan.month.startsWith(selectedMonth));
+    return monthPlan?.topics || [];
   };
 
   return (
@@ -726,32 +783,87 @@ const MagazinePlanner = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <CardHeader className="p-4">
-                    <Badge className="bg-blue-100 text-blue-800 border-blue-200 mb-2">Feature Article</Badge>
-                    <CardTitle className="text-base">Drop Feature Here</CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <CardHeader className="p-4">
-                    <Badge className="bg-purple-100 text-purple-800 border-purple-200 mb-2">Industry Analysis</Badge>
-                    <CardTitle className="text-base">Drop Analysis Here</CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <CardHeader className="p-4">
-                    <Badge className="bg-amber-100 text-amber-800 border-amber-200 mb-2">Market Trends</Badge>
-                    <CardTitle className="text-base">Drop Trends Here</CardTitle>
-                  </CardHeader>
-                </Card>
-                <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <CardHeader className="p-4">
-                    <Badge className="bg-green-100 text-green-800 border-green-200 mb-2">Opinion Piece</Badge>
-                    <CardTitle className="text-base">Drop Opinion Here</CardTitle>
-                  </CardHeader>
-                </Card>
-              </div>
+              {calendarPlan.length > 0 && calendarPlan.find(plan => plan.month.startsWith(selectedMonth)) ? (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-lg font-medium">
+                        {new Date(selectedMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })} Theme:
+                      </h3>
+                      <p className="text-muted-foreground">{monthTheme || 'No theme set'}</p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowEditTheme(true)}
+                    >
+                      <PenLine className="h-4 w-4 mr-2" />
+                      Edit Theme
+                    </Button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                    {getScheduledContent().map((topic, index) => (
+                      <Card key={index} className={`border-l-4 ${
+                        topic.type === 'Feature Article' ? 'border-l-blue-500' :
+                        topic.type === 'Industry Analysis' ? 'border-l-purple-500' :
+                        topic.type === 'Market Trends' ? 'border-l-amber-500' :
+                        'border-l-green-500'
+                      }`}>
+                        <CardHeader className="p-4">
+                          <Badge className={`mb-2 ${
+                            topic.type === 'Feature Article' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                            topic.type === 'Industry Analysis' ? 'bg-purple-100 text-purple-800 border-purple-200' :
+                            topic.type === 'Market Trends' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                            'bg-green-100 text-green-800 border-green-200'
+                          }`}>
+                            {topic.type}
+                          </Badge>
+                          <CardTitle className="text-base">{topic.title}</CardTitle>
+                        </CardHeader>
+                        {topic.keywords && topic.keywords.length > 0 && (
+                          <CardContent className="pt-0 px-4 pb-4">
+                            <div className="flex flex-wrap gap-1">
+                              {topic.keywords.slice(0, 3).map((keyword, i) => (
+                                <Badge key={i} variant="outline" className="text-xs">
+                                  {keyword}
+                                </Badge>
+                              ))}
+                            </div>
+                          </CardContent>
+                        )}
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <CardHeader className="p-4">
+                      <Badge className="bg-blue-100 text-blue-800 border-blue-200 mb-2">Feature Article</Badge>
+                      <CardTitle className="text-base">Drop Feature Here</CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <CardHeader className="p-4">
+                      <Badge className="bg-purple-100 text-purple-800 border-purple-200 mb-2">Industry Analysis</Badge>
+                      <CardTitle className="text-base">Drop Analysis Here</CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <CardHeader className="p-4">
+                      <Badge className="bg-amber-100 text-amber-800 border-amber-200 mb-2">Market Trends</Badge>
+                      <CardTitle className="text-base">Drop Trends Here</CardTitle>
+                    </CardHeader>
+                  </Card>
+                  <Card className="border-2 border-dashed border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <CardHeader className="p-4">
+                      <Badge className="bg-green-100 text-green-800 border-green-200 mb-2">Opinion Piece</Badge>
+                      <CardTitle className="text-base">Drop Opinion Here</CardTitle>
+                    </CardHeader>
+                  </Card>
+                </div>
+              )}
               
               <div className="mt-6">
                 <h3 className="text-lg font-medium mb-2">Theme Coverage Analysis</h3>
@@ -793,9 +905,16 @@ const MagazinePlanner = () => {
                         size="sm" 
                         onClick={planEditorialCalendar}
                         className="w-full"
+                        disabled={isCalendarPlanLoading}
                       >
-                        <CalendarIcon className="h-4 w-4 mr-2" />
-                        Plan Editorial Calendar
+                        {isCalendarPlanLoading ? (
+                          <>Planning calendar...</>
+                        ) : (
+                          <>
+                            <CalendarIcon className="h-4 w-4 mr-2" />
+                            Plan Editorial Calendar
+                          </>
+                        )}
                       </Button>
                     </CardContent>
                   </Card>
@@ -807,7 +926,13 @@ const MagazinePlanner = () => {
                 <p className="text-sm text-muted-foreground">
                   Planning for {selectedMonth ? new Date(selectedMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }) : ''}
                 </p>
-                <Button variant="outline" size="sm">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setShowEditTheme(true);
+                  }}
+                >
                   <PenLine className="h-4 w-4 mr-2" />
                   Edit Theme
                 </Button>
@@ -832,12 +957,12 @@ const MagazinePlanner = () => {
               <label htmlFor="keyword-cluster" className="text-sm font-medium mb-2 block">
                 Select Keyword Cluster for Context (Optional)
               </label>
-              <Select value={selectedCluster || ""} onValueChange={setSelectedCluster}>
+              <Select value={selectedCluster || "all"} onValueChange={setSelectedCluster}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select a keyword cluster" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Clusters</SelectItem>
+                  <SelectItem value="all">All Clusters</SelectItem> {/* Changed from "" to "all" */}
                   {keywordClusters?.map((cluster) => (
                     <SelectItem key={cluster.id} value={cluster.id}>
                       {cluster.primary_theme}: {cluster.sub_theme}
@@ -870,9 +995,9 @@ const MagazinePlanner = () => {
                 <Button 
                   variant="outline" 
                   onClick={handleResearch}
-                  disabled={!aiPrompt && !selectedCluster}
+                  disabled={(!aiPrompt && !selectedCluster) || (selectedCluster === "all" && !aiPrompt) || isResearching}
                 >
-                  Research Topic
+                  {isResearching ? "Researching..." : "Research Topic"}
                 </Button>
                 <Button 
                   variant="default" 
@@ -1152,6 +1277,51 @@ const MagazinePlanner = () => {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Theme Dialog */}
+      <Dialog open={showEditTheme} onOpenChange={setShowEditTheme}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Month Theme</DialogTitle>
+            <DialogDescription>
+              Update the theme for {selectedMonth ? new Date(selectedMonth + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }) : ''}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <label htmlFor="month-theme" className="text-sm font-medium mb-2 block">
+                Theme
+              </label>
+              <Input 
+                id="month-theme" 
+                value={monthTheme}
+                onChange={(e) => setMonthTheme(e.target.value)}
+                placeholder="Enter a theme for this month"
+              />
+            </div>
+            
+            <div className="bg-muted p-3 rounded-md">
+              <p className="text-sm text-muted-foreground">
+                The month theme helps organize content and provides editorial direction for the issue.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowEditTheme(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={saveTheme}
+              disabled={!monthTheme}
+            >
+              Save Theme
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </DashboardLayout>
