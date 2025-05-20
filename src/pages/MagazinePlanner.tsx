@@ -45,6 +45,8 @@ interface EditorBrief {
   outline: string | null;
   status: string | null;
   created_at: string | null;
+  sources?: string[] | null;
+  suggested_articles?: string[] | null;
 }
 
 interface ResearchResult {
@@ -70,6 +72,14 @@ const MagazinePlanner = () => {
   const [isResearching, setIsResearching] = useState<boolean>(false);
   const [researchResult, setResearchResult] = useState<ResearchResult | null>(null);
   const [showResearchResult, setShowResearchResult] = useState<boolean>(false);
+  
+  // New state variables for brief viewing and development
+  const [selectedBrief, setSelectedBrief] = useState<EditorBrief | null>(null);
+  const [showBriefDetail, setShowBriefDetail] = useState<boolean>(false);
+  const [showDevelopArticle, setShowDevelopArticle] = useState<boolean>(false);
+  const [articleContent, setArticleContent] = useState<string>("");
+  const [isGeneratingArticle, setIsGeneratingArticle] = useState<boolean>(false);
+  const [articleTitle, setArticleTitle] = useState<string>("");
 
   // Query for news items
   const { data: newsItems, isLoading: newsLoading, error: newsError, refetch: refetchNews } = useQuery({
@@ -334,6 +344,120 @@ const MagazinePlanner = () => {
     }
   };
 
+  // New function to view brief details
+  const viewBriefDetails = (brief: EditorBrief) => {
+    setSelectedBrief(brief);
+    setShowBriefDetail(true);
+  };
+
+  // New function to open the develop article dialog
+  const openDevelopArticle = (brief: EditorBrief) => {
+    setSelectedBrief(brief);
+    setArticleTitle(brief.theme);
+    setArticleContent(""); // Reset content
+    setShowDevelopArticle(true);
+  };
+
+  // New function to generate article content using the generate-article edge function
+  const generateArticleContent = async () => {
+    if (!selectedBrief) {
+      toast.error("No brief selected");
+      return;
+    }
+
+    setIsGeneratingArticle(true);
+    toast.info("Generating article content...");
+
+    try {
+      // Find the first suggested article ID if available
+      let newsItemId = null;
+      if (selectedBrief.suggested_articles && selectedBrief.suggested_articles.length > 0) {
+        try {
+          // Try to parse the first suggested article if it's a JSON string
+          const parsedArticle = JSON.parse(selectedBrief.suggested_articles[0]);
+          newsItemId = parsedArticle.id;
+        } catch (e) {
+          // If parsing fails, use the string directly if it looks like a UUID
+          if (typeof selectedBrief.suggested_articles[0] === 'string' && 
+              selectedBrief.suggested_articles[0].match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+            newsItemId = selectedBrief.suggested_articles[0];
+          }
+        }
+      }
+
+      // Call the generate-article edge function
+      const { data, error } = await supabase.functions.invoke('generate-article', {
+        body: {
+          newsItemId: newsItemId,
+          target: 'magazine',
+          briefId: selectedBrief.id,
+          theme: selectedBrief.theme,
+          outline: selectedBrief.outline
+        }
+      });
+
+      if (error) throw error;
+
+      if (data && data.generatedContent) {
+        setArticleContent(data.generatedContent);
+        toast.success("Article content generated");
+      } else {
+        throw new Error("No content was generated");
+      }
+    } catch (err) {
+      console.error('Error generating article content:', err);
+      toast.error("Failed to generate article content. Check if the API key is configured.");
+    } finally {
+      setIsGeneratingArticle(false);
+    }
+  };
+
+  // New function to save the article to the database
+  const saveArticleDraft = async () => {
+    if (!selectedBrief || !articleTitle) {
+      toast.warning("Title is required");
+      return;
+    }
+
+    try {
+      // Create a new article in the articles table
+      const { data, error } = await supabase
+        .from('articles')
+        .insert({
+          title: articleTitle,
+          content_variants: {
+            magazine_content: articleContent,
+            full_content: articleContent
+          },
+          status: 'drafted',
+          related_trends: [],
+          destinations: ['magazine']
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Update the brief status to indicate an article has been created
+      const { error: briefError } = await supabase
+        .from('editor_briefs')
+        .update({ status: 'in_development' })
+        .eq('id', selectedBrief.id);
+
+      if (briefError) throw briefError;
+
+      toast.success("Article draft saved successfully");
+      setShowDevelopArticle(false);
+      
+      // Refresh the data
+      refetchBriefs();
+      refetchNews();
+    } catch (err) {
+      console.error('Error saving article draft:', err);
+      toast.error("Failed to save article draft");
+    }
+  };
+
   // Function to determine item workflow stage based on content_variants
   const getItemStage = (item: NewsItem): "planning" | "draft" | "published" => {
     if (item.content_variants?.published) {
@@ -464,10 +588,18 @@ const MagazinePlanner = () => {
                         </p>
                       </div>
                       <div className="mt-4 flex justify-end space-x-2">
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => viewBriefDetails(brief)}
+                        >
                           View Brief
                         </Button>
-                        <Button variant="default" size="sm">
+                        <Button 
+                          variant="default" 
+                          size="sm"
+                          onClick={() => openDevelopArticle(brief)}
+                        >
                           Develop Article
                         </Button>
                       </div>
@@ -879,6 +1011,147 @@ const MagazinePlanner = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      
+      {/* View Brief Dialog */}
+      <Dialog open={showBriefDetail} onOpenChange={setShowBriefDetail}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+          {selectedBrief && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedBrief.theme}</DialogTitle>
+                <DialogDescription>
+                  Editorial brief created on {new Date(selectedBrief.created_at || '').toLocaleDateString()}
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6 py-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Brief Summary</h3>
+                  <div className="rounded-md bg-muted p-4 text-sm">
+                    {selectedBrief.summary || "No summary available"}
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Outline</h3>
+                  <div className="rounded-md bg-muted p-4 whitespace-pre-wrap text-sm">
+                    {selectedBrief.outline || "No outline available"}
+                  </div>
+                </div>
+                
+                {selectedBrief.sources && selectedBrief.sources.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Sources</h3>
+                    <ul className="list-disc pl-5">
+                      {selectedBrief.sources.map((source, index) => (
+                        <li key={index} className="text-sm">{source}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowBriefDetail(false)}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    variant="default"
+                    onClick={() => {
+                      setShowBriefDetail(false);
+                      openDevelopArticle(selectedBrief);
+                    }}
+                  >
+                    Develop Article
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+      
+      {/* Develop Article Dialog */}
+      <Dialog open={showDevelopArticle} onOpenChange={setShowDevelopArticle}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Develop Article</DialogTitle>
+            <DialogDescription>
+              Create or refine magazine content based on the editorial brief
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <label htmlFor="article-title" className="block text-sm font-medium mb-1">Title</label>
+              <Input 
+                id="article-title" 
+                value={articleTitle} 
+                onChange={(e) => setArticleTitle(e.target.value)}
+                placeholder="Article title"
+              />
+            </div>
+            
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="article-content" className="block text-sm font-medium">Content</label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateArticleContent}
+                  disabled={isGeneratingArticle}
+                >
+                  {isGeneratingArticle ? "Generating..." : "Generate with AI"}
+                </Button>
+              </div>
+              <Textarea 
+                id="article-content" 
+                value={articleContent} 
+                onChange={(e) => setArticleContent(e.target.value)}
+                placeholder="Write or generate article content"
+                className="min-h-[300px] w-full resize-y"
+              />
+            </div>
+            
+            {selectedBrief && (
+              <div className="rounded-md bg-muted/30 p-4 border border-border">
+                <h4 className="text-sm font-medium mb-2">Brief Reference</h4>
+                <p className="text-sm line-clamp-2">{selectedBrief.summary}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => {
+                    setShowDevelopArticle(false);
+                    viewBriefDetails(selectedBrief);
+                  }}
+                >
+                  View Complete Brief
+                </Button>
+              </div>
+            )}
+            
+            <Separator />
+            
+            <div className="flex justify-between">
+              <Button variant="ghost" onClick={() => setShowDevelopArticle(false)}>
+                Cancel
+              </Button>
+              <div className="space-x-2">
+                <Button
+                  variant="default"
+                  onClick={saveArticleDraft}
+                  disabled={!articleTitle || !articleContent}
+                >
+                  Save Draft
+                </Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </DashboardLayout>

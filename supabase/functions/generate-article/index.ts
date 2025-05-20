@@ -1,34 +1,44 @@
 
+// Follow this setup guide to integrate the Deno runtime into your application:
+// https://deno.land/manual/examples/supabase
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-interface NewsItem {
-  id: string;
-  headline: string;
-  summary: string;
-  source: string;
-  url: string;
-  matched_clusters: string[];
-  is_competitor_covered: boolean;
+interface RequestBody {
+  newsItemId?: string;
+  target: string;
+  briefId?: string;
+  theme?: string;
+  outline?: string;
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
-
+  
   try {
-    // Create a Supabase client with the Admin key
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { newsItemId, target, briefId, theme, outline } = await req.json() as RequestBody;
+    
+    if (!target) {
+      return new Response(
+        JSON.stringify({ error: "Target is required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    
+    // Connect to Supabase
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
 
     // Get OpenAI API key from Supabase secrets
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
@@ -40,42 +50,50 @@ serve(async (req) => {
       );
     }
 
-    // Parse request body
-    const { newsItemId, target } = await req.json();
+    let newsItem = null;
+    let briefData = null;
     
-    if (!newsItemId) {
-      return new Response(
-        JSON.stringify({ error: 'News item ID is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // If newsItemId is provided, fetch the news item
+    if (newsItemId) {
+      const { data: fetchedNewsItem, error: fetchError } = await supabaseClient
+        .from('news')
+        .select('*')
+        .eq('id', newsItemId)
+        .single();
+
+      if (fetchError) {
+        console.error("Failed to fetch news item:", fetchError);
+      } else {
+        newsItem = fetchedNewsItem;
+      }
     }
 
-    // Fetch the news item from the database
-    const { data: newsItem, error: fetchError } = await supabase
-      .from('news')
-      .select('*')
-      .eq('id', newsItemId)
-      .single();
+    // If briefId is provided, fetch the brief
+    if (briefId) {
+      const { data: fetchedBrief, error: briefError } = await supabaseClient
+        .from('editor_briefs')
+        .select('*')
+        .eq('id', briefId)
+        .single();
 
-    if (fetchError || !newsItem) {
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch news item', details: fetchError }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (briefError) {
+        console.error("Failed to fetch brief:", briefError);
+      } else {
+        briefData = fetchedBrief;
+      }
     }
 
-    // Generate content with OpenAI based on the news item
+    // Generate content with OpenAI based on the news item and/or brief
     let prompt = '';
-    let generatedContent = '';
     
     if (target === 'mpdaily') {
       prompt = `Create a concise email newsletter item based on the following news:
         
-Headline: ${newsItem.headline}
+Headline: ${newsItem ? newsItem.headline : theme || "No headline provided"}
 
-Summary: ${newsItem.summary}
+Summary: ${newsItem ? newsItem.summary : outline || "No summary provided"}
 
-Source: ${newsItem.source}
+Source: ${newsItem ? newsItem.source : "Not specified"}
 
 Format your response with:
 1. An engaging headline (maximum 10 words)
@@ -83,20 +101,25 @@ Format your response with:
 3. A bulleted list of 2-3 key points
 4. A short call-to-action`;
     } else if (target === 'magazine') {
-      prompt = `Create an outline for a magazine article based on the following news:
+      prompt = `Create a complete magazine article draft based on the following:
         
-Headline: ${newsItem.headline}
+${briefData ? `THEME: ${briefData.theme}` : theme ? `THEME: ${theme}` : ""}
 
-Summary: ${newsItem.summary}
+${briefData && briefData.summary ? `SUMMARY: ${briefData.summary}` : ""}
 
-Source: ${newsItem.source}
+${briefData && briefData.outline ? `OUTLINE: ${briefData.outline}` : outline ? `OUTLINE: ${outline}` : ""}
+
+${newsItem ? `REFERENCE NEWS: ${newsItem.headline}\n${newsItem.summary || ""}` : ""}
 
 Format your response with:
 1. A catchy headline
-2. An executive summary (2 paragraphs)
-3. 4-5 section headers with brief descriptions
-4. Potential expert sources to interview
-5. Data points that would strengthen the article`;
+2. An engaging introduction (2-3 paragraphs)
+3. 3-4 fully developed sections with subheadings
+4. Expert quotes or data points (you can fabricate these for the draft)
+5. A conclusion with reader takeaways
+6. Make the article around 800-1000 words in length.
+
+Write this as a complete, well-structured article ready for minimal editing.`;
     } else {
       return new Response(
         JSON.stringify({ error: 'Invalid target specified' }),
@@ -137,54 +160,29 @@ Format your response with:
     }
 
     const openaiData = await openaiResponse.json();
-    generatedContent = openaiData.choices[0].message.content;
-
-    // Determine which table to insert into based on target
-    let insertData;
-    let result;
+    const generatedContent = openaiData.choices[0].message.content;
     
-    if (target === 'mpdaily') {
-      insertData = {
-        title: newsItem.headline,
-        content: generatedContent,
-        status: 'drafted',
-        fred_data: null,
-        related_trends: newsItem.matched_clusters
-      };
-      
-      const { data, error } = await supabase
-        .from('articles')
-        .insert(insertData)
-        .select()
-        .single();
-        
-      if (error) throw error;
-      result = data;
-    } else if (target === 'magazine') {
-      insertData = {
-        theme: newsItem.headline,
-        outline: generatedContent,
-        summary: newsItem.summary,
-        suggested_articles: [newsItem.id],
-        status: 'draft'
-      };
-      
-      const { data, error } = await supabase
+    // If this is for the magazine and we have a briefId, update the brief status
+    if (target === 'magazine' && briefId) {
+      const { error: updateError } = await supabaseClient
         .from('editor_briefs')
-        .insert(insertData)
-        .select()
-        .single();
+        .update({
+          status: 'content_generated',
+        })
+        .eq('id', briefId);
         
-      if (error) throw error;
-      result = data;
+      if (updateError) {
+        console.error('Error updating brief status:', updateError);
+      }
     }
 
-    // Return the generated content and new record
+    // Return the generated content
     return new Response(
       JSON.stringify({
         success: true,
         generatedContent,
-        result
+        sourceType: newsItem ? 'news' : briefData ? 'brief' : 'custom',
+        sourceId: newsItem ? newsItem.id : briefData ? briefData.id : null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -196,3 +194,68 @@ Format your response with:
     );
   }
 });
+
+// Helper to create a Supabase client
+function createClient(supabaseUrl: string, supabaseKey: string) {
+  return {
+    from: (table: string) => ({
+      select: (columns: string = "*") => ({
+        single: () => {
+          return fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}`, {
+            headers: {
+              Authorization: `Bearer ${supabaseKey}`,
+              "Content-Type": "application/json",
+              apikey: supabaseKey,
+            },
+          }).then(async (res) => {
+            if (!res.ok) {
+              const error = await res.json();
+              return { data: null, error };
+            }
+            const data = await res.json();
+            return { data: data[0] || null, error: null };
+          });
+        },
+        eq: (column: string, value: any) => ({
+          single: async () => {
+            const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${column}=eq.${value}&select=${columns}`, {
+              headers: {
+                Authorization: `Bearer ${supabaseKey}`,
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+              },
+            });
+            if (!res.ok) {
+              const error = await res.json();
+              return { data: null, error };
+            }
+            const data = await res.json();
+            return { data: data[0] || null, error: null };
+          },
+        }),
+      }),
+      update: (data: any) => ({
+        eq: (column: string, value: any) => ({
+          single: async () => {
+            const res = await fetch(`${supabaseUrl}/rest/v1/${table}?${column}=eq.${value}`, {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${supabaseKey}`,
+                "Content-Type": "application/json",
+                apikey: supabaseKey,
+                Prefer: "return=representation",
+              },
+              body: JSON.stringify(data),
+            });
+            if (!res.ok) {
+              const error = await res.json();
+              return { data: null, error };
+            }
+            const resData = await res.json();
+            return { data: resData[0] || null, error: null };
+          }
+        }),
+      }),
+    }),
+  };
+}
