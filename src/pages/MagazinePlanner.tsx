@@ -210,7 +210,7 @@ const MagazinePlanner = () => {
                       <p className="text-xs text-muted-foreground">
                         Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
                       </p>
-                      <div className="mt-4 flex justify-end">
+                      <div className="mt-4 flex justify-end space-x-2">
                         <Button variant="outline" size="sm">View</Button>
                       </div>
                     </CardContent>
