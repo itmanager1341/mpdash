@@ -1,14 +1,13 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Trash2, Filter, Plus, Newspaper } from "lucide-react";
+import { Filter, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import ArticleApproval from "@/components/news/ArticleApproval";
 import { 
   DropdownMenu, 
   DropdownMenuTrigger, 
@@ -19,7 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AddNewsDialog from "@/components/news/AddNewsDialog";
+import { NewsCard } from "@/components/news/NewsCard";
 import { NewsItem } from "@/types/news";
+import { Badge } from "@/components/ui/badge";
 
 interface FilterOptions {
   showProcessed: boolean;
@@ -127,28 +128,6 @@ const Index = () => {
     });
   };
 
-  // Function to get appropriate badge variant based on status
-  const getStatusBadge = (status: string, destinations: string[] | null) => {
-    if (status === 'pending') return { variant: "outline" as const, label: "New" };
-    if (status === 'approved') {
-      // Check specific destinations
-      const destinationLabels = (destinations || [])
-        .filter(d => d !== 'website') // Website is implied for all approved articles
-        .map(d => d.charAt(0).toUpperCase() + d.slice(1));
-      
-      const label = destinationLabels.length > 0 
-        ? `Approved: ${destinationLabels.join(', ')}` 
-        : "Approved";
-      
-      return { variant: "default" as const, label };
-    }
-    if (status === 'dismissed') {
-      return { variant: "secondary" as const, label: "Dismissed" };
-    }
-    
-    return { variant: "outline" as const, label: status };
-  };
-
   const handleAddNewsSuccess = () => {
     setIsAddNewsDialogOpen(false);
     refetch();
@@ -254,83 +233,15 @@ const Index = () => {
       )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {newsItems?.map((item) => {
-          const statusBadge = getStatusBadge(item.status, item.destinations);
-          
-          return (
-            <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow flex flex-col">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start mb-2">
-                  <Badge variant={item.perplexity_score > 7 ? "default" : "outline"}>
-                    Score: {item.perplexity_score?.toFixed(1) || "N/A"}
-                  </Badge>
-                  <div className="flex gap-1">
-                    {item.status && (
-                      <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
-                    )}
-                    {item.is_competitor_covered && (
-                      <Badge variant="secondary">Competitor Covered</Badge>
-                    )}
-                  </div>
-                </div>
-                <CardTitle className="line-clamp-2 text-lg">{item.headline}</CardTitle>
-                <CardDescription className="flex items-center gap-2 text-xs">
-                  <span>Source: {item.source}</span>
-                  <span>•</span>
-                  <span>{new Date(item.timestamp).toLocaleDateString()}</span>
-                </CardDescription>
-              </CardHeader>
-              
-              <CardContent className="flex-1">
-                <p className="text-sm line-clamp-3">{item.summary}</p>
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {item.matched_clusters?.map((cluster, index) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {cluster}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-              
-              <CardFooter className="flex flex-col space-y-2 pt-2">
-                <Button 
-                  variant="link" 
-                  className="w-full justify-start p-0 h-auto" 
-                  onClick={() => openDetailView(item)}
-                >
-                  View full details
-                </Button>
-                <div className="flex gap-2 w-full">
-                  {item.status === "pending" && (
-                    <ArticleApproval 
-                      newsItem={item} 
-                      onApproved={refetch}
-                    />
-                  )}
-                  {item.status !== "pending" ? (
-                    <Button 
-                      variant="secondary" 
-                      size="icon"
-                      className="w-10 h-10 flex-shrink-0"
-                      disabled={true}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      className="w-10 h-10 flex-shrink-0"
-                      onClick={() => handleDismiss(item)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </CardFooter>
-            </Card>
-          );
-        })}
+        {newsItems?.map((item) => (
+          <NewsCard 
+            key={item.id}
+            newsItem={item}
+            onDismiss={handleDismiss}
+            onDetailsClick={openDetailView}
+            onStatusChange={refetch}
+          />
+        ))}
       </div>
 
       {/* Detail view side sheet */}
@@ -370,10 +281,13 @@ const Index = () => {
                     <div className="mt-2">
                       {selectedItem.status && (
                         <Badge 
-                          variant={getStatusBadge(selectedItem.status, selectedItem.destinations).variant} 
+                          variant={selectedItem.status === "approved" ? "success" : 
+                                  selectedItem.status === "pending" ? "warning" : 
+                                  selectedItem.status === "dismissed" ? "outline" : 
+                                  selectedItem.status === "drafted_mpdaily" ? "purple" : "outline"} 
                           className="text-sm"
                         >
-                          {getStatusBadge(selectedItem.status, selectedItem.destinations).label}
+                          {selectedItem.status.charAt(0).toUpperCase() + selectedItem.status.slice(1)}
                         </Badge>
                       )}
                     </div>
@@ -408,14 +322,24 @@ const Index = () => {
               <div className="mt-6 space-y-2">
                 {selectedItem.status === "pending" && (
                   <>
-                    <ArticleApproval 
-                      newsItem={selectedItem} 
-                      onApproved={() => {
-                        refetch();
-                        setIsSheetOpen(false);
-                      }}
-                      mode="multiselect"
-                    />
+                    <Card variant="outline" className="p-4">
+                      <CardContent className="p-0">
+                        <h4 className="font-medium mb-2">Change Status</h4>
+                        <div className="flex flex-col gap-2">
+                          <Button 
+                            variant="default" 
+                            onClick={() => {
+                              handleDismiss(selectedItem).then(() => {
+                                setIsSheetOpen(false);
+                              });
+                            }}
+                            className="w-full justify-center"
+                          >
+                            Dismiss Article
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </>
                 )}
               </div>

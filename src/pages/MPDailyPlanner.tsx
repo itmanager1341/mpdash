@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, Edit, List } from "lucide-react";
@@ -5,10 +6,10 @@ import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import DraftEditor from "@/components/editor/DraftEditor";
+import { NewsCard } from "@/components/news/NewsCard";
 import { NewsItem } from "@/types/news";
 
 const MPDailyPlanner = () => {
@@ -67,16 +68,6 @@ const MPDailyPlanner = () => {
     setIsDraftEditorOpen(true);
   };
 
-  const getDraftStatus = (item: NewsItem) => {
-    if (item.content_variants?.published) {
-      return { color: 'bg-green-100 text-green-800 border-green-200', label: 'Published' };
-    }
-    if (item.content_variants?.title || item.content_variants?.summary) {
-      return { color: 'bg-purple-100 text-purple-800 border-purple-200', label: 'Draft Ready' };
-    }
-    return { color: 'bg-amber-100 text-amber-800 border-amber-200', label: 'Approved' };
-  };
-
   return (
     <DashboardLayout>
       <div className="mb-8">
@@ -117,25 +108,25 @@ const MPDailyPlanner = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {newsItems && newsItems.length > 0 ? (
                   newsItems.map((item) => {
-                    const draftStatus = getDraftStatus(item);
+                    const hasPublished = item.content_variants?.published;
+                    const hasDraft = item.content_variants?.title || item.content_variants?.summary;
                     
                     return (
-                      <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                        <CardHeader className="pb-2">
-                          <div className="flex justify-between items-start">
-                            <Badge className={draftStatus.color}>
-                              {draftStatus.label}
-                            </Badge>
-                          </div>
-                          <CardTitle className="text-lg">{item.content_variants?.title || item.headline}</CardTitle>
+                      <Card key={item.id} variant="elevated" className="overflow-hidden">
+                        <CardHeader className="pb-0">
+                          <CardTitle className="text-lg mb-2">
+                            {item.content_variants?.title || item.headline}
+                          </CardTitle>
                         </CardHeader>
-                        <CardContent>
+                        
+                        <CardContent className="pt-4">
                           <p className="text-sm text-muted-foreground mb-4">
                             {item.content_variants?.summary || item.summary?.substring(0, 100) + '...' || 'No summary available'}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
                           </p>
+                          
                           <div className="mt-4 flex justify-end space-x-2">
                             <Button 
                               variant="outline" 
@@ -145,7 +136,7 @@ const MPDailyPlanner = () => {
                               View Source
                             </Button>
                             
-                            {!item.content_variants?.title && (
+                            {!hasDraft && (
                               <Button 
                                 variant="default" 
                                 size="sm"
@@ -156,7 +147,7 @@ const MPDailyPlanner = () => {
                               </Button>
                             )}
                             
-                            {(item.content_variants?.title && !item.content_variants?.published) && (
+                            {(hasDraft && !hasPublished) && (
                               <>
                                 <Button 
                                   variant="outline" 
@@ -175,10 +166,6 @@ const MPDailyPlanner = () => {
                                   Publish
                                 </Button>
                               </>
-                            )}
-                            
-                            {item.content_variants?.published && (
-                              <Badge variant="outline">Published</Badge>
                             )}
                           </div>
                         </CardContent>
