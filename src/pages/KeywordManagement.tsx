@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import KeywordClustersTab from "@/components/keywords/KeywordClustersTab";
 import KeywordTrackingTab from "@/components/keywords/KeywordTrackingTab";
 import ClusterMaintenanceTab from "@/components/keywords/ClusterMaintenanceTab";
+import PlanningTab from "@/components/keywords/PlanningTab";
 
 const KeywordManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -72,10 +73,11 @@ const KeywordManagement = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="clusters">Keyword Clusters</TabsTrigger>
           <TabsTrigger value="tracking">Tracking & Analytics</TabsTrigger>
           <TabsTrigger value="maintenance">Cluster Maintenance</TabsTrigger>
+          <TabsTrigger value="planning">Planning</TabsTrigger>
         </TabsList>
 
         <TabsContent value="clusters" className="pt-4">
@@ -88,6 +90,10 @@ const KeywordManagement = () => {
 
         <TabsContent value="maintenance" className="pt-4">
           <ClusterMaintenanceTab searchTerm={searchTerm} />
+        </TabsContent>
+        
+        <TabsContent value="planning" className="pt-4">
+          <PlanningTab searchTerm={searchTerm} />
         </TabsContent>
       </Tabs>
     </DashboardLayout>
