@@ -8,6 +8,8 @@ import PromptsList from "@/components/llm/PromptsList";
 import PromptForm from "@/components/llm/PromptForm";
 import { fetchPrompts } from "@/utils/llmPromptsUtils";
 import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 
 export default function PromptsTab() {
   const [isAddingPrompt, setIsAddingPrompt] = useState(false);
@@ -38,6 +40,7 @@ export default function PromptsTab() {
   const handleSuccess = () => {
     refetch();
     handleFormClose();
+    toast.success(editingPrompt ? "Prompt updated successfully" : "Prompt created successfully");
   };
   
   const filteredPrompts = prompts?.filter(prompt => 
@@ -70,23 +73,34 @@ export default function PromptsTab() {
       />
       
       {isAddingPrompt && (
-        useVisualBuilder ? (
-          <VisualPromptBuilder
-            initialPrompt={editingPrompt}
-            onSave={(promptData) => {
-              // Save the prompt data via API or supabase
-              handleSuccess();
-            }}
-            onCancel={handleFormClose}
-          />
-        ) : (
-          <PromptForm
-            prompt={editingPrompt}
-            open={isAddingPrompt}
-            onOpenChange={setIsAddingPrompt}
-            onSuccess={handleSuccess}
-          />
-        )
+        <>
+          <div className="mb-4 mt-6 flex justify-center">
+            <Tabs value={useVisualBuilder ? "visual" : "advanced"} onValueChange={(v) => setUseVisualBuilder(v === "visual")}>
+              <TabsList>
+                <TabsTrigger value="visual">Visual Builder</TabsTrigger>
+                <TabsTrigger value="advanced">Advanced Editor</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          
+          {useVisualBuilder ? (
+            <VisualPromptBuilder
+              initialPrompt={editingPrompt}
+              onSave={(promptData) => {
+                // Save the prompt data via API or supabase
+                handleSuccess();
+              }}
+              onCancel={handleFormClose}
+            />
+          ) : (
+            <PromptForm
+              prompt={editingPrompt}
+              open={isAddingPrompt}
+              onOpenChange={setIsAddingPrompt}
+              onSuccess={handleSuccess}
+            />
+          )}
+        </>
       )}
     </div>
   );

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import VisualPromptBuilder from "./VisualPromptBuilder";
 import NewsFetchPromptForm from "./NewsFetchPromptForm";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { filterNewsSearchPrompts, extractPromptMetadata } from "@/utils/llmPromptsUtils";
 
 export default function NewsFetchPrompts() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -28,22 +29,7 @@ export default function NewsFetchPrompts() {
         .order('function_name');
         
       if (error) throw error;
-      
-      // Filter to get only news search prompts by checking metadata if possible
-      return (data || []).filter(prompt => {
-        // Check if prompt has news search metadata
-        const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
-        if (metadataMatch) {
-          try {
-            const metadata = JSON.parse(metadataMatch[1]);
-            return metadata.search_settings?.is_news_search === true;
-          } catch (e) {
-            return false;
-          }
-        }
-        // Also include prompts explicitly marked with news_search in name
-        return prompt.function_name?.includes('news_search');
-      });
+      return filterNewsSearchPrompts(data || []);
     }
   });
   
@@ -81,22 +67,19 @@ export default function NewsFetchPrompts() {
     setShowAddForm(true);
   };
 
-  const extractMetadata = (prompt: LlmPrompt) => {
-    const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
-    if (metadataMatch) {
-      try {
-        return JSON.parse(metadataMatch[1]);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  };
-
   return (
     <div className="space-y-6">
       {showAddForm ? (
         <>
+          <div className="mb-4 flex justify-center">
+            <Tabs value={useVisualBuilder ? "visual" : "advanced"} onValueChange={(v) => setUseVisualBuilder(v === "visual")}>
+              <TabsList>
+                <TabsTrigger value="visual">Visual Builder</TabsTrigger>
+                <TabsTrigger value="advanced">Advanced Editor</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          
           {useVisualBuilder ? (
             <VisualPromptBuilder
               initialPrompt={selectedPrompt}
@@ -110,15 +93,6 @@ export default function NewsFetchPrompts() {
               onCancel={() => { setShowAddForm(false); setSelectedPrompt(null); }}
             />
           )}
-          
-          <div className="flex justify-center">
-            <Button 
-              variant="outline" 
-              onClick={() => setUseVisualBuilder(!useVisualBuilder)}
-            >
-              Switch to {useVisualBuilder ? "Advanced Editor" : "Visual Builder"}
-            </Button>
-          </div>
         </>
       ) : (
         <>
@@ -173,7 +147,7 @@ export default function NewsFetchPrompts() {
                 </CardContent>
               </Card>
             ) : filteredPrompts.map((prompt) => {
-              const metadata = extractMetadata(prompt);
+              const metadata = extractPromptMetadata(prompt);
               const settings = metadata?.search_settings || {};
               
               return (
@@ -184,6 +158,7 @@ export default function NewsFetchPrompts() {
                     </CardTitle>
                     <CardDescription>
                       Using {prompt.model.includes('llama') ? 'Llama' : prompt.model}
+                      {prompt.model.includes('small') ? ' (Faster)' : ' (More powerful)'}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

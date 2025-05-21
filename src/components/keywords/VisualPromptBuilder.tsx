@@ -52,6 +52,7 @@ export default function VisualPromptBuilder({
   
   const [previewKeyword, setPreviewKeyword] = useState("mortgage refinancing");
   const [showPreview, setShowPreview] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Fetch keyword clusters
   const { data: clusters, isLoading: clustersLoading } = useQuery({
@@ -151,37 +152,54 @@ export default function VisualPromptBuilder({
   
   // Handle saving the prompt
   const handleSave = () => {
-    // Extract special fields for metadata
-    const metadata = {
-      search_settings: {
-        domain_filter: domainFilter,
-        recency_filter: searchRecency,
-        temperature,
-        max_tokens: maxTokens,
-        is_news_search: true,
-        selected_themes: {
-          primary: selectedPrimaryThemes,
-          sub: selectedSubThemes,
-          professions: selectedProfessions
+    if (!promptName || promptName.trim() === '') {
+      toast.error("Please enter a valid prompt name");
+      return;
+    }
+
+    setIsSaving(true);
+    
+    try {
+      // Extract special fields for metadata
+      const metadata = {
+        search_settings: {
+          domain_filter: domainFilter,
+          recency_filter: searchRecency,
+          temperature,
+          max_tokens: maxTokens,
+          is_news_search: true,
+          selected_themes: {
+            primary: selectedPrimaryThemes,
+            sub: selectedSubThemes,
+            professions: selectedProfessions
+          }
         }
+      };
+      
+      // Store metadata as JSON comment at top of prompt
+      const metadataComment = `/*\n${JSON.stringify(metadata, null, 2)}\n*/\n`;
+      const fullPromptText = metadataComment + promptText;
+      
+      const promptData = {
+        function_name: promptName,
+        model: model,
+        prompt_text: fullPromptText,
+        include_clusters: selectedPrimaryThemes.length > 0 || selectedSubThemes.length > 0,
+        include_tracking_summary: useTrackingSummary,
+        include_sources_map: useSourceMap,
+        is_active: isActive
+      };
+      
+      if (onSave) {
+        onSave(promptData);
+        toast.success(`Prompt ${initialPrompt ? "updated" : "created"} successfully!`);
       }
-    };
-    
-    // Store metadata as JSON comment at top of prompt
-    const metadataComment = `/*\n${JSON.stringify(metadata, null, 2)}\n*/\n`;
-    const fullPromptText = metadataComment + promptText;
-    
-    const promptData = {
-      function_name: promptName,
-      model: model,
-      prompt_text: fullPromptText,
-      include_clusters: selectedPrimaryThemes.length > 0 || selectedSubThemes.length > 0,
-      include_tracking_summary: useTrackingSummary,
-      include_sources_map: useSourceMap,
-      is_active: isActive
-    };
-    
-    onSave?.(promptData);
+    } catch (error) {
+      console.error("Error saving prompt:", error);
+      toast.error("Failed to save prompt. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
   
   const togglePrimaryTheme = (theme: string) => {
@@ -250,6 +268,16 @@ export default function VisualPromptBuilder({
     }
   }, [initialPrompt]);
 
+  // Helper function to get model description
+  const getModelDescription = (modelName: string) => {
+    if (modelName.includes('sonar-small')) {
+      return "Faster and more affordable. Good for routine searches.";
+    } else if (modelName.includes('sonar-large')) {
+      return "More powerful. Better for complex analysis and nuanced topics.";
+    }
+    return "";
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -293,6 +321,9 @@ export default function VisualPromptBuilder({
                       <SelectItem value="llama-3.1-sonar-large-128k-online">Llama 3.1 Sonar Large with Search</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {getModelDescription(model)}
+                  </p>
                 </div>
               </div>
               
@@ -568,7 +599,21 @@ export default function VisualPromptBuilder({
             <div className="space-y-4">
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-2">
-                  <Label htmlFor="previewKeyword">Test with this keyword</Label>
+                  <Label htmlFor="previewKeyword">
+                    Test with this keyword
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 inline-block ml-1 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Enter a term here to see how your prompt would handle it. This is for preview only and won't run an actual search.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </Label>
                   <Input
                     id="previewKeyword"
                     value={previewKeyword}
@@ -584,12 +629,12 @@ export default function VisualPromptBuilder({
                   {showPreview ? (
                     <>
                       <Edit className="h-4 w-4" />
-                      <span>Hide Final</span>
+                      <span>Show Template</span>
                     </>
                   ) : (
                     <>
                       <EyeIcon className="h-4 w-4" />
-                      <span>Show Final</span>
+                      <span>Show Complete</span>
                     </>
                   )}
                 </Button>
@@ -603,14 +648,24 @@ export default function VisualPromptBuilder({
                 </ScrollArea>
               </div>
               
-              {showPreview && (
+              {showPreview ? (
                 <Alert>
                   <AlertTitle className="flex items-center gap-2">
                     <CircleHelp className="h-4 w-4" />
-                    This is the complete prompt that will be sent
+                    Complete prompt with "{previewKeyword}" inserted
                   </AlertTitle>
                   <AlertDescription>
-                    When used in scheduled tasks, <span className="font-mono">{previewKeyword}</span> will be replaced with the keyword from your scheduled task.
+                    This is how the complete prompt will look when used with your test keyword. In scheduled tasks, this keyword would be replaced with the one from your task.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert>
+                  <AlertTitle className="flex items-center gap-2">
+                    <CircleHelp className="h-4 w-4" />
+                    Prompt template with [QUERY] placeholder
+                  </AlertTitle>
+                  <AlertDescription>
+                    This is the template version of your prompt. Click "Show Complete" to see how it looks with your test keyword inserted.
                   </AlertDescription>
                 </Alert>
               )}
@@ -625,8 +680,11 @@ export default function VisualPromptBuilder({
             Cancel
           </Button>
         )}
-        <Button onClick={handleSave}>
-          {initialPrompt ? "Update Prompt" : "Create Prompt"}
+        <Button 
+          onClick={handleSave} 
+          disabled={isSaving || !promptName || promptName.trim() === ''}
+        >
+          {isSaving ? "Saving..." : initialPrompt ? "Update Prompt" : "Create Prompt"}
         </Button>
       </CardFooter>
     </Card>
