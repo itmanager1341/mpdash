@@ -24,6 +24,18 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
+// Type guard function to check if parameters have expected properties
+const hasJobParameters = (params: any): params is { 
+  minScore: number, 
+  limit: number, 
+  keywords: string[],
+  promptId?: string
+} => {
+  return params && 
+    typeof params === 'object' && 
+    ('minScore' in params || 'limit' in params || 'keywords' in params);
+};
+
 export default function ScheduledImportSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -83,18 +95,21 @@ export default function ScheduledImportSettings() {
   // Update form with job data when loaded
   useEffect(() => {
     if (job) {
+      const params = job.parameters;
+      const jobParams = hasJobParameters(params) ? params : { minScore: 0.6, limit: 10, keywords: [] };
+      
       setFormData({
         schedule: job.schedule || "0 */12 * * *",
         isEnabled: job.is_enabled,
-        minScore: job.parameters.minScore?.toString() || "0.6",
-        limit: job.parameters.limit?.toString() || "10",
-        keywords: Array.isArray(job.parameters.keywords)
-          ? job.parameters.keywords.join("\n")
-          : job.parameters.keywords || "",
+        minScore: jobParams.minScore?.toString() || "0.6",
+        limit: jobParams.limit?.toString() || "10",
+        keywords: Array.isArray(jobParams.keywords)
+          ? jobParams.keywords.join("\n")
+          : typeof jobParams.keywords === 'string' ? jobParams.keywords : "",
       });
 
-      setUseEnhancedPrompt(!!job.parameters.promptId);
-      setSelectedPromptId(job.parameters.promptId || "");
+      setUseEnhancedPrompt(!!jobParams.promptId);
+      setSelectedPromptId(jobParams.promptId || "");
     }
   }, [job]);
 
