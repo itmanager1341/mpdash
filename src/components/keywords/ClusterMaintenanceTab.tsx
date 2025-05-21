@@ -1,13 +1,14 @@
 
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Sparkles, AlertCircle, TrendingUp, ChevronRight, Loader2 } from "lucide-react";
+import { Sparkles, AlertCircle, TrendingUp, ChevronRight, Loader2, Check, X, Info } from "lucide-react";
 
 interface KeywordCluster {
   id: string;
@@ -17,11 +18,19 @@ interface KeywordCluster {
 }
 
 interface KeywordSuggestion {
+  id?: string;
   keyword: string;
   score: number;
   related_clusters: string[];
   source: string;
   rationale?: string;
+  status?: 'pending' | 'approved' | 'dismissed';
+}
+
+interface SuggestionApprovalData {
+  suggestion: KeywordSuggestion;
+  clusterId: string;
+  clusterName: string;
 }
 
 interface ClusterMaintenanceTabProps {
@@ -33,6 +42,10 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<KeywordSuggestion[]>([]);
   const [showRationale, setShowRationale] = useState<Record<string, boolean>>({});
+  const [isApprovalDialogOpen, setIsApprovalDialogOpen] = useState(false);
+  const [selectedApproval, setSelectedApproval] = useState<SuggestionApprovalData | null>(null);
+  
+  const queryClient = useQueryClient();
 
   // Fetch existing keyword clusters for reference
   const { data: clusters, isLoading: clustersLoading } = useQuery({
@@ -62,6 +75,25 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       return data;
     }
   });
+  
+  // Fetch existing suggestions (this would be stored in a new table)
+  const { data: existingSuggestions, isLoading: suggestionsLoading, refetch: refetchSuggestions } = useQuery({
+    queryKey: ['keyword-suggestions'],
+    queryFn: async () => {
+      // We would typically store suggestions in a database table
+      // For now, we'll use session storage to persist suggestions during the session
+      const savedSuggestions = sessionStorage.getItem('keyword-suggestions');
+      return savedSuggestions ? JSON.parse(savedSuggestions) as KeywordSuggestion[] : [];
+    },
+    initialData: []
+  });
+
+  // Effect to update suggestions state when existingSuggestions changes
+  useEffect(() => {
+    if (existingSuggestions && existingSuggestions.length > 0) {
+      setSuggestions(existingSuggestions.filter(s => s.status !== 'dismissed'));
+    }
+  }, [existingSuggestions]);
 
   // Analysis of clusters
   const clusterAnalysis = clusters ? {
@@ -75,7 +107,6 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
   // Generate AI suggestions
   const generateSuggestions = async () => {
     setIsLoading(true);
-    setSuggestions([]);
     
     try {
       toast.info("Analyzing content and generating keyword suggestions...");
@@ -100,8 +131,22 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       }
       
       if (data?.success && data.suggestions?.length > 0) {
-        setSuggestions(data.suggestions);
+        // Add a unique ID and pending status to each suggestion
+        const newSuggestions = data.suggestions.map((suggestion: KeywordSuggestion, index: number) => ({
+          ...suggestion,
+          id: `suggestion-${Date.now()}-${index}`,
+          status: 'pending' as const
+        }));
+        
+        // Save to session storage and update state
+        const allSuggestions = [...newSuggestions, ...suggestions];
+        sessionStorage.setItem('keyword-suggestions', JSON.stringify(allSuggestions));
+        setSuggestions(allSuggestions);
+        
         toast.success(`Generated ${data.suggestions.length} keyword suggestions using ${data.api_used} API`);
+        
+        // Ensure we're on the suggestions view
+        setView("suggestions");
       } else {
         toast.warning("No suggestions were generated. Try again.");
       }
@@ -110,6 +155,7 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       toast.error("Failed to generate keyword suggestions: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
       setIsLoading(false);
+      refetchSuggestions();
     }
   };
 
@@ -120,20 +166,111 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       [keywordId]: !prev[keywordId]
     }));
   };
+  
+  // Handle opening the approval dialog
+  const openApprovalDialog = (suggestion: KeywordSuggestion, clusterId: string, clusterName: string) => {
+    setSelectedApproval({
+      suggestion,
+      clusterId,
+      clusterName
+    });
+    setIsApprovalDialogOpen(true);
+  };
+  
+  // Mutation to add keyword to cluster
+  const addToClusterMutation = useMutation({
+    mutationFn: async ({ keyword, clusterId }: { keyword: string, clusterId: string }) => {
+      // First get the current cluster
+      const { data: clusterData, error: fetchError } = await supabase
+        .from('keyword_clusters')
+        .select('keywords')
+        .eq('id', clusterId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      // Add the new keyword if it doesn't already exist
+      const currentKeywords = clusterData.keywords || [];
+      if (!currentKeywords.includes(keyword)) {
+        const updatedKeywords = [...currentKeywords, keyword];
+        
+        const { error: updateError } = await supabase
+          .from('keyword_clusters')
+          .update({ keywords: updatedKeywords })
+          .eq('id', clusterId);
+        
+        if (updateError) throw updateError;
+      }
+      
+      // Update the suggestion status
+      const updatedSuggestions = suggestions.map(s => 
+        s.keyword === keyword ? { ...s, status: 'approved' as const } : s
+      );
+      sessionStorage.setItem('keyword-suggestions', JSON.stringify(updatedSuggestions));
+      
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['keyword-clusters'] });
+      queryClient.invalidateQueries({ queryKey: ['keyword-clusters-summary'] });
+      toast.success("Keyword added to cluster successfully");
+      refetchSuggestions();
+    },
+    onError: (error) => {
+      toast.error("Failed to add keyword to cluster: " + error.message);
+    }
+  });
+  
+  // Handle approval confirmation
+  const handleApproveKeyword = () => {
+    if (!selectedApproval) return;
+    
+    const { suggestion, clusterId } = selectedApproval;
+    addToClusterMutation.mutate({ 
+      keyword: suggestion.keyword, 
+      clusterId 
+    });
+    
+    setIsApprovalDialogOpen(false);
+    setSelectedApproval(null);
+  };
+  
+  // Handle dismiss suggestion
+  const handleDismissSuggestion = (suggestion: KeywordSuggestion) => {
+    // Mark the suggestion as dismissed
+    const updatedSuggestions = suggestions.map(s => 
+      s.keyword === suggestion.keyword ? { ...s, status: 'dismissed' as const } : s
+    );
+    sessionStorage.setItem('keyword-suggestions', JSON.stringify(updatedSuggestions));
+    setSuggestions(updatedSuggestions.filter(s => s.status !== 'dismissed'));
+    
+    toast.info(`Suggestion "${suggestion.keyword}" dismissed`);
+    refetchSuggestions();
+  };
+
+  // Get pending suggestion count for UI indicators
+  const pendingSuggestionCount = suggestions.filter(s => s.status === 'pending').length;
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-xl font-semibold">Cluster Maintenance</h2>
+          <h2 className="text-xl font-semibold">AI-Powered Keyword Management</h2>
           <p className="text-sm text-muted-foreground">
-            Optimize your keyword clusters and discover new trends
+            Get AI suggestions to enhance your keyword clusters and optimize content planning
           </p>
         </div>
         
         <Tabs value={view} onValueChange={(v) => setView(v as "suggestions" | "maintenance")}>
           <TabsList>
-            <TabsTrigger value="suggestions">Keyword Suggestions</TabsTrigger>
+            <TabsTrigger value="suggestions" className="relative">
+              Keyword Suggestions
+              {pendingSuggestionCount > 0 && (
+                <Badge className="ml-2 bg-primary text-primary-foreground absolute -top-1 -right-1">
+                  {pendingSuggestionCount}
+                </Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="maintenance">Cluster Health</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -142,7 +279,12 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       {view === "suggestions" && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">AI-Generated Suggestions</h3>
+            <div>
+              <h3 className="text-lg font-medium">AI-Generated Suggestions</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Review and approve keyword suggestions to enhance your content taxonomy
+              </p>
+            </div>
             <Button onClick={generateSuggestions} disabled={isLoading}>
               {isLoading ? (
                 <>
@@ -158,10 +300,15 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
             </Button>
           </div>
           
-          {suggestions.length > 0 ? (
+          {suggestionsLoading ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+              <p className="text-muted-foreground mt-2">Loading suggestions...</p>
+            </div>
+          ) : suggestions.length > 0 ? (
             <div className="space-y-4">
-              {suggestions.map((suggestion, idx) => (
-                <Card key={idx} className="overflow-hidden">
+              {suggestions.map((suggestion) => (
+                <Card key={suggestion.id || suggestion.keyword} className="overflow-hidden">
                   <CardHeader className="bg-muted/30 pb-3">
                     <div className="flex justify-between items-start">
                       <div>
@@ -185,10 +332,28 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           Potential clusters to add to:
                         </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {suggestion.related_clusters.map((cluster, cidx) => (
-                            <Badge key={cidx} variant="secondary">{cluster}</Badge>
-                          ))}
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {suggestion.related_clusters.map((clusterName, cidx) => {
+                            const matchedCluster = clusters?.find(c => 
+                              `${c.primary_theme}: ${c.sub_theme}` === clusterName ||
+                              c.sub_theme === clusterName
+                            );
+                            
+                            return (
+                              <Badge 
+                                key={cidx} 
+                                variant="secondary"
+                                className="cursor-pointer hover:bg-secondary/80 transition-colors"
+                                onClick={() => matchedCluster && openApprovalDialog(
+                                  suggestion, 
+                                  matchedCluster.id, 
+                                  clusterName
+                                )}
+                              >
+                                {clusterName}
+                              </Badge>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -198,26 +363,34 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          onClick={() => toggleRationale(suggestion.keyword)}
-                          className="p-0 h-auto text-sm text-muted-foreground hover:text-foreground"
+                          onClick={() => suggestion.id && toggleRationale(suggestion.id)}
+                          className="p-0 h-auto text-sm text-muted-foreground hover:text-foreground flex items-center"
                         >
-                          {showRationale[suggestion.keyword] ? 'Hide rationale' : 'Show rationale'}
+                          <Info className="h-3 w-3 mr-1" />
+                          {suggestion.id && showRationale[suggestion.id] ? 'Hide rationale' : 'Show rationale'}
                         </Button>
                         
-                        {showRationale[suggestion.keyword] && (
-                          <p className="text-sm mt-2 text-muted-foreground">
+                        {suggestion.id && showRationale[suggestion.id] && (
+                          <p className="text-sm mt-2 text-muted-foreground bg-muted/30 p-3 rounded-md">
                             {suggestion.rationale}
                           </p>
                         )}
                       </div>
                     )}
-                    
-                    <div className="mt-4 flex justify-end">
-                      <Button variant="outline" size="sm">
-                        Add to Cluster <ChevronRight className="h-3 w-3 ml-1" />
-                      </Button>
-                    </div>
                   </CardContent>
+                  <CardFooter className="flex justify-end gap-2 pt-2 pb-3">
+                    <Button variant="outline" size="sm" onClick={() => handleDismissSuggestion(suggestion)}>
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      Dismiss
+                    </Button>
+                    
+                    {clusters && suggestion.related_clusters && suggestion.related_clusters.length > 0 && (
+                      <Button variant="default" size="sm">
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        Add to Cluster
+                      </Button>
+                    )}
+                  </CardFooter>
                 </Card>
               ))}
             </div>
@@ -249,7 +422,8 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
         <div className="space-y-6">
           {clustersLoading ? (
             <div className="text-center py-8">
-              <p className="text-muted-foreground">Analyzing clusters...</p>
+              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+              <p className="text-muted-foreground mt-2">Analyzing clusters...</p>
             </div>
           ) : (
             <>
@@ -332,6 +506,18 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
                           Recent content analysis shows emerging topics around "Mortgage Technology Innovations"
                           that don't fit well in existing clusters.
                         </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-2"
+                          onClick={() => {
+                            setView("suggestions");
+                            generateSuggestions();
+                          }}
+                        >
+                          <Sparkles className="h-3.5 w-3.5 mr-1" />
+                          Generate suggestions
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -341,6 +527,25 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
           )}
         </div>
       )}
+      
+      {/* Approval Dialog */}
+      <AlertDialog open={isApprovalDialogOpen} onOpenChange={setIsApprovalDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add Keyword to Cluster</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to add <strong>"{selectedApproval?.suggestion.keyword}"</strong> to 
+              the <strong>"{selectedApproval?.clusterName}"</strong> cluster?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleApproveKeyword}>
+              Add Keyword
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

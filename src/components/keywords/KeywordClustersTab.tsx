@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, Plus, PieChart } from "lucide-react";
+import { Edit, Plus, Folder } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -93,8 +93,16 @@ const KeywordClustersTab = ({ searchTerm }: KeywordClustersTabProps) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Keyword Clusters</h2>
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center">
+            <Folder className="h-5 w-5 mr-2 text-muted-foreground" />
+            Keyword Clusters
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Organize your content taxonomy with hierarchical keyword clusters
+          </p>
+        </div>
         <Button onClick={() => setIsAddDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Cluster

@@ -1,12 +1,11 @@
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, Filter, Plus, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import KeywordClustersTab from "@/components/keywords/KeywordClustersTab";
 import KeywordTrackingTab from "@/components/keywords/KeywordTrackingTab";
@@ -16,30 +15,6 @@ import PlanningTab from "@/components/keywords/PlanningTab";
 const KeywordManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("clusters");
-  const queryClient = useQueryClient();
-
-  // Generate AI suggestions for keywords/clusters
-  const generateSuggestions = async () => {
-    try {
-      toast.info("Analyzing content and generating keyword suggestions...");
-      
-      const { data, error } = await supabase.functions.invoke('suggest-keywords', {
-        body: { source: "news_analysis" }
-      });
-      
-      if (error) throw error;
-      
-      if (data?.suggestions) {
-        toast.success(`Generated ${data.suggestions.length} keyword suggestions`);
-        // Refresh the data after generating suggestions
-        queryClient.invalidateQueries({ queryKey: ['keyword-clusters'] });
-        queryClient.invalidateQueries({ queryKey: ['keyword-tracking'] });
-      }
-    } catch (err) {
-      console.error("Error generating suggestions:", err);
-      toast.error("Failed to generate keyword suggestions");
-    }
-  };
 
   return (
     <DashboardLayout>
@@ -60,24 +35,14 @@ const KeywordManagement = () => {
             className="pl-9"
           />
         </div>
-        
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={generateSuggestions}
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            AI Suggestions
-          </Button>
-        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="clusters">Keyword Clusters</TabsTrigger>
-          <TabsTrigger value="tracking">Tracking & Analytics</TabsTrigger>
-          <TabsTrigger value="maintenance">Cluster Maintenance</TabsTrigger>
-          <TabsTrigger value="planning">Planning</TabsTrigger>
+          <TabsTrigger value="clusters">Manage Clusters</TabsTrigger>
+          <TabsTrigger value="tracking">Keyword Analytics</TabsTrigger>
+          <TabsTrigger value="maintenance">AI Suggestions</TabsTrigger>
+          <TabsTrigger value="planning">Content Planning</TabsTrigger>
         </TabsList>
 
         <TabsContent value="clusters" className="pt-4">

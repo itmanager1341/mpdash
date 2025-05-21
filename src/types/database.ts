@@ -72,6 +72,28 @@ export interface LlmUsageLog {
   user_id: string | null;
 }
 
+// Interface for keyword clusters
+export interface KeywordCluster {
+  id: string;
+  primary_theme: string;
+  sub_theme: string;
+  description?: string;
+  keywords?: string[];
+  professions?: string[];
+  created_at: string;
+}
+
+// Interface for keyword suggestions
+export interface KeywordSuggestion {
+  id?: string;
+  keyword: string;
+  score: number;
+  related_clusters: string[];
+  source: string;
+  rationale?: string;
+  status?: 'pending' | 'approved' | 'dismissed';
+}
+
 // Define custom RPC function return types
 export interface SupabaseRpcFunctions {
   get_job_settings: ScheduledJobSettings;
