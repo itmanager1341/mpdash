@@ -45,15 +45,12 @@ const JobExecutionHistory = () => {
           // Check if the job exists in the database
           const jobExists = cronJobs && cronJobs.length > 0;
           
-          // Check if pg_cron extension is available via database functions list
-          const { data: functions, error: funcError } = await supabase
-            .from('pg_extension')
-            .select('*')
-            .eq('extname', 'pg_cron')
-            .single();
+          // Try to check if pg_cron exists via custom RPC function
+          const { data: cronFunctions, error: cronFuncError } = await supabase
+            .rpc('get_cron_jobs');
           
-          if (funcError) {
-            console.error("Could not verify pg_cron extension:", funcError);
+          if (cronFuncError) {
+            console.error("Could not verify pg_cron extension:", cronFuncError);
             setPgCronStatus({ 
               isAvailable: jobExists, 
               error: jobExists ? undefined : "Cannot directly verify pg_cron status, but job exists"

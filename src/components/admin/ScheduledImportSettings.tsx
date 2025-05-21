@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ScheduledJobSettings } from "@/types/database";
 import { AlertCircle, Loader2, PlayCircle } from "lucide-react";
 import { formatDistanceToNow, parseISO } from "date-fns";
+import { Json } from "@/integrations/supabase/types";
 
 export default function ScheduledImportSettings() {
   const [isLoading, setIsLoading] = useState(false);
@@ -116,6 +117,26 @@ export default function ScheduledImportSettings() {
     }
   });
 
+  // Helper function to safely get parameter values
+  const getParameterValue = <T extends any>(params: Json, key: string, defaultValue: T): T => {
+    if (!params) return defaultValue;
+    
+    try {
+      if (typeof params === 'object' && params !== null) {
+        return (params as any)[key] ?? defaultValue;
+      }
+      // Try to parse if it's a JSON string
+      if (typeof params === 'string') {
+        const parsed = JSON.parse(params);
+        return parsed[key] ?? defaultValue;
+      }
+    } catch (e) {
+      console.error(`Error parsing parameter ${key}:`, e);
+    }
+    
+    return defaultValue;
+  };
+
   // Initialize form values from database
   useEffect(() => {
     if (jobSettings) {
@@ -130,9 +151,15 @@ export default function ScheduledImportSettings() {
         setFrequency("daily"); // Default
       }
       
-      setMinScore(jobSettings.parameters.minScore.toString());
-      setKeywords(jobSettings.parameters.keywords.join(', '));
-      setLimit(jobSettings.parameters.limit.toString());
+      const minScoreValue = getParameterValue(jobSettings.parameters, 'minScore', 2.5);
+      setMinScore(minScoreValue.toString());
+      
+      const keywordsArray = getParameterValue<string[]>(jobSettings.parameters, 'keywords', 
+        ['mortgage', 'housing market', 'federal reserve', 'interest rates']);
+      setKeywords(Array.isArray(keywordsArray) ? keywordsArray.join(', ') : keywordsArray.toString());
+      
+      const limitValue = getParameterValue(jobSettings.parameters, 'limit', 20);
+      setLimit(limitValue.toString());
       
       // Format last run info if available
       if (jobSettings.last_run) {
