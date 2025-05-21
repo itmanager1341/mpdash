@@ -1,132 +1,40 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 
 export async function fetchPrompts(): Promise<LlmPrompt[]> {
   const { data, error } = await supabase
-    .from("llm_prompts")
-    .select("*")
-    .order("function_name");
-
-  if (error) {
-    console.error("Error fetching prompts:", error);
-    throw error;
-  }
-
+    .from('llm_prompts')
+    .select('*')
+    .order('function_name');
+  
+  if (error) throw error;
   return data || [];
 }
 
-export async function getPromptById(id: string): Promise<LlmPrompt | null> {
-  const { data, error } = await supabase
-    .from("llm_prompts")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (error) {
-    console.error("Error fetching prompt:", error);
-    return null;
-  }
-
-  return data;
-}
-
-export async function createPrompt(promptData: LlmPromptFormData): Promise<LlmPrompt> {
-  const { data, error } = await supabase
-    .from("llm_prompts")
-    .insert([
-      {
-        function_name: promptData.function_name,
-        model: promptData.model,
-        prompt_text: promptData.prompt_text,
-        include_clusters: promptData.include_clusters,
-        include_tracking_summary: promptData.include_tracking_summary,
-        include_sources_map: promptData.include_sources_map,
-        is_active: promptData.is_active,
-        last_updated_by: "system" // Replace with actual user info when auth is implemented
-      }
-    ])
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error creating prompt:", error);
-    throw error;
-  }
-
-  return data;
-}
-
-export async function updatePrompt(id: string, promptData: Partial<LlmPromptFormData>): Promise<LlmPrompt> {
-  const { data, error } = await supabase
-    .from("llm_prompts")
-    .update({
-      ...promptData,
-      updated_at: new Date().toISOString(),
-      last_updated_by: "system" // Replace with actual user info when auth is implemented
-    })
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error("Error updating prompt:", error);
-    throw error;
-  }
-
-  return data;
-}
-
-export async function deletePrompt(id: string): Promise<void> {
-  const { error } = await supabase
-    .from("llm_prompts")
-    .delete()
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error deleting prompt:", error);
-    throw error;
-  }
-}
-
-export async function togglePromptActive(id: string, isActive: boolean): Promise<void> {
-  const { error } = await supabase
-    .from("llm_prompts")
-    .update({
-      is_active: isActive,
-      updated_at: new Date().toISOString(),
-      last_updated_by: "system" // Replace with actual user info when auth is implemented
-    })
-    .eq("id", id);
-
-  if (error) {
-    console.error("Error toggling prompt:", error);
-    throw error;
-  }
-}
-
-export async function testPrompt(testData: LlmTestInput): Promise<LlmTestResult> {
-  try {
-    const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
-      body: testData
-    });
-
-    if (error) {
-      console.error("Error testing prompt:", error);
-      return {
-        output: null,
-        model_used: testData.model,
-        error: error.message
-      };
+export function extractPromptMetadata(prompt: LlmPrompt) {
+  const metadataMatch = prompt?.prompt_text?.match(/\/\*\n([\s\S]*?)\n\*\//);
+  if (metadataMatch) {
+    try {
+      return JSON.parse(metadataMatch[1]);
+    } catch (e) {
+      console.error("Error parsing prompt metadata:", e);
+      return null;
     }
-
-    return data as LlmTestResult;
-  } catch (error: any) {
-    console.error("Exception testing prompt:", error);
-    return {
-      output: null,
-      model_used: testData.model,
-      error: error.message || "An unexpected error occurred"
-    };
   }
+  return null;
+}
+
+export function isNewsSearchPrompt(prompt: LlmPrompt): boolean {
+  // Check if prompt has news search metadata
+  const metadata = extractPromptMetadata(prompt);
+  if (metadata?.search_settings?.is_news_search === true) {
+    return true;
+  }
+  
+  // Also check by name convention
+  return prompt.function_name?.toLowerCase().includes('news_search');
+}
+
+export function filterNewsSearchPrompts(prompts: LlmPrompt[]): LlmPrompt[] {
+  return prompts.filter(isNewsSearchPrompt);
 }

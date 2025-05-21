@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -16,6 +16,7 @@ const KeywordManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("clusters");
   const location = useLocation();
+  const navigate = useNavigate();
   
   // Parse URL query parameter for tab selection
   useEffect(() => {
@@ -31,7 +32,7 @@ const KeywordManagement = () => {
     setActiveTab(value);
     const url = new URL(window.location.href);
     url.searchParams.set('tab', value);
-    window.history.pushState({}, '', url.toString());
+    navigate(`?${url.searchParams.toString()}`, { replace: true });
   };
 
   return (

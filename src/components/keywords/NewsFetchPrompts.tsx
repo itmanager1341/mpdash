@@ -15,7 +15,7 @@ import NewsFetchPromptForm from "./NewsFetchPromptForm";
 export default function NewsFetchPrompts() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [useVisualBuilder, setUseVisualBuilder] = useState(true);
+  const [useVisualBuilder, setUseVisualBuilder] = useState(true); // Default to visual builder
   const [selectedPrompt, setSelectedPrompt] = useState<LlmPrompt | null>(null);
   
   const { data: prompts, isLoading, error, refetch } = useQuery({
@@ -134,7 +134,7 @@ export default function NewsFetchPrompts() {
             </div>
             <Button onClick={() => setShowAddForm(true)}>
               <PlusCircle className="mr-2 h-4 w-4" />
-              Add News Search Prompt
+              Create News Search Prompt
             </Button>
           </div>
           

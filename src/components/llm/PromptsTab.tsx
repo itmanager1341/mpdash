@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import PromptsList from "@/components/llm/PromptsList";
 import PromptForm from "@/components/llm/PromptForm";
 import { fetchPrompts } from "@/utils/llmPromptsUtils";
+import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
 
 export default function PromptsTab() {
   const [isAddingPrompt, setIsAddingPrompt] = useState(false);
+  const [useVisualBuilder, setUseVisualBuilder] = useState(true);
   const [editingPrompt, setEditingPrompt] = useState<LlmPrompt | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -68,12 +70,23 @@ export default function PromptsTab() {
       />
       
       {isAddingPrompt && (
-        <PromptForm
-          prompt={editingPrompt}
-          open={isAddingPrompt}
-          onOpenChange={setIsAddingPrompt}
-          onSuccess={handleSuccess}
-        />
+        useVisualBuilder ? (
+          <VisualPromptBuilder
+            initialPrompt={editingPrompt}
+            onSave={(promptData) => {
+              // Save the prompt data via API or supabase
+              handleSuccess();
+            }}
+            onCancel={handleFormClose}
+          />
+        ) : (
+          <PromptForm
+            prompt={editingPrompt}
+            open={isAddingPrompt}
+            onOpenChange={setIsAddingPrompt}
+            onSuccess={handleSuccess}
+          />
+        )
       )}
     </div>
   );

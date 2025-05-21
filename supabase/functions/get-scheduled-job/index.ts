@@ -62,6 +62,21 @@ serve(async (req) => {
       );
     }
     
+    // Check if parameters is a string and try to parse it
+    if (typeof data.parameters === 'string') {
+      try {
+        data.parameters = JSON.parse(data.parameters);
+      } catch (e) {
+        console.error("Error parsing job parameters:", e);
+        // Provide fallback parameters
+        data.parameters = {
+          minScore: 2.5,
+          keywords: ['mortgage', 'housing market', 'federal reserve', 'interest rates'],
+          limit: 20
+        };
+      }
+    }
+    
     return new Response(
       JSON.stringify(data),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
