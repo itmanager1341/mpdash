@@ -1,4 +1,3 @@
-
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -52,9 +51,10 @@ interface PromptFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  onSwitchToVisual?: () => void; // Added this prop
 }
 
-export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: PromptFormProps) {
+export default function PromptForm({ prompt, open, onOpenChange, onSuccess, onSwitchToVisual }: PromptFormProps) {
   const isEditing = !!prompt;
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -305,7 +305,12 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
                 </div>
               </div>
 
-              <SheetFooter>
+              <SheetFooter className="flex justify-between">
+                {onSwitchToVisual && (
+                  <Button type="button" variant="outline" onClick={onSwitchToVisual}>
+                    Switch to Visual Builder
+                  </Button>
+                )}
                 <Button 
                   type="submit" 
                   disabled={isSubmitting}

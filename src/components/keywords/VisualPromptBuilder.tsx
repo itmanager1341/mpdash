@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -495,7 +494,7 @@ export default function VisualPromptBuilder({
                           {primaryThemeOptions.map((theme) => (
                             <Badge 
                               key={theme}
-                              variant={selectedPrimaryThemes.includes(theme) ? "default" : "outline"}
+                              variant={selectedPrimaryThemes.includes(theme) ? "default" : "secondary"}
                               className="cursor-pointer"
                               onClick={() => handlePrimaryThemeSelect(theme)}
                             >
@@ -511,7 +510,7 @@ export default function VisualPromptBuilder({
                           {subThemeOptions.map((theme) => (
                             <Badge 
                               key={theme}
-                              variant={selectedSubThemes.includes(theme) ? "default" : "outline"}
+                              variant={selectedSubThemes.includes(theme) ? "default" : "secondary"}
                               className="cursor-pointer"
                               onClick={() => handleSubThemeSelect(theme)}
                             >

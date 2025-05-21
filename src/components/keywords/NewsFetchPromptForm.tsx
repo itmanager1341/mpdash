@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +18,7 @@ interface NewsFetchPromptFormProps {
   initialData?: LlmPrompt | null;
   onSave?: () => void;
   onCancel?: () => void;
+  onSwitchToVisual?: () => void; // Added this prop
 }
 
 interface FormValues {
@@ -39,7 +39,8 @@ interface FormValues {
 export default function NewsFetchPromptForm({
   initialData,
   onSave,
-  onCancel
+  onCancel,
+  onSwitchToVisual
 }: NewsFetchPromptFormProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const queryClient = useQueryClient();
@@ -422,15 +423,22 @@ export default function NewsFetchPromptForm({
             )}
           </div>
           
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-between gap-2">
             {onCancel && (
               <Button type="button" variant="outline" onClick={onCancel}>
                 Cancel
               </Button>
             )}
-            <Button type="submit" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? "Saving..." : initialData ? "Update" : "Save"}
-            </Button>
+            <div className="flex gap-2 ml-auto">
+              {onSwitchToVisual && (
+                <Button type="button" variant="secondary" onClick={onSwitchToVisual}>
+                  Switch to Visual Builder
+                </Button>
+              )}
+              <Button type="submit" disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? "Saving..." : initialData ? "Update" : "Save"}
+              </Button>
+            </div>
           </div>
         </form>
       </CardContent>
