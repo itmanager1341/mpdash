@@ -8,6 +8,7 @@ import NewsImporter from "@/components/admin/NewsImporter";
 import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
 import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
 import NewsTextConverter from "@/components/admin/NewsTextConverter";
+import PerplexityApiTester from "@/components/admin/PerplexityApiTester";
 
 const AdminSettings = () => {
   const [activeTab, setActiveTab] = useState("api-keys");
@@ -22,10 +23,11 @@ const AdminSettings = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid grid-cols-4 md:w-fit">
+        <TabsList className="grid grid-cols-5 md:w-fit">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="scheduled-tasks">Scheduled Tasks</TabsTrigger>
           <TabsTrigger value="import-tools">Import Tools</TabsTrigger>
+          <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>
           <TabsTrigger value="user-management">Users</TabsTrigger>
         </TabsList>
         
@@ -41,6 +43,10 @@ const AdminSettings = () => {
         <TabsContent value="import-tools" className="space-y-6">
           <NewsImporter />
           <NewsTextConverter />
+        </TabsContent>
+        
+        <TabsContent value="diagnostics" className="space-y-6">
+          <PerplexityApiTester />
         </TabsContent>
         
         <TabsContent value="user-management">
