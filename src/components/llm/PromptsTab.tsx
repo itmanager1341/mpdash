@@ -38,6 +38,7 @@ export default function PromptsTab() {
   };
   
   const handleSuccess = () => {
+    // Immediately refetch to update the list with the new/edited prompt
     refetch();
     handleFormClose();
     toast.success(editingPrompt ? "Prompt updated successfully" : "Prompt created successfully");
@@ -86,9 +87,14 @@ export default function PromptsTab() {
           {useVisualBuilder ? (
             <VisualPromptBuilder
               initialPrompt={editingPrompt}
-              onSave={(promptData) => {
-                // Save the prompt data via API or supabase
-                handleSuccess();
+              onSave={async (promptData) => {
+                try {
+                  // Save the prompt data via API or supabase
+                  handleSuccess();
+                } catch (error) {
+                  console.error("Error saving prompt:", error);
+                  toast.error("Failed to save prompt");
+                }
               }}
               onCancel={handleFormClose}
             />

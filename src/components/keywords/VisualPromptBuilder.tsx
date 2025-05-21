@@ -1,692 +1,383 @@
-
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Check, CircleHelp, Edit, EyeIcon, Folder, Info, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { createPrompt, updatePrompt, extractPromptMetadata } from "@/utils/llmPromptsUtils";
 import { toast } from "sonner";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
+const promptSchema = z.object({
+  function_name: z.string().min(1, "Function name is required"),
+  model: z.string().min(1, "Model is required"),
+  prompt_text: z.string().min(10, "Prompt text should be at least 10 characters"),
+  include_clusters: z.boolean().default(false),
+  include_tracking_summary: z.boolean().default(false),
+  include_sources_map: z.boolean().default(false),
+  is_active: z.boolean().default(true),
+  search_settings: z.object({
+    domain_filter: z.string().default("auto"),
+    recency_filter: z.string().default("week"),
+    temperature: z.number().min(0).max(1).default(0.7),
+    max_tokens: z.number().min(100).max(4000).default(1500),
+    is_news_search: z.boolean().default(true),
+  }).optional(),
+  selected_themes: z.object({
+    primary: z.array(z.string()).default([]),
+    sub: z.array(z.string()).default([]),
+    professions: z.array(z.string()).default([]),
+  }).optional(),
+});
+
+type PromptFormValues = z.infer<typeof promptSchema>;
 
 interface VisualPromptBuilderProps {
-  initialPrompt?: LlmPrompt | null;
-  onSave?: (prompt: any) => void;
-  onCancel?: () => void;
+  initialPrompt: LlmPrompt | null;
+  onSave: (promptData: any) => void;
+  onCancel: () => void;
 }
 
-export default function VisualPromptBuilder({
-  initialPrompt,
-  onSave,
-  onCancel
-}: VisualPromptBuilderProps) {
-  const [promptName, setPromptName] = useState(initialPrompt?.function_name || "news_search_");
-  const [promptText, setPromptText] = useState(
-    initialPrompt?.prompt_text || 
-    "You are an editorial assistant for MortgagePoint. Find relevant news articles about the following topic:"
-  );
-  const [model, setModel] = useState(initialPrompt?.model || "llama-3.1-sonar-large-128k-online");
-  const [selectedTab, setSelectedTab] = useState("content");
+export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }: VisualPromptBuilderProps) {
+  const [activeTab, setActiveTab] = useState("basic");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const [searchRecency, setSearchRecency] = useState("day");
-  const [domainFilter, setDomainFilter] = useState("auto");
-  const [temperature, setTemperature] = useState(0.2);
-  const [maxTokens, setMaxTokens] = useState(1000);
+  // Extract metadata from the initial prompt if it exists
+  const metadata = initialPrompt ? extractPromptMetadata(initialPrompt) : null;
   
-  const [selectedPrimaryThemes, setSelectedPrimaryThemes] = useState<string[]>([]);
-  const [selectedSubThemes, setSelectedSubThemes] = useState<string[]>([]);
-  const [selectedProfessions, setSelectedProfessions] = useState<string[]>([]);
-  
-  const [useTrackingSummary, setUseTrackingSummary] = useState(initialPrompt?.include_tracking_summary || false);
-  const [useSourceMap, setUseSourceMap] = useState(initialPrompt?.include_sources_map || false);
-  const [isActive, setIsActive] = useState(initialPrompt?.is_active !== false);
-  
-  const [previewKeyword, setPreviewKeyword] = useState("mortgage refinancing");
-  const [showPreview, setShowPreview] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  
-  // Fetch keyword clusters
-  const { data: clusters, isLoading: clustersLoading } = useQuery({
-    queryKey: ["keyword-clusters"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("keyword_clusters")
-        .select("*")
-        .order("primary_theme");
-        
-      if (error) throw error;
-      return data || [];
-    }
+  const form = useForm<PromptFormValues>({
+    resolver: zodResolver(promptSchema),
+    defaultValues: {
+      function_name: initialPrompt?.function_name || "",
+      model: initialPrompt?.model || "gpt-4o",
+      prompt_text: initialPrompt?.prompt_text || "",
+      include_clusters: initialPrompt?.include_clusters || false,
+      include_tracking_summary: initialPrompt?.include_tracking_summary || false,
+      include_sources_map: initialPrompt?.include_sources_map || false,
+      is_active: initialPrompt?.is_active ?? true,
+      search_settings: {
+        domain_filter: metadata?.search_settings?.domain_filter || "auto",
+        recency_filter: metadata?.search_settings?.recency_filter || "week",
+        temperature: metadata?.search_settings?.temperature || 0.7,
+        max_tokens: metadata?.search_settings?.max_tokens || 1500,
+        is_news_search: true,
+      },
+      selected_themes: {
+        primary: metadata?.search_settings?.selected_themes?.primary || [],
+        sub: metadata?.search_settings?.selected_themes?.sub || [],
+        professions: metadata?.search_settings?.selected_themes?.professions || [],
+      },
+    },
   });
   
-  // Group clusters by primary theme for easy selection
-  const primaryThemeGroups = clusters?.reduce((acc: Record<string, any[]>, cluster) => {
-    if (!acc[cluster.primary_theme]) {
-      acc[cluster.primary_theme] = [];
-    }
-    acc[cluster.primary_theme].push(cluster);
-    return acc;
-  }, {}) || {};
-  
-  // Get all unique professions across clusters
-  const allProfessions = clusters?.reduce((acc: string[], cluster) => {
-    if (cluster.professions?.length) {
-      cluster.professions.forEach((profession: string) => {
-        if (!acc.includes(profession)) {
-          acc.push(profession);
-        }
-      });
-    }
-    return acc;
-  }, []).sort() || [];
-  
-  // Generate preview prompt
-  const generatePreviewPrompt = () => {
-    let preview = promptText;
-    
-    // Add selected clusters section
-    if (selectedPrimaryThemes.length > 0 || selectedSubThemes.length > 0) {
-      let clusterContext = "\n\nFOCUS ON THESE THEMES:\n";
-      
-      const relevantClusters = clusters?.filter(c => 
-        selectedPrimaryThemes.includes(c.primary_theme) || 
-        selectedSubThemes.includes(c.sub_theme)
-      ) || [];
-      
-      relevantClusters.forEach((cluster) => {
-        clusterContext += `\n${cluster.primary_theme} > ${cluster.sub_theme}:`;
-        if (cluster.keywords && cluster.keywords.length > 0) {
-          clusterContext += ` ${cluster.keywords.join(', ')}`;
-        }
-      });
-      
-      preview += clusterContext;
-    }
-    
-    // Add target audience if professions are selected
-    if (selectedProfessions.length > 0) {
-      preview += "\n\nTARGET AUDIENCE:\n";
-      preview += `Content should be relevant for: ${selectedProfessions.join(', ')}`;
-    }
-    
-    // Add search parameters
-    preview += "\n\nSEARCH PARAMETERS:";
-    preview += `\n- Time Range: Content from the last ${searchRecency === 'day' ? '24 hours' : searchRecency}`;
-    if (domainFilter !== 'auto') {
-      preview += `\n- Domain Focus: Prioritize ${domainFilter} sources`;
-    }
-    
-    // Add specific instructions for output format
-    preview += "\n\nOUTPUT FORMAT:";
-    preview += "\nReturn results in this JSON structure:";
-    preview += "\n{";
-    preview += "\n  \"articles\": [";
-    preview += "\n    {";
-    preview += "\n      \"title\": \"Article title\",";
-    preview += "\n      \"url\": \"Article URL\",";
-    preview += "\n      \"source\": \"Source name\",";
-    preview += "\n      \"summary\": \"1-2 sentence summary\",";
-    preview += "\n      \"relevance_score\": 0-100";
-    preview += "\n    }";
-    preview += "\n  ]";
-    preview += "\n}";
-    
-    return preview;
-  };
-  
-  // Generate final prompt for preview with query inserted
-  const getFinalPrompt = () => {
-    const preview = generatePreviewPrompt();
-    // Insert the preview keyword where the user would normally put [QUERY]
-    return preview.replace("[QUERY]", previewKeyword);
-  };
-  
-  // Handle saving the prompt
-  const handleSave = () => {
-    if (!promptName || promptName.trim() === '') {
-      toast.error("Please enter a valid prompt name");
-      return;
-    }
-
-    setIsSaving(true);
-    
+  const handleSubmit = async (data: PromptFormValues) => {
     try {
-      // Extract special fields for metadata
+      setIsSubmitting(true);
+      
+      // Create metadata JSON to embed in the prompt text
       const metadata = {
         search_settings: {
-          domain_filter: domainFilter,
-          recency_filter: searchRecency,
-          temperature,
-          max_tokens: maxTokens,
+          domain_filter: data.search_settings?.domain_filter || "auto",
+          recency_filter: data.search_settings?.recency_filter || "week",
+          temperature: data.search_settings?.temperature || 0.7,
+          max_tokens: data.search_settings?.max_tokens || 1500,
           is_news_search: true,
-          selected_themes: {
-            primary: selectedPrimaryThemes,
-            sub: selectedSubThemes,
-            professions: selectedProfessions
+          selected_themes: data.selected_themes || {
+            primary: [],
+            sub: [],
+            professions: []
           }
         }
       };
       
-      // Store metadata as JSON comment at top of prompt
+      // Add metadata as a comment at the top of the prompt text
       const metadataComment = `/*\n${JSON.stringify(metadata, null, 2)}\n*/\n`;
-      const fullPromptText = metadataComment + promptText;
+      const promptTextWithMetadata = data.prompt_text.startsWith("/*") 
+        ? data.prompt_text 
+        : metadataComment + data.prompt_text;
       
       const promptData = {
-        function_name: promptName,
-        model: model,
-        prompt_text: fullPromptText,
-        include_clusters: selectedPrimaryThemes.length > 0 || selectedSubThemes.length > 0,
-        include_tracking_summary: useTrackingSummary,
-        include_sources_map: useSourceMap,
-        is_active: isActive
+        function_name: data.function_name,
+        model: data.model,
+        prompt_text: promptTextWithMetadata,
+        include_clusters: data.include_clusters,
+        include_tracking_summary: data.include_tracking_summary,
+        include_sources_map: data.include_sources_map,
+        is_active: data.is_active,
       };
       
-      if (onSave) {
-        onSave(promptData);
-        toast.success(`Prompt ${initialPrompt ? "updated" : "created"} successfully!`);
+      if (initialPrompt?.id) {
+        await updatePrompt(initialPrompt.id, promptData);
+      } else {
+        await createPrompt(promptData);
       }
-    } catch (error) {
+      
+      onSave(promptData);
+    } catch (error: any) {
       console.error("Error saving prompt:", error);
-      toast.error("Failed to save prompt. Please try again.");
+      toast.error(`Failed to save prompt: ${error.message || "Unknown error"}`);
     } finally {
-      setIsSaving(false);
+      setIsSubmitting(false);
     }
-  };
-  
-  const togglePrimaryTheme = (theme: string) => {
-    if (selectedPrimaryThemes.includes(theme)) {
-      setSelectedPrimaryThemes(selectedPrimaryThemes.filter(t => t !== theme));
-      
-      // Also remove any sub-themes that belong to this primary theme
-      const subThemesToRemove = clusters
-        ?.filter(c => c.primary_theme === theme)
-        .map(c => c.sub_theme) || [];
-        
-      setSelectedSubThemes(selectedSubThemes.filter(s => !subThemesToRemove.includes(s)));
-    } else {
-      setSelectedPrimaryThemes([...selectedPrimaryThemes, theme]);
-    }
-  };
-  
-  const toggleSubTheme = (subTheme: string) => {
-    if (selectedSubThemes.includes(subTheme)) {
-      setSelectedSubThemes(selectedSubThemes.filter(t => t !== subTheme));
-    } else {
-      setSelectedSubThemes([...selectedSubThemes, subTheme]);
-      
-      // Also add the primary theme if not already added
-      const cluster = clusters?.find(c => c.sub_theme === subTheme);
-      if (cluster && !selectedPrimaryThemes.includes(cluster.primary_theme)) {
-        setSelectedPrimaryThemes([...selectedPrimaryThemes, cluster.primary_theme]);
-      }
-    }
-  };
-  
-  const toggleProfession = (profession: string) => {
-    if (selectedProfessions.includes(profession)) {
-      setSelectedProfessions(selectedProfessions.filter(p => p !== profession));
-    } else {
-      setSelectedProfessions([...selectedProfessions, profession]);
-    }
-  };
-  
-  // Extract metadata from initial prompt if present
-  useEffect(() => {
-    if (initialPrompt?.prompt_text) {
-      const metadataMatch = initialPrompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
-      if (metadataMatch) {
-        try {
-          const metadata = JSON.parse(metadataMatch[1]);
-          if (metadata.search_settings) {
-            setDomainFilter(metadata.search_settings.domain_filter || 'auto');
-            setSearchRecency(metadata.search_settings.recency_filter || 'day');
-            setTemperature(metadata.search_settings.temperature || 0.2);
-            setMaxTokens(metadata.search_settings.max_tokens || 1000);
-            
-            if (metadata.search_settings.selected_themes) {
-              setSelectedPrimaryThemes(metadata.search_settings.selected_themes.primary || []);
-              setSelectedSubThemes(metadata.search_settings.selected_themes.sub || []);
-              setSelectedProfessions(metadata.search_settings.selected_themes.professions || []);
-            }
-            
-            // Remove metadata block from prompt text
-            setPromptText(initialPrompt.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, ''));
-          }
-        } catch (e) {
-          console.error("Error parsing metadata from prompt:", e);
-        }
-      }
-    }
-  }, [initialPrompt]);
-
-  // Helper function to get model description
-  const getModelDescription = (modelName: string) => {
-    if (modelName.includes('sonar-small')) {
-      return "Faster and more affordable. Good for routine searches.";
-    } else if (modelName.includes('sonar-large')) {
-      return "More powerful. Better for complex analysis and nuanced topics.";
-    }
-    return "";
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="text-lg font-medium">
-          {initialPrompt ? "Edit News Search Prompt" : "Create News Search Prompt"}
-        </CardTitle>
-        <CardDescription>
-          Build a smart prompt to find mortgage industry news without any technical placeholders
-        </CardDescription>
-      </CardHeader>
-      
-      <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList className="px-6">
-          <TabsTrigger value="content">Prompt Content</TabsTrigger>
-          <TabsTrigger value="clusters">Keywords & Themes</TabsTrigger>
-          <TabsTrigger value="settings">Search Settings</TabsTrigger>
-          <TabsTrigger value="preview">Preview</TabsTrigger>
-        </TabsList>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>{initialPrompt ? "Edit Prompt" : "Create New Prompt"}</CardTitle>
+          <CardDescription>
+            Build a prompt template for news search and content generation
+          </CardDescription>
+        </CardHeader>
         
-        <CardContent className="p-6">
-          <TabsContent value="content" className="space-y-4 mt-0">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="promptName">Prompt Name</Label>
-                  <Input 
-                    id="promptName" 
-                    value={promptName} 
-                    onChange={e => setPromptName(e.target.value)}
-                    placeholder="e.g., news_search_mortgage_rates" 
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="model">Model</Label>
-                  <Select value={model} onValueChange={setModel}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a model" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="llama-3.1-sonar-small-128k-online">Llama 3.1 Sonar Small with Search</SelectItem>
-                      <SelectItem value="llama-3.1-sonar-large-128k-online">Llama 3.1 Sonar Large with Search</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {getModelDescription(model)}
-                  </p>
-                </div>
-              </div>
+        <CardContent>
+          <form onSubmit={form.handleSubmit(handleSubmit)}>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="basic">Basic Settings</TabsTrigger>
+                <TabsTrigger value="search">Search Parameters</TabsTrigger>
+                <TabsTrigger value="template">Prompt Template</TabsTrigger>
+              </TabsList>
               
-              <div className="space-y-2">
-                <Label htmlFor="promptTemplate">
-                  Base Instructions
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Info className="h-4 w-4 inline-block ml-1 text-muted-foreground" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs">
-                          Write instructions for the search as if you're talking to an assistant. No need for [QUERY] placeholders!
+              <TabsContent value="basic" className="space-y-4 pt-4">
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="function_name">Function Name</Label>
+                    <Input
+                      id="function_name"
+                      placeholder="e.g., news_search_mortgage_rates"
+                      {...form.register("function_name")}
+                    />
+                    {form.formState.errors.function_name && (
+                      <p className="text-sm text-red-500">{form.formState.errors.function_name.message}</p>
+                    )}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model</Label>
+                    <Select 
+                      onValueChange={(value) => form.setValue("model", value)}
+                      defaultValue={form.getValues("model")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gpt-4o">GPT-4o (Best for complex analysis)</SelectItem>
+                        <SelectItem value="gpt-3.5-turbo">GPT-3.5 (Faster, good for simple tasks)</SelectItem>
+                        <SelectItem value="claude-3-opus">Claude 3 Opus (High quality, slower)</SelectItem>
+                        <SelectItem value="claude-3-sonnet">Claude 3 Sonnet (Balanced)</SelectItem>
+                        <SelectItem value="perplexity">Perplexity (Best for real-time news)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <Separator className="my-4" />
+                  
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium">Context Options</h3>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="include_clusters">Include Keyword Clusters</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Add keyword cluster data to the prompt context
                         </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </Label>
-                <Textarea
-                  id="promptTemplate"
-                  value={promptText}
-                  onChange={e => setPromptText(e.target.value)}
-                  placeholder="You are an editorial assistant for MortgagePoint. Find relevant news articles about the following topic:"
-                  rows={6}
-                  className="font-mono text-sm"
-                />
-              </div>
-              
-              <Alert className="bg-muted/50">
-                <Info className="h-4 w-4" />
-                <AlertTitle>No technical placeholders needed</AlertTitle>
-                <AlertDescription>
-                  The system will automatically understand what to search for based on your prompt and the selected keywords/clusters.
-                </AlertDescription>
-              </Alert>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="clusters" className="space-y-5 mt-0">
-            {clustersLoading ? (
-              <div className="text-center py-8">
-                <p className="text-muted-foreground">Loading clusters...</p>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Primary Themes</Label>
-                    <Badge variant="outline" className="font-normal">
-                      {selectedPrimaryThemes.length} selected
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {Object.keys(primaryThemeGroups).map(theme => (
-                      <Badge 
-                        key={theme}
-                        variant={selectedPrimaryThemes.includes(theme) ? "default" : "outline"}
-                        className="cursor-pointer px-3 py-1 text-sm"
-                        onClick={() => togglePrimaryTheme(theme)}
-                      >
-                        {selectedPrimaryThemes.includes(theme) && (
-                          <Check className="h-3 w-3 mr-1" />
-                        )}
-                        {theme}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-                
-                <Separator />
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Sub-Themes</Label>
-                    <Badge variant="outline" className="font-normal">
-                      {selectedSubThemes.length} selected
-                    </Badge>
-                  </div>
-                  
-                  <ScrollArea className="h-48 rounded-md border">
-                    <div className="p-4 space-y-4">
-                      {Object.entries(primaryThemeGroups).map(([primaryTheme, themeClusters]) => (
-                        <div key={primaryTheme} className="space-y-2">
-                          <h4 className="text-sm font-medium">{primaryTheme}</h4>
-                          <div className="flex flex-wrap gap-2 ml-2">
-                            {themeClusters.map(cluster => (
-                              <Badge
-                                key={cluster.id}
-                                variant={selectedSubThemes.includes(cluster.sub_theme) ? "secondary" : "outline"}
-                                className="cursor-pointer"
-                                onClick={() => toggleSubTheme(cluster.sub_theme)}
-                              >
-                                {selectedSubThemes.includes(cluster.sub_theme) && (
-                                  <Check className="h-3 w-3 mr-1" />
-                                )}
-                                {cluster.sub_theme}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                      </div>
+                      <Switch
+                        id="include_clusters"
+                        checked={form.watch("include_clusters")}
+                        onCheckedChange={(checked) => form.setValue("include_clusters", checked)}
+                      />
                     </div>
-                  </ScrollArea>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="include_tracking_summary">Include Tracking Summary</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Add keyword tracking summary data to the prompt context
+                        </p>
+                      </div>
+                      <Switch
+                        id="include_tracking_summary"
+                        checked={form.watch("include_tracking_summary")}
+                        onCheckedChange={(checked) => form.setValue("include_tracking_summary", checked)}
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="include_sources_map">Include Source Map</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Add source tier mappings to the prompt context
+                        </p>
+                      </div>
+                      <Switch
+                        id="include_sources_map"
+                        checked={form.watch("include_sources_map")}
+                        onCheckedChange={(checked) => form.setValue("include_sources_map", checked)}
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="is_active">Active</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Enable or disable this prompt
+                        </p>
+                      </div>
+                      <Switch
+                        id="is_active"
+                        checked={form.watch("is_active")}
+                        onCheckedChange={(checked) => form.setValue("is_active", checked)}
+                      />
+                    </div>
+                  </div>
                 </div>
-                
-                <Separator />
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label>Target Professions</Label>
-                    <Badge variant="outline" className="font-normal">
-                      {selectedProfessions.length} selected
-                    </Badge>
+              </TabsContent>
+              
+              <TabsContent value="search" className="space-y-4 pt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="domain_filter">Domain Filter</Label>
+                    <Select 
+                      onValueChange={(value) => form.setValue("search_settings.domain_filter", value)}
+                      defaultValue={form.getValues("search_settings.domain_filter")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select domain filter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">Auto (Based on query)</SelectItem>
+                        <SelectItem value="news">News Sites Only</SelectItem>
+                        <SelectItem value="blogs">Blogs & Opinion</SelectItem>
+                        <SelectItem value="research">Research & Reports</SelectItem>
+                        <SelectItem value="government">Government Sources</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   
-                  <div className="flex flex-wrap gap-2">
-                    {allProfessions.map(profession => (
-                      <Badge
-                        key={profession}
-                        variant={selectedProfessions.includes(profession) ? "secondary" : "outline"}
-                        className="cursor-pointer"
-                        onClick={() => toggleProfession(profession)}
-                      >
-                        {selectedProfessions.includes(profession) && (
-                          <Check className="h-3 w-3 mr-1" />
-                        )}
-                        {profession}
-                      </Badge>
-                    ))}
+                  <div className="space-y-2">
+                    <Label htmlFor="recency_filter">Recency Filter</Label>
+                    <Select 
+                      onValueChange={(value) => form.setValue("search_settings.recency_filter", value)}
+                      defaultValue={form.getValues("search_settings.recency_filter")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select recency filter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">Last 24 Hours</SelectItem>
+                        <SelectItem value="week">Last Week</SelectItem>
+                        <SelectItem value="month">Last Month</SelectItem>
+                        <SelectItem value="year">Last Year</SelectItem>
+                        <SelectItem value="any">Any Time</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="temperature">Temperature</Label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={form.watch("search_settings.temperature")}
+                        onChange={(e) => form.setValue("search_settings.temperature", parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                      <span className="text-sm font-mono w-10">
+                        {form.watch("search_settings.temperature")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Lower values are more focused, higher values more creative
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="max_tokens">Max Tokens</Label>
+                    <Input
+                      id="max_tokens"
+                      type="number"
+                      min="100"
+                      max="4000"
+                      {...form.register("search_settings.max_tokens", { valueAsNumber: true })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Maximum length of the generated response
+                    </p>
                   </div>
                 </div>
                 
-                <Alert className="bg-muted/50">
-                  <Folder className="h-4 w-4" />
-                  <AlertTitle>How themes work</AlertTitle>
-                  <AlertDescription>
-                    Selection automatically includes related keywords in your search. The more specific your selection, the more targeted your results will be.
-                  </AlertDescription>
-                </Alert>
-              </>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="settings" className="space-y-5 mt-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="searchRecency">Time Range</Label>
-                <Select value={searchRecency} onValueChange={setSearchRecency}>
-                  <SelectTrigger id="searchRecency">
-                    <SelectValue placeholder="Select time range" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="30m">30 minutes</SelectItem>
-                    <SelectItem value="hour">Hour</SelectItem>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="week">Week</SelectItem>
-                    <SelectItem value="month">Month</SelectItem>
-                    <SelectItem value="year">Year</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  How recent should the articles be
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="domainFilter">Domain Focus</Label>
-                <Select value={domainFilter} onValueChange={setDomainFilter}>
-                  <SelectTrigger id="domainFilter">
-                    <SelectValue placeholder="Select domain filter" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Automatic</SelectItem>
-                    <SelectItem value="finance">Finance & Business</SelectItem>
-                    <SelectItem value="realestate">Real Estate</SelectItem>
-                    <SelectItem value="news">News</SelectItem>
-                    <SelectItem value="gov">Government</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  What type of websites to prioritize
-                </p>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="temperature">Creativity (Temperature)</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="temperature"
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    className="w-full"
-                    value={temperature}
-                    onChange={(e) => setTemperature(parseFloat(e.target.value))}
-                  />
-                  <span className="w-10 text-sm">{temperature}</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Lower values produce more focused results. Higher values are more creative.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="maxTokens">Response Length</Label>
-                <Input
-                  id="maxTokens"
-                  type="range"
-                  min="500"
-                  max="3000"
-                  step="100" 
-                  className="w-full"
-                  value={maxTokens}
-                  onChange={(e) => setMaxTokens(parseInt(e.target.value))}
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Short ({maxTokens} tokens)</span>
-                  <span>{Math.round(maxTokens/1000 * 10)/10}K</span>
-                </div>
-              </div>
-            </div>
-            
-            <Separator />
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">Include Tracking Summary</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Add keyword tracking data to prompt context
+                <Separator className="my-4" />
+                
+                <div className="space-y-4">
+                  <h3 className="text-sm font-medium">Theme Selection</h3>
+                  <p className="text-sm text-muted-foreground">
+                    This feature will be available in a future update
                   </p>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">Mortgage Rates</Badge>
+                    <Badge variant="outline">Housing Market</Badge>
+                    <Badge variant="outline">Federal Reserve</Badge>
+                    <Badge variant="outline">Refinancing</Badge>
+                    <Badge variant="outline">+ Add Theme</Badge>
+                  </div>
                 </div>
-                <Switch
-                  checked={useTrackingSummary}
-                  onCheckedChange={setUseTrackingSummary}
-                />
-              </div>
+              </TabsContent>
               
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">Include Source Map</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Add source tier mappings to prompt context
-                  </p>
-                </div>
-                <Switch
-                  checked={useSourceMap}
-                  onCheckedChange={setUseSourceMap}
-                />
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-base">Active</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Enable this prompt for scheduled tasks
-                  </p>
-                </div>
-                <Switch
-                  checked={isActive}
-                  onCheckedChange={setIsActive}
-                />
-              </div>
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="preview" className="mt-0">
-            <div className="space-y-4">
-              <div className="flex items-end gap-2">
-                <div className="flex-1 space-y-2">
-                  <Label htmlFor="previewKeyword">
-                    Test with this keyword
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-4 w-4 inline-block ml-1 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            Enter a term here to see how your prompt would handle it. This is for preview only and won't run an actual search.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </Label>
-                  <Input
-                    id="previewKeyword"
-                    value={previewKeyword}
-                    onChange={e => setPreviewKeyword(e.target.value)}
-                    placeholder="e.g., mortgage refinancing"
+              <TabsContent value="template" className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="prompt_text">Prompt Template</Label>
+                  <Textarea
+                    id="prompt_text"
+                    placeholder="Enter your prompt template..."
+                    className="min-h-[300px] font-mono text-sm"
+                    {...form.register("prompt_text")}
                   />
-                </div>
-                <Button 
-                  variant="outline" 
-                  className="flex items-center gap-1"
-                  onClick={() => setShowPreview(!showPreview)}
-                >
-                  {showPreview ? (
-                    <>
-                      <Edit className="h-4 w-4" />
-                      <span>Show Template</span>
-                    </>
-                  ) : (
-                    <>
-                      <EyeIcon className="h-4 w-4" />
-                      <span>Show Complete</span>
-                    </>
+                  {form.formState.errors.prompt_text && (
+                    <p className="text-sm text-red-500">{form.formState.errors.prompt_text.message}</p>
                   )}
-                </Button>
-              </div>
-              
-              <div className="border rounded-md p-4">
-                <ScrollArea className="h-96">
-                  <pre className="whitespace-pre-wrap text-sm font-mono">
-                    {showPreview ? getFinalPrompt() : generatePreviewPrompt()}
-                  </pre>
-                </ScrollArea>
-              </div>
-              
-              {showPreview ? (
-                <Alert>
-                  <AlertTitle className="flex items-center gap-2">
-                    <CircleHelp className="h-4 w-4" />
-                    Complete prompt with "{previewKeyword}" inserted
-                  </AlertTitle>
-                  <AlertDescription>
-                    This is how the complete prompt will look when used with your test keyword. In scheduled tasks, this keyword would be replaced with the one from your task.
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <Alert>
-                  <AlertTitle className="flex items-center gap-2">
-                    <CircleHelp className="h-4 w-4" />
-                    Prompt template with [QUERY] placeholder
-                  </AlertTitle>
-                  <AlertDescription>
-                    This is the template version of your prompt. Click "Show Complete" to see how it looks with your test keyword inserted.
-                  </AlertDescription>
-                </Alert>
-              )}
+                  <p className="text-xs text-muted-foreground">
+                    You can use variables like {"{search_query}"} which will be replaced with actual data
+                  </p>
+                </div>
+                
+                <div className="bg-muted p-4 rounded-md">
+                  <h4 className="text-sm font-medium mb-2">Available Variables</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Badge variant="secondary" className="justify-start">{"{search_query}"}</Badge>
+                    <Badge variant="secondary" className="justify-start">{"{date_range}"}</Badge>
+                    <Badge variant="secondary" className="justify-start">{"{clusters_data}"}</Badge>
+                    <Badge variant="secondary" className="justify-start">{"{tracking_summary}"}</Badge>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+            
+            <div className="flex justify-end gap-2 mt-6">
+              <Button type="button" variant="outline" onClick={onCancel}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Saving..." : (initialPrompt ? "Update Prompt" : "Create Prompt")}
+              </Button>
             </div>
-          </TabsContent>
+          </form>
         </CardContent>
-      </Tabs>
-      
-      <CardFooter className="flex justify-end gap-2">
-        {onCancel && (
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-        )}
-        <Button 
-          onClick={handleSave} 
-          disabled={isSaving || !promptName || promptName.trim() === ''}
-        >
-          {isSaving ? "Saving..." : initialPrompt ? "Update Prompt" : "Create Prompt"}
-        </Button>
-      </CardFooter>
-    </Card>
+      </Card>
+    </div>
   );
 }

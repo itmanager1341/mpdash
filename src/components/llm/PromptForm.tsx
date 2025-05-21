@@ -32,6 +32,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { createPrompt, updatePrompt } from "@/utils/llmPromptsUtils";
+import { useState } from "react";
 
 const promptFormSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -52,6 +53,7 @@ interface PromptFormProps {
 
 export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: PromptFormProps) {
   const isEditing = !!prompt;
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const form = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -68,6 +70,8 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
 
   const onSubmit = async (data: z.infer<typeof promptFormSchema>) => {
     try {
+      setIsSubmitting(true);
+      
       if (isEditing && prompt) {
         // Ensure we're passing all required fields for the update
         const updateData: LlmPromptFormData = {
@@ -81,7 +85,6 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
         };
         
         await updatePrompt(prompt.id, updateData);
-        toast.success("Prompt updated successfully");
       } else {
         // Ensure we're passing all required fields for creation
         const createData: LlmPromptFormData = {
@@ -95,17 +98,23 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
         };
         
         await createPrompt(createData);
-        toast.success("Prompt created successfully");
       }
+      
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving prompt:", error);
-      toast.error("Failed to save prompt");
+      toast.error(`Failed to save prompt: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={(isOpen) => {
+      if (!isSubmitting) {
+        onOpenChange(isOpen);
+      }
+    }}>
       <SheetContent className="w-full lg:max-w-2xl overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{isEditing ? "Edit Prompt" : "Add New Prompt"}</SheetTitle>
@@ -152,11 +161,11 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="gpt-4o">GPT-4o</SelectItem>
-                        <SelectItem value="gpt-3.5-turbo">GPT-3.5</SelectItem>
-                        <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                        <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
-                        <SelectItem value="perplexity">Perplexity</SelectItem>
+                        <SelectItem value="gpt-4o">GPT-4o (Best for complex tasks)</SelectItem>
+                        <SelectItem value="gpt-3.5-turbo">GPT-3.5 (Fast, good for simple tasks)</SelectItem>
+                        <SelectItem value="claude-3-opus">Claude 3 Opus (High quality analysis)</SelectItem>
+                        <SelectItem value="claude-3-sonnet">Claude 3 Sonnet (Balanced speed/quality)</SelectItem>
+                        <SelectItem value="perplexity">Perplexity (Best for real-time news)</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
@@ -280,8 +289,14 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
               </div>
 
               <SheetFooter>
-                <Button type="submit">
-                  {isEditing ? "Update Prompt" : "Create Prompt"}
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? 
+                    "Saving..." : 
+                    (isEditing ? "Update Prompt" : "Create Prompt")
+                  }
                 </Button>
               </SheetFooter>
             </form>
