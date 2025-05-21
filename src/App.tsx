@@ -1,6 +1,6 @@
 
-import { useEffect } from "react";
-import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import React from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
@@ -22,36 +22,8 @@ import { toast } from "sonner";
 // Create a client
 const queryClient = new QueryClient();
 
-// Initialize router with auth protection
-const router = createBrowserRouter([
-  {
-    path: "/auth",
-    element: <Auth />
-  },
-  {
-    element: <ProtectedRoute />,
-    children: [
-      { path: "/", element: <Index /> },
-      { path: "/content-calendar", element: <ContentCalendar /> },
-      { path: "/mpdaily-planner", element: <MPDailyPlanner /> },
-      { path: "/magazine-planner", element: <MagazinePlanner /> },
-      { path: "/performance", element: <Performance /> },
-      { path: "/profile", element: <Profile /> },
-      { path: "/documentation", element: <Documentation /> },
-      { path: "/llm-management", element: <LlmManagement /> },
-    ]
-  },
-  {
-    element: <ProtectedRoute requiredRole="admin" />,
-    children: [
-      { path: "/admin-settings", element: <AdminSettings /> },
-    ]
-  },
-  { path: "*", element: <NotFound /> }
-]);
-
 function App() {
-  useEffect(() => {
+  React.useEffect(() => {
     // Check database tables on app startup
     const checkDatabaseTables = async () => {
       try {
@@ -87,7 +59,26 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <Routes>
+          <Route path="/auth" element={<Auth />} />
+          
+          <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<Index />} />
+            <Route path="/content-calendar" element={<ContentCalendar />} />
+            <Route path="/mpdaily-planner" element={<MPDailyPlanner />} />
+            <Route path="/magazine-planner" element={<MagazinePlanner />} />
+            <Route path="/performance" element={<Performance />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/documentation" element={<Documentation />} />
+            <Route path="/llm-management" element={<LlmManagement />} />
+          </Route>
+          
+          <Route element={<ProtectedRoute requiredRole="admin" />}>
+            <Route path="/admin-settings" element={<AdminSettings />} />
+          </Route>
+          
+          <Route path="*" element={<NotFound />} />
+        </Routes>
         <Toaster />
       </AuthProvider>
     </QueryClientProvider>
