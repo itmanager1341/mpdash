@@ -18,7 +18,7 @@ export interface ScheduledJobSettings {
   updated_at: string;
 }
 
-// Define user roles
+// Define user roles - matches the app_role enum in the database
 export type AppRole = 'admin' | 'editor' | 'writer' | 'viewer';
 
 // Interface for user profile
@@ -32,7 +32,7 @@ export interface UserProfile {
   updated_at: string;
 }
 
-// Interface for user roles
+// Interface for user roles - matches the user_roles table
 export interface UserRole {
   id: string;
   user_id: string;
