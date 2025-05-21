@@ -11,6 +11,7 @@ import { BarChart, LineChart, PieChart } from "recharts";
 import { Bar, Line, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format, subDays } from "date-fns";
 import { Calendar as CalendarIcon, Download, Filter } from "lucide-react";
+import { DateRange } from "react-day-picker";
 
 // Mock data for visualization purposes
 const mockTokenData = [
@@ -50,10 +51,8 @@ const mockFunctionUsage = [
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 export default function UsageAnalyticsTab() {
-  const [dateRange, setDateRange] = useState<{
-    from: Date;
-    to: Date;
-  }>({
+  // Update the state to use DateRange type for compatibility with react-day-picker
+  const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 7),
     to: new Date(),
   });
@@ -83,7 +82,7 @@ export default function UsageAnalyticsTab() {
             <PopoverTrigger asChild>
               <Button variant="outline" className="justify-start text-left font-normal w-[250px]">
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {format(dateRange.from, "MMM d, yyyy")} - {format(dateRange.to, "MMM d, yyyy")}
+                {dateRange.from ? format(dateRange.from, "MMM d, yyyy") : "Start date"} - {dateRange.to ? format(dateRange.to, "MMM d, yyyy") : "End date"}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
@@ -92,8 +91,9 @@ export default function UsageAnalyticsTab() {
                 mode="range"
                 defaultMonth={dateRange.from}
                 selected={dateRange}
-                onSelect={(range) => range && setDateRange(range)}
+                onSelect={setDateRange}
                 numberOfMonths={2}
+                className="pointer-events-auto"
               />
             </PopoverContent>
           </Popover>

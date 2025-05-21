@@ -1,6 +1,6 @@
-
 // Type definitions for custom Supabase functions and tables
 import { Json } from "@/integrations/supabase/types";
+import { DateRange } from "react-day-picker";
 
 // Type for the scheduled job settings table
 export interface ScheduledJobSettings {
