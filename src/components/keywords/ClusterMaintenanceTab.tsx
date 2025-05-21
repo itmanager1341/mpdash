@@ -86,7 +86,7 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
         recentArticles: recentArticles
       };
       
-      // Call our new edge function
+      // Call our edge function
       const { data, error } = await supabase.functions.invoke('suggest-keywords', {
         body: { 
           source: "news_analysis",
@@ -101,13 +101,13 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       
       if (data?.success && data.suggestions?.length > 0) {
         setSuggestions(data.suggestions);
-        toast.success(`Generated ${data.suggestions.length} keyword suggestions`);
+        toast.success(`Generated ${data.suggestions.length} keyword suggestions using ${data.api_used} API`);
       } else {
         toast.warning("No suggestions were generated. Try again.");
       }
     } catch (err) {
       console.error("Error generating suggestions:", err);
-      toast.error("Failed to generate keyword suggestions: " + (err.message || "Unknown error"));
+      toast.error("Failed to generate keyword suggestions: " + (err instanceof Error ? err.message : "Unknown error"));
     } finally {
       setIsLoading(false);
     }
