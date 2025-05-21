@@ -429,6 +429,22 @@ export type Database = {
           total_reviewed: number
         }[]
       }
+      get_cron_jobs: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          jobid: number
+          jobname: string
+          schedule: string
+          command: string
+          nodename: string
+          nodeport: number
+          database: string
+          username: string
+          active: boolean
+          last_run: string
+          next_run: string
+        }[]
+      }
       get_job_settings: {
         Args: { job_name_param: string }
         Returns: {
