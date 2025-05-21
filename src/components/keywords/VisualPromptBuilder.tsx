@@ -609,7 +609,7 @@ export default function VisualPromptBuilder({
             </Tabs>
             
             <div className="flex justify-end gap-2 mt-6">
-              <Button type="button" variant="outline" onClick={onCancel}>
+              <Button type="button" variant="secondary" onClick={onCancel}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
