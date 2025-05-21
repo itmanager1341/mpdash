@@ -11,6 +11,60 @@ export async function fetchPrompts(): Promise<LlmPrompt[]> {
   return data || [];
 }
 
+export async function createPrompt(promptData: LlmPromptFormData): Promise<LlmPrompt> {
+  const { data, error } = await supabase
+    .from('llm_prompts')
+    .insert([promptData])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function updatePrompt(id: string, promptData: LlmPromptFormData): Promise<LlmPrompt> {
+  const { data, error } = await supabase
+    .from('llm_prompts')
+    .update(promptData)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePrompt(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('llm_prompts')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+}
+
+export async function togglePromptActive(id: string, isActive: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('llm_prompts')
+    .update({ is_active: isActive })
+    .eq('id', id);
+  
+  if (error) throw error;
+}
+
+export async function testPrompt(testData: LlmTestInput): Promise<LlmTestResult> {
+  // Call the Supabase Edge Function for testing prompts
+  const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
+    body: testData
+  });
+  
+  if (error) throw error;
+  return data || {
+    output: "Error: No response from test function",
+    model_used: testData.model
+  };
+}
+
 export function extractPromptMetadata(prompt: LlmPrompt) {
   const metadataMatch = prompt?.prompt_text?.match(/\/\*\n([\s\S]*?)\n\*\//);
   if (metadataMatch) {
