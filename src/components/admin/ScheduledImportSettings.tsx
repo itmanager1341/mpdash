@@ -8,8 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ScheduledJobSettings } from "@/types/database";
+import { AlertCircle, Loader2, PlayCircle } from "lucide-react";
+import { formatDistanceToNow, parseISO } from "date-fns";
 
 export default function ScheduledImportSettings() {
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +21,7 @@ export default function ScheduledImportSettings() {
   const [minScore, setMinScore] = useState("2.5");
   const [keywords, setKeywords] = useState("mortgage, housing market, federal reserve, interest rates");
   const [limit, setLimit] = useState("20");
+  const [lastRunInfo, setLastRunInfo] = useState<{time: string | null, success: boolean, message: string} | null>(null);
   
   const queryClient = useQueryClient();
 
@@ -130,6 +134,31 @@ export default function ScheduledImportSettings() {
       setMinScore(jobSettings.parameters.minScore.toString());
       setKeywords(jobSettings.parameters.keywords.join(', '));
       setLimit(jobSettings.parameters.limit.toString());
+      
+      // Format last run info if available
+      if (jobSettings.last_run) {
+        try {
+          const lastRunDate = parseISO(jobSettings.last_run);
+          const timeAgo = formatDistanceToNow(lastRunDate, { addSuffix: true });
+          setLastRunInfo({
+            time: timeAgo,
+            success: true,
+            message: `Last executed ${timeAgo}`
+          });
+        } catch (e) {
+          setLastRunInfo({
+            time: jobSettings.last_run,
+            success: true,
+            message: `Last executed ${jobSettings.last_run}`
+          });
+        }
+      } else {
+        setLastRunInfo({
+          time: null,
+          success: false,
+          message: "Job has never run"
+        });
+      }
     }
   }, [jobSettings]);
 
@@ -150,12 +179,43 @@ export default function ScheduledImportSettings() {
       }
 
       if (data.success) {
+        // Update last run info
+        setLastRunInfo({
+          time: "just now",
+          success: true,
+          message: `Last executed just now`
+        });
+        
         toast.success(`Import completed: ${data.results.inserted} items imported, ${data.results.skipped.duplicates} duplicates skipped`);
+        
+        // If no articles were inserted, show a more descriptive message
+        if (data.results.inserted === 0) {
+          if (data.results.skipped.duplicates > 0) {
+            toast.info(`No new articles were imported because ${data.results.skipped.duplicates} articles were found to be duplicates.`);
+          } else if (data.results.skipped.lowScore > 0) {
+            toast.info(`No articles were imported because ${data.results.skipped.lowScore} articles had scores below the minimum threshold of ${minScore}.`);
+          } else {
+            toast.info("No new articles were found matching your criteria. Try adjusting your keywords or minimum score.");
+          }
+        }
+        
+        // Refresh any queries that might be affected
+        queryClient.invalidateQueries({ queryKey: ['news'] });
       } else {
+        setLastRunInfo({
+          time: "just now",
+          success: false,
+          message: `Failed: ${data.error}`
+        });
         toast.error(`Import failed: ${data.error}`);
       }
     } catch (error) {
       console.error("Error running scheduled import:", error);
+      setLastRunInfo({
+        time: "just now",
+        success: false,
+        message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      });
       toast.error("Failed to run scheduled import");
     } finally {
       setIsLoading(false);
@@ -206,6 +266,16 @@ export default function ScheduledImportSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {lastRunInfo && (
+          <Alert variant={lastRunInfo.success ? "default" : "destructive"}>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Execution Status</AlertTitle>
+            <AlertDescription>
+              {lastRunInfo.message}
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <h4 className="font-medium">Enable Scheduled Import</h4>
@@ -283,7 +353,17 @@ export default function ScheduledImportSettings() {
           onClick={handleManualRun}
           disabled={isLoading}
         >
-          {isLoading ? "Running..." : "Run Now"}
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Running...
+            </>
+          ) : (
+            <>
+              <PlayCircle className="mr-2 h-4 w-4" />
+              Run Now
+            </>
+          )}
         </Button>
         
         <Button
