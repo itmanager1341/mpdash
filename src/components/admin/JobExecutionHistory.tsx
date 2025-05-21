@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, CheckCircle2, RefreshCw, Database, Calendar } from "lucide-react";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ScheduledJobSettings } from "@/types/database";
 
 const JobExecutionHistory = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [jobHistory, setJobHistory] = useState<any[]>([]);
+  const [jobHistory, setJobHistory] = useState<ScheduledJobSettings[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pgCronStatus, setPgCronStatus] = useState<{isAvailable: boolean, error?: string} | null>(null);
 
@@ -29,16 +30,39 @@ const JobExecutionHistory = () => {
 
       // Check if pg_cron is installed and accessible
       try {
+        // Try to fetch cron jobs using our custom function
         const { data: cronJobs, error: cronError } = await supabase
-          .rpc('get_cron_jobs')
-          .select('*');
+          .rpc('get_job_settings', { job_name_param: 'daily-perplexity-news-fetch' });
           
         if (cronError) {
-          console.error("Error fetching cron jobs:", cronError);
-          setPgCronStatus({ isAvailable: false, error: cronError.message });
+          console.error("Error fetching job settings:", cronError);
+          setPgCronStatus({ 
+            isAvailable: false, 
+            error: `Error fetching job settings: ${cronError.message}`
+          });
         } else {
-          setPgCronStatus({ isAvailable: true });
-          console.log("Cron jobs:", cronJobs);
+          // Check if the job exists in the database
+          const jobExists = cronJobs && cronJobs.length > 0;
+          
+          // Now try to check if the pg_cron extension is available (without using the get_cron_jobs function)
+          const { data: extensions, error: extError } = await supabase
+            .from('pg_extension')
+            .select('*')
+            .eq('extname', 'pg_cron')
+            .maybeSingle();
+            
+          if (extError) {
+            console.log("Could not check for pg_cron extension:", extError);
+            setPgCronStatus({ 
+              isAvailable: jobExists, 
+              error: jobExists ? undefined : "Cannot verify pg_cron status"
+            });
+          } else {
+            setPgCronStatus({ 
+              isAvailable: extensions !== null,
+              error: extensions === null ? "pg_cron extension not found" : undefined
+            });
+          }
         }
       } catch (cronCheckError) {
         console.error("Error checking pg_cron availability:", cronCheckError);
