@@ -40,7 +40,7 @@ const PlanningTab = ({ searchTerm }: PlanningTabProps) => {
     start_date: new Date().toISOString().split('T')[0],
   });
   
-  // Fetch existing plans
+  // Fetch existing plans - Use type assertion to handle the new table
   const { data: plans, isLoading } = useQuery({
     queryKey: ['keyword-plans'],
     queryFn: async () => {
@@ -50,7 +50,7 @@ const PlanningTab = ({ searchTerm }: PlanningTabProps) => {
         .order('start_date', { ascending: true });
       
       if (error) throw error;
-      return data as KeywordPlan[];
+      return data as unknown as KeywordPlan[];
     }
   });
   
@@ -72,7 +72,7 @@ const PlanningTab = ({ searchTerm }: PlanningTabProps) => {
     mutationFn: async (planData: Partial<KeywordPlan>) => {
       const { data, error } = await supabase
         .from('keyword_plans')
-        .insert([planData])
+        .insert([planData as any])
         .select();
       
       if (error) throw error;

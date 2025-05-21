@@ -161,6 +161,45 @@ export type Database = {
         }
         Relationships: []
       }
+      keyword_plans: {
+        Row: {
+          assigned_to: string | null
+          associated_clusters: string[] | null
+          created_at: string
+          description: string | null
+          end_date: string | null
+          id: string
+          priority: string
+          start_date: string
+          status: string
+          title: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          associated_clusters?: string[] | null
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          priority?: string
+          start_date: string
+          status?: string
+          title: string
+        }
+        Update: {
+          assigned_to?: string | null
+          associated_clusters?: string[] | null
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          priority?: string
+          start_date?: string
+          status?: string
+          title?: string
+        }
+        Relationships: []
+      }
       keyword_tracking: {
         Row: {
           article_count: number | null
