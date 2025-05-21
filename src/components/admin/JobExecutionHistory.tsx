@@ -9,6 +9,7 @@ import { AlertCircle, CheckCircle2, RefreshCw, Database, Calendar } from "lucide
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScheduledJobSettings } from "@/types/database";
+import { Json } from "@/integrations/supabase/types";
 
 const JobExecutionHistory = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -44,20 +45,23 @@ const JobExecutionHistory = () => {
           // Check if the job exists in the database
           const jobExists = cronJobs && cronJobs.length > 0;
           
-          // Now try to check if the pg_cron extension is available using our custom function
-          const { data: cronStatus, error: cronStatusError } = await supabase
-            .rpc('get_cron_jobs');
-            
-          if (cronStatusError) {
-            console.error("Could not check for pg_cron extension:", cronStatusError);
+          // Check if pg_cron extension is available via database functions list
+          const { data: functions, error: funcError } = await supabase
+            .from('pg_extension')
+            .select('*')
+            .eq('extname', 'pg_cron')
+            .single();
+          
+          if (funcError) {
+            console.error("Could not verify pg_cron extension:", funcError);
             setPgCronStatus({ 
               isAvailable: jobExists, 
-              error: jobExists ? undefined : "Cannot verify pg_cron status"
+              error: jobExists ? undefined : "Cannot directly verify pg_cron status, but job exists"
             });
           } else {
             setPgCronStatus({ 
-              isAvailable: cronStatus && cronStatus.length > 0,
-              error: (!cronStatus || cronStatus.length === 0) ? "pg_cron extension not found or no jobs configured" : undefined
+              isAvailable: true,
+              error: undefined
             });
           }
         }
@@ -97,6 +101,20 @@ const JobExecutionHistory = () => {
       return `${format(date, 'MMM d, yyyy h:mm a')} (${formatDistanceToNow(date, { addSuffix: true })})`;
     } catch (e) {
       return dateString;
+    }
+  };
+
+  // Helper function to safely display JSON parameters
+  const formatJobParameters = (params: Json) => {
+    if (!params) return "{}";
+    
+    try {
+      if (typeof params === 'string') {
+        return params;
+      }
+      return JSON.stringify(params, null, 2);
+    } catch (e) {
+      return String(params);
     }
   };
 
@@ -233,7 +251,7 @@ const JobExecutionHistory = () => {
                   <div className="flex items-start">
                     <span className="text-muted-foreground min-w-[100px]">Parameters:</span>
                     <div className="font-mono text-xs bg-muted p-2 rounded-md overflow-auto max-w-[300px]">
-                      {JSON.stringify(job.parameters, null, 2)}
+                      {formatJobParameters(job.parameters)}
                     </div>
                   </div>
                 </div>

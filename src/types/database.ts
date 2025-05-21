@@ -9,11 +9,7 @@ export interface ScheduledJobSettings {
   job_name: string;
   is_enabled: boolean;
   schedule: string;
-  parameters: {
-    minScore: number;
-    keywords: string[];
-    limit: number;
-  };
+  parameters: Json; // Changed from specific shape to Json type for flexibility
   last_run: string | null;
   created_at: string;
   updated_at: string;
