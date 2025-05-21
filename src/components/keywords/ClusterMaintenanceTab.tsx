@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -133,7 +134,7 @@ export default function ClusterMaintenanceTab({ searchTerm }: ClusterMaintenance
           <TabsTrigger value="suggestions" className="flex items-center gap-2">
             AI Suggestions
             {pendingSuggestions > 0 && (
-              <NotificationBadge variant="primary" size="sm">
+              <NotificationBadge variant="default" size="sm">
                 {pendingSuggestions}
               </NotificationBadge>
             )}

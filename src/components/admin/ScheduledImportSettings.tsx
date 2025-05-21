@@ -144,7 +144,7 @@ export default function ScheduledImportSettings() {
           minScore: parseFloat(formData.minScore),
           limit: parseInt(formData.limit),
           keywords: keywordsArray,
-        },
+        } as Record<string, any>, // Use type assertion to allow adding promptId
       };
 
       // Add promptId if selected
