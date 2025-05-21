@@ -40,6 +40,41 @@ export interface UserRole {
   created_at: string;
 }
 
+// Interface for LLM model configuration
+export interface LlmModelConfig {
+  id: string;
+  model_id: string;
+  provider: string;
+  parameters: {
+    temperature?: number;
+    top_p?: number;
+    max_tokens?: number;
+    frequency_penalty?: number;
+    presence_penalty?: number;
+    include_clusters?: boolean;
+    include_tracking_summary?: boolean;
+    include_sources_map?: boolean;
+  };
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
+
+// Interface for LLM usage logs
+export interface LlmUsageLog {
+  id: string;
+  model: string;
+  function_name: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+  duration_ms: number;
+  created_at: string;
+  user_id: string | null;
+}
+
 // Define custom RPC function return types
 export interface SupabaseRpcFunctions {
   get_job_settings: ScheduledJobSettings;

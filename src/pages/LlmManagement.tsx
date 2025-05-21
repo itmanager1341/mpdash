@@ -3,6 +3,9 @@ import { useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import PromptsTab from "@/components/llm/PromptsTab";
+import ModelsTab from "@/components/llm/ModelsTab";
+import UsageAnalyticsTab from "@/components/llm/UsageAnalyticsTab";
+import SettingsTab from "@/components/llm/SettingsTab";
 
 export default function LlmManagement() {
   const [activeTab, setActiveTab] = useState("prompts");
@@ -27,24 +30,15 @@ export default function LlmManagement() {
         </TabsContent>
         
         <TabsContent value="models" className="space-y-6">
-          <div className="bg-muted/50 rounded-md p-8 text-center">
-            <h3 className="text-xl font-semibold mb-2">Model Management</h3>
-            <p className="text-muted-foreground">Configure LLM models and their parameters (Coming soon)</p>
-          </div>
+          <ModelsTab />
         </TabsContent>
         
         <TabsContent value="usage" className="space-y-6">
-          <div className="bg-muted/50 rounded-md p-8 text-center">
-            <h3 className="text-xl font-semibold mb-2">Usage & Analytics</h3>
-            <p className="text-muted-foreground">Track token usage, costs, and performance metrics (Coming soon)</p>
-          </div>
+          <UsageAnalyticsTab />
         </TabsContent>
         
         <TabsContent value="settings" className="space-y-6">
-          <div className="bg-muted/50 rounded-md p-8 text-center">
-            <h3 className="text-xl font-semibold mb-2">LLM Settings</h3>
-            <p className="text-muted-foreground">Configure global LLM settings and defaults (Coming soon)</p>
-          </div>
+          <SettingsTab />
         </TabsContent>
       </Tabs>
     </DashboardLayout>
