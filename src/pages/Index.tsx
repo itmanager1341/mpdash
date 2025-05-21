@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -216,19 +215,18 @@ const Index = () => {
         refetch();
       }, 1500);
       
-      // Actual implementation would look like:
-      /*
-      const { data, error } = await supabase.functions.invoke('analyze-news-clusters', {
-        body: { /* params */ }
-      });
-      
-      if (error) throw error;
-      
-      if (data.success) {
-        toast.success(`${data.updated} news items updated with cluster mapping`);
-        refetch();
-      }
-      */
+      // Commented out actual implementation that would be used later
+      // Example implementation:
+      // const { data, error } = await supabase.functions.invoke('analyze-news-clusters', {
+      //   body: { parameters: 'go here' }
+      // });
+      // 
+      // if (error) throw error;
+      // 
+      // if (data.success) {
+      //   toast.success(`${data.updated} news items updated with cluster mapping`);
+      //   refetch();
+      // }
     } catch (err) {
       console.error("Error analyzing keywords:", err);
       toast.error("Failed to analyze news items");
