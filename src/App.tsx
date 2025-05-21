@@ -12,6 +12,7 @@ import Performance from "@/pages/Performance";
 import AdminSettings from "@/pages/AdminSettings";
 import Documentation from "@/pages/Documentation";
 import LlmManagement from "@/pages/LlmManagement";
+import KeywordManagement from "@/pages/KeywordManagement";
 import NotFound from "@/pages/NotFound";
 import Auth from "@/pages/Auth";
 import Profile from "@/pages/Profile";
@@ -27,7 +28,7 @@ function App() {
     // Check database tables on app startup
     const checkDatabaseTables = async () => {
       try {
-        // Get the list of API keys to verify the table exists and is accessible
+        // Try to use RPC function first
         const { data, error } = await supabase.functions.invoke('api-keys', {
           body: { operation: 'list' }
         });
@@ -71,6 +72,7 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/documentation" element={<Documentation />} />
             <Route path="/llm-management" element={<LlmManagement />} />
+            <Route path="/keyword-management" element={<KeywordManagement />} />
           </Route>
           
           <Route element={<ProtectedRoute requiredRole="admin" />}>
