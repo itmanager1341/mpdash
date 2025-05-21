@@ -18,6 +18,28 @@ export interface ScheduledJobSettings {
   updated_at: string;
 }
 
+// Define user roles
+export type AppRole = 'admin' | 'editor' | 'writer' | 'viewer';
+
+// Interface for user profile
+export interface UserProfile {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Interface for user roles
+export interface UserRole {
+  id: string;
+  user_id: string;
+  role: AppRole;
+  created_at: string;
+}
+
 // Define custom RPC function return types
 export interface SupabaseRpcFunctions {
   get_job_settings: ScheduledJobSettings;

@@ -5,6 +5,7 @@ import NewsImporter from "@/components/admin/NewsImporter";
 import NewsTextConverter from "@/components/admin/NewsTextConverter";
 import ApiKeysManager from "@/components/admin/ApiKeysManager";
 import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
+import UserManagement from "@/components/admin/UserManagement";
 import { Button } from "@/components/ui/button";
 import { FileText, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -54,10 +55,7 @@ export default function AdminSettings() {
         </TabsContent>
         
         <TabsContent value="users">
-          <div className="bg-muted/50 rounded-md p-8 text-center">
-            <h3 className="text-xl font-semibold mb-2">User Role Management</h3>
-            <p className="text-muted-foreground">Configure user roles and permissions here.</p>
-          </div>
+          <UserManagement />
         </TabsContent>
 
         <TabsContent value="docs">
