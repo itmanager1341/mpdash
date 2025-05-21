@@ -1,12 +1,12 @@
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useLocation } from 'react-router-dom';
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
 import KeywordClustersTab from "@/components/keywords/KeywordClustersTab";
 import KeywordTrackingTab from "@/components/keywords/KeywordTrackingTab";
 import ClusterMaintenanceTab from "@/components/keywords/ClusterMaintenanceTab";
@@ -15,6 +15,24 @@ import PlanningTab from "@/components/keywords/PlanningTab";
 const KeywordManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("clusters");
+  const location = useLocation();
+  
+  // Parse URL query parameter for tab selection
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['clusters', 'tracking', 'maintenance', 'planning'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [location.search]);
+  
+  // Update URL when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', value);
+    window.history.pushState({}, '', url.toString());
+  };
 
   return (
     <DashboardLayout>
@@ -37,7 +55,7 @@ const KeywordManagement = () => {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="clusters">Manage Clusters</TabsTrigger>
           <TabsTrigger value="tracking">Keyword Analytics</TabsTrigger>

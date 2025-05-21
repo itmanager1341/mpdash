@@ -1,145 +1,117 @@
 
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle, Info, Wand2 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { CheckIcon, EyeIcon, FileEdit, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ScheduledJobSettings } from "@/types/database";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function ScheduledImportSettings() {
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
-  
-  // Fetch job settings
-  const { data: jobSettings, isLoading: isLoadingSettings, error: settingsError, refetch: refetchSettings } = useQuery({
-    queryKey: ["job-settings", "daily-perplexity-news-fetch"],
-    queryFn: async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke("get-scheduled-job", {
-          body: { job_name: "daily-perplexity-news-fetch" },
-        });
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    schedule: "0 */12 * * *", // Default: every 12 hours
+    isEnabled: true,
+    minScore: "0.6",
+    limit: "10",
+    keywords: "",
+  });
+  const [useEnhancedPrompt, setUseEnhancedPrompt] = useState(false);
+  const [selectedPromptId, setSelectedPromptId] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewPrompt, setPreviewPrompt] = useState("");
 
-        if (error) throw error;
-        return data as ScheduledJobSettings;
-      } catch (error) {
-        console.error("Error fetching job settings:", error);
-        throw error;
-      }
+  const { data: job, isLoading: isLoadingJob } = useQuery({
+    queryKey: ["scheduled-job-news-import"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("scheduled_job_settings")
+        .select("*")
+        .eq("job_name", "news_import")
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
     },
   });
 
-  // Fetch available prompts
-  const { data: availablePrompts, isLoading: isLoadingPrompts } = useQuery({
-    queryKey: ["llm-prompts", "news-search"],
+  const { data: prompts, isLoading: isLoadingPrompts } = useQuery({
+    queryKey: ["news-search-prompts"],
     queryFn: async () => {
-      try {
-        const { data, error } = await supabase
-          .from("llm_prompts")
-          .select("*")
-          .order("function_name");
+      const { data, error } = await supabase
+        .from("llm_prompts")
+        .select("*")
+        .eq("is_active", true)
+        .order("function_name");
 
-        if (error) throw error;
+      if (error) throw error;
 
-        // Filter for news search prompts
-        return (data || []).filter(prompt => {
-          // Check if the prompt has the news search metadata
-          const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
-          if (metadataMatch) {
-            try {
-              const metadata = JSON.parse(metadataMatch[1]);
-              return metadata.search_settings?.is_news_search === true;
-            } catch (e) {
-              return false;
-            }
+      // Filter to only include news search prompts
+      return (data || []).filter(prompt => {
+        // Check if prompt has news search metadata or name indicates news search
+        const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
+        if (metadataMatch) {
+          try {
+            const metadata = JSON.parse(metadataMatch[1]);
+            return metadata.search_settings?.is_news_search === true;
+          } catch (e) {
+            return false;
           }
-          // Also include prompts that have "news" or "search" in their function name
-          return prompt.function_name.toLowerCase().includes('news') || 
-                 prompt.function_name.toLowerCase().includes('search');
-        });
-      } catch (error) {
-        console.error("Error fetching prompts:", error);
-        throw error;
-      }
-    }
-  });
-
-  // Form setup
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    formState: { errors },
-    watch,
-  } = useForm({
-    defaultValues: {
-      is_enabled: true,
-      schedule: "0 6 * * *",
-      minScore: 2.5,
-      keywords: "",
-      limit: 20,
-      usePrompt: false,
-      promptId: "",
+        }
+        return prompt.function_name?.includes('news_search');
+      });
     },
   });
 
-  // Update form when settings are loaded
+  // Update form with job data when loaded
   useEffect(() => {
-    if (jobSettings) {
-      setValue("is_enabled", jobSettings.is_enabled);
-      setValue("schedule", jobSettings.schedule);
-      
-      const params = jobSettings.parameters as Record<string, any>;
-      setValue("minScore", params.minScore || 2.5);
-      setValue("limit", params.limit || 20);
-      
-      if (params.keywords && Array.isArray(params.keywords)) {
-        setValue("keywords", params.keywords.join(", "));
-      }
-      
-      setValue("usePrompt", !!params.promptId);
-      setValue("promptId", params.promptId || "");
-      
-      if (params.promptId) {
-        setSelectedPrompt(params.promptId);
-      }
+    if (job) {
+      setFormData({
+        schedule: job.schedule || "0 */12 * * *",
+        isEnabled: job.is_enabled,
+        minScore: job.parameters.minScore?.toString() || "0.6",
+        limit: job.parameters.limit?.toString() || "10",
+        keywords: Array.isArray(job.parameters.keywords)
+          ? job.parameters.keywords.join("\n")
+          : job.parameters.keywords || "",
+      });
+
+      setUseEnhancedPrompt(!!job.parameters.promptId);
+      setSelectedPromptId(job.parameters.promptId || "");
     }
-  }, [jobSettings, setValue]);
+  }, [job]);
 
-  // Update job settings mutation
-  const updateJobMutation = useMutation({
+  // Function to save the job settings
+  const saveJobMutation = useMutation({
     mutationFn: async (formData: any) => {
-      // Prepare keywords as array
-      let keywordsArray: string[] = [];
-      if (typeof formData.keywords === "string") {
-        keywordsArray = formData.keywords
-          .split(",")
-          .map((k: string) => k.trim())
-          .filter((k: string) => k.length > 0);
-      }
+      setIsLoading(true);
 
-      const settings = {
-        is_enabled: formData.is_enabled,
+      const keywordsArray = formData.keywords
+        .split("\n")
+        .map((k: string) => k.trim())
+        .filter((k: string) => k);
+
+      const jobData = {
+        job_name: "news_import",
         schedule: formData.schedule,
+        is_enabled: formData.isEnabled,
         parameters: {
           minScore: parseFloat(formData.minScore),
           limit: parseInt(formData.limit),
@@ -148,48 +120,96 @@ export default function ScheduledImportSettings() {
       };
 
       // Add promptId if selected
-      if (formData.usePrompt && formData.promptId) {
-        settings.parameters.promptId = formData.promptId;
+      if (useEnhancedPrompt && selectedPromptId) {
+        jobData.parameters.promptId = selectedPromptId;
+      } else {
+        // Remove promptId if not using enhanced prompt
+        delete jobData.parameters.promptId;
       }
 
-      const { error } = await supabase.functions.invoke("update-scheduled-job", {
-        body: {
-          job_name: "daily-perplexity-news-fetch",
-          settings,
-        },
-      });
+      if (job?.id) {
+        // Update existing job
+        const { error } = await supabase
+          .from("scheduled_job_settings")
+          .update(jobData)
+          .eq("id", job.id);
 
-      if (error) throw error;
-      return { success: true };
+        if (error) throw error;
+      } else {
+        // Create new job
+        const { error } = await supabase
+          .from("scheduled_job_settings")
+          .insert([jobData]);
+
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
-      toast.success("Job settings updated successfully");
-      setIsSuccess(true);
-      setTimeout(() => setIsSuccess(false), 2000);
-      refetchSettings();
+      toast.success("Scheduled import settings saved successfully");
+      setIsLoading(false);
     },
     onError: (error) => {
-      toast.error(`Failed to update job settings: ${error.message}`);
+      console.error("Error saving job:", error);
+      toast.error("Failed to save scheduled import settings");
+      setIsLoading(false);
     },
   });
 
-  const handlePromptChange = (value: string) => {
-    setSelectedPrompt(value);
-    setValue("promptId", value);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveJobMutation.mutate(formData);
   };
 
-  const handleFormSubmit = (data: any) => {
-    updateJobMutation.mutate(data);
+  // Extract schedule parts for easier UI
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData({ ...formData, [name]: value });
   };
-
-  // Find selected prompt details
-  const selectedPromptDetails = selectedPrompt && availablePrompts 
-    ? availablePrompts.find(p => p.id === selectedPrompt)
-    : null;
-
-  // Extract metadata from prompt text if available
-  const extractMetadata = (promptText: string) => {
-    const metadataMatch = promptText?.match(/\/\*\n([\s\S]*?)\n\*\//);
+  
+  // Update frequency dropdown
+  const handleFrequencyChange = (value: string) => {
+    let schedule = "";
+    
+    switch (value) {
+      case "hourly":
+        schedule = "0 * * * *"; // Every hour
+        break;
+      case "daily":
+        schedule = "0 8 * * *"; // Every day at 8am
+        break;
+      case "twice-daily":
+        schedule = "0 8,20 * * *"; // Every day at 8am and 8pm
+        break;
+      case "every-12-hours":
+        schedule = "0 */12 * * *"; // Every 12 hours
+        break;
+      case "weekly":
+        schedule = "0 8 * * 1"; // Every Monday at 8am
+        break;
+      default:
+        schedule = value; // Use custom value
+    }
+    
+    setFormData({ ...formData, schedule });
+  };
+  
+  // Helper to get current frequency from schedule
+  const getCurrentFrequency = () => {
+    const schedule = formData.schedule;
+    
+    if (schedule === "0 * * * *") return "hourly";
+    if (schedule === "0 8 * * *") return "daily";
+    if (schedule === "0 8,20 * * *") return "twice-daily";
+    if (schedule === "0 */12 * * *") return "every-12-hours";
+    if (schedule === "0 8 * * 1") return "weekly";
+    
+    return "custom";
+  };
+  
+  const extractMetadata = (prompt: LlmPrompt | undefined) => {
+    if (!prompt) return null;
+    
+    const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
     if (metadataMatch) {
       try {
         return JSON.parse(metadataMatch[1]);
@@ -199,260 +219,296 @@ export default function ScheduledImportSettings() {
     }
     return null;
   };
-
-  const promptMetadata = selectedPromptDetails ? extractMetadata(selectedPromptDetails.prompt_text) : null;
-  const searchSettings = promptMetadata?.search_settings || {};
-
-  const usePrompt = watch("usePrompt");
+  
+  const getSelectedPrompt = () => {
+    return prompts?.find(p => p.id === selectedPromptId);
+  };
+  
+  const generatePreviewPrompt = () => {
+    const selectedPrompt = getSelectedPrompt();
+    if (!selectedPrompt) return "";
+    
+    // Remove metadata from prompt text
+    let previewText = selectedPrompt.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
+    
+    // Insert first keyword for preview
+    const firstKeyword = formData.keywords
+      .split("\n")
+      .map(k => k.trim())
+      .filter(k => k)[0] || "mortgage rates";
+      
+    if (previewText.includes("[QUERY]")) {
+      previewText = previewText.replace("[QUERY]", firstKeyword);
+    } else {
+      previewText += `\n\nTOPIC: ${firstKeyword}`;
+    }
+    
+    return previewText;
+  };
+  
+  // Update preview when prompt or keywords change
+  useEffect(() => {
+    if (selectedPromptId) {
+      setPreviewPrompt(generatePreviewPrompt());
+    }
+  }, [selectedPromptId, formData.keywords]);
 
   return (
-    <Card>
+    <Card className="w-full">
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Scheduled News Import</span>
-          {jobSettings?.is_enabled ? (
-            <Badge className="bg-green-100 text-green-800">Active</Badge>
-          ) : (
-            <Badge variant="outline">Disabled</Badge>
-          )}
-        </CardTitle>
+        <CardTitle>Scheduled News Import</CardTitle>
         <CardDescription>
-          Configure the automatic import of news articles from Perplexity AI
+          Configure automated importing of news articles for editorial review
         </CardDescription>
       </CardHeader>
-      
-      {isLoadingSettings ? (
-        <CardContent>
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-20 w-full" />
+
+      <form onSubmit={handleSubmit}>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="isEnabled" className="text-base">
+                Enable Scheduled Import
+              </Label>
+              <Switch
+                id="isEnabled"
+                checked={formData.isEnabled}
+                onCheckedChange={(checked) =>
+                  setFormData({ ...formData, isEnabled: checked })
+                }
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Turn on/off automated news fetching
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="frequency">Update Frequency</Label>
+            <Select value={getCurrentFrequency()} onValueChange={handleFrequencyChange}>
+              <SelectTrigger id="frequency">
+                <SelectValue placeholder="Select frequency" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="hourly">Hourly</SelectItem>
+                <SelectItem value="every-12-hours">Every 12 hours</SelectItem>
+                <SelectItem value="daily">Daily (8am)</SelectItem>
+                <SelectItem value="twice-daily">Twice Daily (8am/8pm)</SelectItem>
+                <SelectItem value="weekly">Weekly (Monday)</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {getCurrentFrequency() === "custom" && (
+              <div className="pt-2">
+                <Input
+                  name="schedule"
+                  value={formData.schedule}
+                  onChange={handleInputChange}
+                  placeholder="Cron expression (e.g., 0 */12 * * *)"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use cron syntax: minute hour day-of-month month day-of-week
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="minScore">Minimum Relevance Score</Label>
+              <Input
+                id="minScore"
+                name="minScore"
+                type="number"
+                min="0"
+                max="1"
+                step="0.1"
+                value={formData.minScore}
+                onChange={handleInputChange}
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum score (0-1) for articles to be imported
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="limit">Article Limit</Label>
+              <Input
+                id="limit"
+                name="limit"
+                type="number"
+                min="1"
+                max="50"
+                value={formData.limit}
+                onChange={handleInputChange}
+              />
+              <p className="text-xs text-muted-foreground">
+                Maximum number of articles to import per run
+              </p>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="useEnhancedPrompt" className="text-base">
+                Use Enhanced Search Prompt
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 inline-block ml-1 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        Enhanced prompts provide better context and filtering options for more targeted news results.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </Label>
+              <Switch
+                id="useEnhancedPrompt"
+                checked={useEnhancedPrompt}
+                onCheckedChange={(checked) => setUseEnhancedPrompt(checked)}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Use customized search prompts from the Keyword Management section
+            </p>
+          </div>
+          
+          {useEnhancedPrompt && (
+            <div className="space-y-2 border-l-4 border-primary/20 pl-4 py-2">
+              <Label>Select Search Prompt</Label>
+              {isLoadingPrompts ? (
+                <p className="text-sm text-muted-foreground">Loading prompts...</p>
+              ) : prompts && prompts.length > 0 ? (
+                <>
+                  <Select
+                    value={selectedPromptId}
+                    onValueChange={(value) => {
+                      setSelectedPromptId(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a search prompt" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {prompts.map((prompt) => (
+                        <SelectItem key={prompt.id} value={prompt.id}>
+                          {prompt.function_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  {selectedPromptId && (
+                    <div className="mt-3">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-primary/10 text-primary hover:bg-primary/20">
+                          {getSelectedPrompt()?.model.includes('llama') ? 'Llama' : getSelectedPrompt()?.model}
+                        </Badge>
+                        
+                        {getSelectedPrompt()?.include_clusters && (
+                          <Badge variant="outline">Uses clusters</Badge>
+                        )}
+                        
+                        {(() => {
+                          const metadata = extractMetadata(getSelectedPrompt());
+                          if (metadata?.search_settings?.recency_filter) {
+                            return (
+                              <Badge variant="outline">
+                                {metadata.search_settings.recency_filter === 'day' ? '24h' : metadata.search_settings.recency_filter}
+                              </Badge>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                      
+                      <div className="mt-2 flex gap-2">
+                        <Sheet>
+                          <SheetTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-2"
+                            >
+                              <EyeIcon className="h-4 w-4" />
+                              Preview Prompt
+                            </Button>
+                          </SheetTrigger>
+                          <SheetContent side="right" className="w-full sm:max-w-lg">
+                            <SheetHeader>
+                              <SheetTitle>Prompt Preview</SheetTitle>
+                              <SheetDescription>
+                                This is how the prompt will be used to search for news
+                              </SheetDescription>
+                            </SheetHeader>
+                            <ScrollArea className="h-[80vh] mt-4">
+                              <pre className="whitespace-pre-wrap text-sm font-mono p-4 rounded bg-muted">
+                                {previewPrompt}
+                              </pre>
+                            </ScrollArea>
+                          </SheetContent>
+                        </Sheet>
+                        
+                        <a href="/keyword-management?tab=maintenance" className="text-xs text-blue-500 hover:text-blue-700 flex items-center">
+                          <FileEdit className="h-4 w-4 mr-1" />
+                          Manage Prompts
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertTitle>No search prompts found</AlertTitle>
+                  <AlertDescription>
+                    Create search prompts in the{" "}
+                    <a href="/keyword-management?tab=maintenance" className="underline">
+                      Keyword Management
+                    </a>{" "}
+                    section.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="keywords">Search Keywords</Label>
+            <Textarea
+              id="keywords"
+              name="keywords"
+              value={formData.keywords}
+              onChange={handleInputChange}
+              placeholder="Enter one keyword or phrase per line"
+              rows={6}
+            />
+            <p className="text-sm text-muted-foreground">
+              Enter one search phrase per line (e.g., mortgage rates)
+            </p>
           </div>
         </CardContent>
-      ) : settingsError ? (
-        <CardContent>
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              Could not load job settings. Please try again later.
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      ) : (
-        <form onSubmit={handleSubmit(handleFormSubmit)}>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="is_enabled"
-                  checked={watch("is_enabled")}
-                  onCheckedChange={(checked) => setValue("is_enabled", checked)}
-                />
-                <Label htmlFor="is_enabled">Enable scheduled job</Label>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="schedule">Cron Schedule</Label>
-                <Input
-                  id="schedule"
-                  {...register("schedule", { required: true })}
-                  placeholder="0 6 * * *"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Format: minute hour day month weekday (e.g., "0 6 * * *" = daily at 6:00 AM)
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="minScore">Minimum Score</Label>
-                <Input
-                  id="minScore"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="10"
-                  {...register("minScore", {
-                    required: true,
-                    min: 0,
-                    max: 10,
-                    valueAsNumber: true,
-                  })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Only import articles with a relevance score above this threshold (0-10)
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="limit">Result Limit</Label>
-                <Input
-                  id="limit"
-                  type="number"
-                  min="1"
-                  max="100"
-                  {...register("limit", {
-                    required: true,
-                    min: 1,
-                    max: 100,
-                    valueAsNumber: true,
-                  })}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Maximum number of articles to import per run
-                </p>
-              </div>
-
-              {!usePrompt && (
-                <div className="space-y-2">
-                  <Label htmlFor="keywords">Search Keywords</Label>
-                  <Textarea
-                    id="keywords"
-                    {...register("keywords", { required: !usePrompt })}
-                    placeholder="mortgage, housing market, federal reserve, interest rates"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Comma-separated keywords to search for
-                  </p>
-                </div>
-              )}
-
-              <div className="pt-4 border-t">
-                <div className="flex items-center space-x-2 mb-4">
-                  <Switch
-                    id="usePrompt"
-                    checked={watch("usePrompt")}
-                    onCheckedChange={(checked) => {
-                      setValue("usePrompt", checked);
-                      if (!checked) {
-                        setValue("promptId", "");
-                        setSelectedPrompt(null);
-                      }
-                    }}
-                  />
-                  <Label htmlFor="usePrompt" className="flex items-center gap-1">
-                    <Wand2 className="h-4 w-4" />
-                    Use Enhanced Search Prompt
-                  </Label>
-                </div>
-
-                {usePrompt && (
-                  <div className="space-y-4 pl-2 border-l-2 border-muted">
-                    {isLoadingPrompts ? (
-                      <Skeleton className="h-10 w-full" />
-                    ) : availablePrompts && availablePrompts.length > 0 ? (
-                      <>
-                        <div className="space-y-2">
-                          <Label htmlFor="promptId">Select Search Prompt</Label>
-                          <Select
-                            value={selectedPrompt || ""}
-                            onValueChange={handlePromptChange}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a prompt" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectGroup>
-                                <SelectLabel>Available Prompts</SelectLabel>
-                                {availablePrompts.map((prompt) => (
-                                  <SelectItem key={prompt.id} value={prompt.id}>
-                                    {prompt.function_name}
-                                    {!prompt.is_active && " (Inactive)"}
-                                  </SelectItem>
-                                ))}
-                              </SelectGroup>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {selectedPromptDetails && (
-                          <Alert className="bg-muted/50">
-                            <Info className="h-4 w-4" />
-                            <AlertTitle className="text-sm">Prompt Details</AlertTitle>
-                            <AlertDescription className="text-xs">
-                              <div className="space-y-2 pt-2">
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline">
-                                    {selectedPromptDetails.model}
-                                  </Badge>
-                                  {searchSettings.recency_filter && (
-                                    <Badge variant="outline">
-                                      {searchSettings.recency_filter === '30m' ? '30 minutes' :
-                                       searchSettings.recency_filter === 'hour' ? 'Hourly' :
-                                       searchSettings.recency_filter === 'day' ? 'Daily' :
-                                       searchSettings.recency_filter === 'week' ? 'Weekly' :
-                                       searchSettings.recency_filter === 'month' ? 'Monthly' : 
-                                       searchSettings.recency_filter}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="space-y-1">
-                                  <div className="flex flex-wrap gap-1">
-                                    {selectedPromptDetails.include_clusters && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        <CheckCircle className="h-3 w-3 mr-1" /> Clusters
-                                      </Badge>
-                                    )}
-                                    {selectedPromptDetails.include_tracking_summary && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        <CheckCircle className="h-3 w-3 mr-1" /> Tracking
-                                      </Badge>
-                                    )}
-                                    {selectedPromptDetails.include_sources_map && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        <CheckCircle className="h-3 w-3 mr-1" /> Sources
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                                
-                                <div className="space-y-2 mt-2">
-                                  <Label htmlFor="keywords">Search Keywords (Still Required)</Label>
-                                  <Textarea
-                                    id="keywords"
-                                    {...register("keywords", { required: true })}
-                                    placeholder="mortgage, housing market, federal reserve, interest rates"
-                                    rows={2}
-                                  />
-                                  <p className="text-xs text-muted-foreground">
-                                    These keywords will be used as search terms in the prompt.
-                                  </p>
-                                </div>
-                              </div>
-                            </AlertDescription>
-                          </Alert>
-                        )}
-                      </>
-                    ) : (
-                      <Alert>
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>No prompts available</AlertTitle>
-                        <AlertDescription>
-                          Create news search prompts in the Keyword Management section.
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </CardContent>
-
-          <CardFooter className="flex justify-between">
-            <p className="text-xs text-muted-foreground pt-2">
-              Last run: {jobSettings?.last_run ? new Date(jobSettings.last_run).toLocaleString() : "Never"}
-            </p>
-            
-            <Button type="submit" className="relative" disabled={updateJobMutation.isPending}>
-              {isSuccess && (
-                <CheckCircle className="absolute h-5 w-5 animate-ping text-green-500" />
-              )}
-              {updateJobMutation.isPending ? "Saving..." : "Save Settings"}
-            </Button>
-          </CardFooter>
-        </form>
-      )}
+        <CardFooter className="flex justify-between">
+          <p className="text-xs text-muted-foreground">
+            Last updated:{" "}
+            {job?.updated_at
+              ? new Date(job.updated_at).toLocaleString()
+              : "Never"}
+          </p>
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="gap-2"
+          >
+            {isLoading ? "Saving..." : "Save Settings"}
+            {!isLoading && <CheckIcon className="h-4 w-4" />}
+          </Button>
+        </CardFooter>
+      </form>
     </Card>
   );
 }

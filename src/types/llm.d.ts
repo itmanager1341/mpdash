@@ -45,3 +45,27 @@ interface LlmTestResult {
   model_used: string;
   error?: string;
 }
+
+interface KeywordSuggestion {
+  keyword: string;
+  score: number;
+  source: string;
+  status: "pending" | "approved" | "dismissed";
+  rationale?: string;
+  related_clusters?: string[];
+}
+
+interface PromptMetadata {
+  search_settings: {
+    domain_filter: string;
+    recency_filter: string;
+    temperature: number;
+    max_tokens: number;
+    is_news_search: boolean;
+    selected_themes?: {
+      primary: string[];
+      sub: string[];
+      professions: string[];
+    };
+  };
+}
