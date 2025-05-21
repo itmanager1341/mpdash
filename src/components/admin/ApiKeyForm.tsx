@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,8 +32,8 @@ const serviceInfo: Record<string, ServiceInfo> = {
   },
   openai: {
     name: "OpenAI",
-    // Updated pattern to be more flexible with OpenAI key formats
-    pattern: /^(sk-|org-)[a-zA-Z0-9-]{24,}$/,
+    // Updated pattern to match all valid OpenAI key formats
+    pattern: /^(sk-|org-)[a-zA-Z0-9-]{20,}$/,
     docUrl: "https://platform.openai.com/api-keys",
     description: "Used for content enhancement and analysis via the OpenAI API"
   },
