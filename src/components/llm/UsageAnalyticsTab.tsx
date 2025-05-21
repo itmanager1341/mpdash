@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Bar, Line, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { 
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+} from 'recharts';
 import { format, subDays } from "date-fns";
 import { Calendar as CalendarIcon, Download, Filter } from "lucide-react";
 import { DateRange } from "react-day-picker";
@@ -15,7 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { LlmUsageLog } from "@/types/database";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-// Mock data for visualization purposes if real data is not available
+// Mock data for visualization purposes
 const mockTokenData = [
   { name: 'May 14', gpt4o: 3000, perplexity: 5000, total: 8000 },
   { name: 'May 15', gpt4o: 2000, perplexity: 6000, total: 8000 },
@@ -51,6 +54,15 @@ const mockFunctionUsage = [
   { name: 'Other', value: 10 },
 ];
 
+// Mock usage logs for demonstration
+const mockUsageLogs: LlmUsageLog[] = [
+  { id: '1', function_name: 'magazine-research', model: 'llama-3.1-sonar-small', prompt_tokens: 1500, completion_tokens: 845, total_tokens: 2345, estimated_cost: 0.047, duration_ms: 1256, created_at: '2025-05-20T08:23:15', user_id: null },
+  { id: '2', function_name: 'news-research', model: 'llama-3.1-sonar-large', prompt_tokens: 2200, completion_tokens: 1301, total_tokens: 3501, estimated_cost: 0.105, duration_ms: 1876, created_at: '2025-05-19T16:37:42', user_id: null },
+  { id: '3', function_name: 'article-summarization', model: 'llama-3.1-sonar-small', prompt_tokens: 800, completion_tokens: 405, total_tokens: 1205, estimated_cost: 0.024, duration_ms: 945, created_at: '2025-05-19T11:14:33', user_id: null },
+  { id: '4', function_name: 'magazine-research', model: 'llama-3.1-sonar-small', prompt_tokens: 1200, completion_tokens: 550, total_tokens: 1750, estimated_cost: 0.035, duration_ms: 1120, created_at: '2025-05-18T14:22:51', user_id: null },
+  { id: '5', function_name: 'keyword-analysis', model: 'llama-3.1-sonar-small', prompt_tokens: 600, completion_tokens: 350, total_tokens: 950, estimated_cost: 0.019, duration_ms: 850, created_at: '2025-05-17T09:45:27', user_id: null }
+];
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 export default function UsageAnalyticsTab() {
@@ -79,10 +91,11 @@ export default function UsageAnalyticsTab() {
         return;
       }
       
-      // Format dates to ISO strings for Supabase
-      const fromDate = format(dateRange.from, "yyyy-MM-dd");
-      const toDate = format(dateRange.to, "yyyy-MM-dd");
-      
+      // Since the llm_usage_logs table doesn't exist in the current schema,
+      // we'll use mock data instead of querying Supabase
+      // In a real implementation, once the table is created, you would
+      // uncomment and use this code:
+      /*
       const { data, error } = await supabase
         .from('llm_usage_logs')
         .select('*')
@@ -96,6 +109,10 @@ export default function UsageAnalyticsTab() {
       }
       
       setUsageLogs(data || []);
+      */
+      
+      // For now, use mock data
+      setUsageLogs(mockUsageLogs);
     } catch (err) {
       console.error("Failed to fetch usage logs:", err);
     } finally {
@@ -367,13 +384,7 @@ export default function UsageAnalyticsTab() {
               <TableBody>
                 {(usageLogs.length > 0 ? 
                   usageLogs.filter(log => log.model.toLowerCase().includes('perplexity') || log.model.toLowerCase().includes('sonar')).slice(0, 5) : 
-                  [
-                    { id: '1', function_name: 'magazine-research', model: 'llama-3.1-sonar-small', total_tokens: 2345, estimated_cost: 0.047, created_at: '2025-05-20T08:23:15' },
-                    { id: '2', function_name: 'news-research', model: 'llama-3.1-sonar-large', total_tokens: 3501, estimated_cost: 0.105, created_at: '2025-05-19T16:37:42' },
-                    { id: '3', function_name: 'article-summarization', model: 'llama-3.1-sonar-small', total_tokens: 1205, estimated_cost: 0.024, created_at: '2025-05-19T11:14:33' },
-                    { id: '4', function_name: 'magazine-research', model: 'llama-3.1-sonar-small', total_tokens: 1750, estimated_cost: 0.035, created_at: '2025-05-18T14:22:51' },
-                    { id: '5', function_name: 'keyword-analysis', model: 'llama-3.1-sonar-small', total_tokens: 950, estimated_cost: 0.019, created_at: '2025-05-17T09:45:27' }
-                  ]
+                  mockUsageLogs
                 ).map((log) => (
                   <TableRow key={log.id}>
                     <TableCell>{log.function_name}</TableCell>
