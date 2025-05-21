@@ -308,7 +308,7 @@ export default function VisualPromptBuilder({
                           </AlertDescription>
                         </Alert>
                       ) : (
-                        <Alert variant="outline">
+                        <Alert>
                           <AlertCircle className="h-4 w-4" />
                           <AlertTitle>Standard model</AlertTitle>
                           <AlertDescription>
