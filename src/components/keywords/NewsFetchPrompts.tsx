@@ -17,7 +17,7 @@ import { filterNewsSearchPrompts, extractPromptMetadata } from "@/utils/llmPromp
 export default function NewsFetchPrompts() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
-  const [useVisualBuilder, setUseVisualBuilder] = useState(true); // Default to visual builder
+  const [editorType, setEditorType] = useState<"visual" | "advanced">("visual");
   const [selectedPrompt, setSelectedPrompt] = useState<LlmPrompt | null>(null);
   
   const { data: prompts, isLoading, error, refetch } = useQuery({
@@ -55,7 +55,7 @@ export default function NewsFetchPrompts() {
       {showAddForm ? (
         <>
           <div className="mb-4 flex justify-center">
-            <Tabs value={useVisualBuilder ? "visual" : "advanced"} onValueChange={(v) => setUseVisualBuilder(v === "visual")}>
+            <Tabs value={editorType} onValueChange={(v) => setEditorType(v as "visual" | "advanced")}>
               <TabsList>
                 <TabsTrigger value="visual">Visual Builder</TabsTrigger>
                 <TabsTrigger value="advanced">Advanced Editor</TabsTrigger>
@@ -63,18 +63,20 @@ export default function NewsFetchPrompts() {
             </Tabs>
           </div>
           
-          {useVisualBuilder ? (
+          {editorType === "visual" ? (
             <VisualPromptBuilder
               initialPrompt={selectedPrompt}
               onSave={handleSuccess}
               onCancel={() => { setShowAddForm(false); setSelectedPrompt(null); }}
               initialActiveTab="search" // Start on search tab for news fetch prompts
+              onSwitchToAdvanced={() => setEditorType("advanced")}
             />
           ) : (
             <NewsFetchPromptForm
               initialData={selectedPrompt}
-              onSave={() => { refetch(); setShowAddForm(false); setSelectedPrompt(null); }}
+              onSave={handleSuccess}
               onCancel={() => { setShowAddForm(false); setSelectedPrompt(null); }}
+              onSwitchToVisual={() => setEditorType("visual")}
             />
           )}
         </>
@@ -163,7 +165,9 @@ export default function NewsFetchPrompts() {
                             ? 'GPT-3.5 (Fast)'
                             : prompt.model.includes('claude')
                               ? 'Claude (High quality)'
-                              : prompt.model}
+                              : prompt.model.includes('perplexity')
+                                ? 'Perplexity (Real-time news)'
+                                : prompt.model}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

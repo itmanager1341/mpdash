@@ -51,13 +51,15 @@ interface VisualPromptBuilderProps {
   onSave: (promptData: any) => void;
   onCancel: () => void;
   initialActiveTab?: string;
+  onSwitchToAdvanced?: () => void;
 }
 
 export default function VisualPromptBuilder({ 
   initialPrompt, 
   onSave, 
   onCancel,
-  initialActiveTab = "basic"
+  initialActiveTab = "basic",
+  onSwitchToAdvanced
 }: VisualPromptBuilderProps) {
   const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -80,6 +82,13 @@ export default function VisualPromptBuilder({
     }
   });
   
+  // Parse selected themes from metadata if available
+  const initialPrimaryThemes = metadata?.search_settings?.selected_themes?.primary || [];
+  const initialSubThemes = metadata?.search_settings?.selected_themes?.sub || [];
+  
+  const [selectedPrimaryThemes, setSelectedPrimaryThemes] = useState<string[]>(initialPrimaryThemes);
+  const [selectedSubThemes, setSelectedSubThemes] = useState<string[]>(initialSubThemes);
+  
   const form = useForm<PromptFormValues>({
     resolver: zodResolver(promptSchema),
     defaultValues: {
@@ -98,8 +107,8 @@ export default function VisualPromptBuilder({
         is_news_search: true,
       },
       selected_themes: {
-        primary: metadata?.search_settings?.selected_themes?.primary || [],
-        sub: metadata?.search_settings?.selected_themes?.sub || [],
+        primary: initialPrimaryThemes,
+        sub: initialSubThemes,
         professions: metadata?.search_settings?.selected_themes?.professions || [],
       },
       test_keyword: "",
@@ -118,10 +127,10 @@ export default function VisualPromptBuilder({
           temperature: data.search_settings?.temperature || 0.7,
           max_tokens: data.search_settings?.max_tokens || 1500,
           is_news_search: true,
-          selected_themes: data.selected_themes || {
-            primary: [],
-            sub: [],
-            professions: []
+          selected_themes: {
+            primary: selectedPrimaryThemes,
+            sub: selectedSubThemes,
+            professions: data.selected_themes?.professions || []
           }
         }
       };
@@ -197,19 +206,27 @@ export default function VisualPromptBuilder({
     }
   };
 
+  // Extract unique primary and sub themes
   const primaryThemeOptions = Array.from(new Set(clusters?.map(c => c.primary_theme) || []));
   const subThemeOptions = Array.from(new Set(clusters?.map(c => c.sub_theme) || []));
   
-  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
-  
-  const handleThemeSelect = (theme: string) => {
-    if (selectedThemes.includes(theme)) {
-      setSelectedThemes(selectedThemes.filter(t => t !== theme));
+  const handlePrimaryThemeSelect = (theme: string) => {
+    if (selectedPrimaryThemes.includes(theme)) {
+      setSelectedPrimaryThemes(selectedPrimaryThemes.filter(t => t !== theme));
     } else {
-      setSelectedThemes([...selectedThemes, theme]);
+      setSelectedPrimaryThemes([...selectedPrimaryThemes, theme]);
+    }
+  };
+  
+  const handleSubThemeSelect = (theme: string) => {
+    if (selectedSubThemes.includes(theme)) {
+      setSelectedSubThemes(selectedSubThemes.filter(t => t !== theme));
+    } else {
+      setSelectedSubThemes([...selectedSubThemes, theme]);
     }
   };
 
+  // Comprehensive model options including Perplexity-specific options
   const modelOptions = [
     { value: "gpt-4o", label: "GPT-4o", description: "Best for complex analysis and reasoning" },
     { value: "gpt-3.5-turbo", label: "GPT-3.5", description: "Faster, good for simpler tasks" },
@@ -217,7 +234,12 @@ export default function VisualPromptBuilder({
     { value: "claude-3-sonnet", label: "Claude 3 Sonnet", description: "Balanced speed/quality" },
     { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small", description: "Fast with online search capability" },
     { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large", description: "More powerful with online search capability" },
-    { value: "perplexity", label: "Perplexity", description: "Best for real-time news" },
+    { value: "perplexity/sonar-small-online", label: "Perplexity Sonar Small", description: "Efficient with real-time search" },
+    { value: "perplexity/sonar-medium-online", label: "Perplexity Sonar Medium", description: "Balanced with real-time search" },
+    { value: "perplexity/sonar-large-online", label: "Perplexity Sonar Large", description: "Most powerful with real-time search" },
+    { value: "perplexity/pplx-7b-online", label: "PPLX 7B Online", description: "Fast online search model" },
+    { value: "perplexity/pplx-70b-online", label: "PPLX 70B Online", description: "Powerful online search model" },
+    { value: "perplexity/llama-3.1-turbo-8192-online", label: "Llama 3.1 Turbo Online", description: "Fast with online search" },
   ];
 
   return (
@@ -276,7 +298,9 @@ export default function VisualPromptBuilder({
                     </Select>
                     
                     <div className="mt-2 text-sm">
-                      {form.watch("model").includes("sonar") || form.watch("model").includes("online") ? (
+                      {form.watch("model").includes("sonar") || 
+                       form.watch("model").includes("online") || 
+                       form.watch("model").includes("perplexity") ? (
                         <Alert className="bg-blue-50">
                           <Info className="h-4 w-4" />
                           <AlertTitle>Online search capability</AlertTitle>
@@ -471,9 +495,9 @@ export default function VisualPromptBuilder({
                           {primaryThemeOptions.map((theme) => (
                             <Badge 
                               key={theme}
-                              variant={selectedThemes.includes(theme) ? "default" : "outline"}
+                              variant={selectedPrimaryThemes.includes(theme) ? "default" : "outline"}
                               className="cursor-pointer"
-                              onClick={() => handleThemeSelect(theme)}
+                              onClick={() => handlePrimaryThemeSelect(theme)}
                             >
                               {theme}
                             </Badge>
@@ -487,9 +511,9 @@ export default function VisualPromptBuilder({
                           {subThemeOptions.map((theme) => (
                             <Badge 
                               key={theme}
-                              variant={selectedThemes.includes(theme) ? "default" : "outline"}
+                              variant={selectedSubThemes.includes(theme) ? "default" : "outline"}
                               className="cursor-pointer"
-                              onClick={() => handleThemeSelect(theme)}
+                              onClick={() => handleSubThemeSelect(theme)}
                             >
                               {theme}
                             </Badge>
@@ -526,6 +550,14 @@ export default function VisualPromptBuilder({
                     <Badge variant="secondary" className="justify-start">{"{clusters_data}"}</Badge>
                     <Badge variant="secondary" className="justify-start">{"{tracking_summary}"}</Badge>
                   </div>
+                </div>
+                
+                <div className="flex justify-end">
+                  {onSwitchToAdvanced && (
+                    <Button type="button" variant="outline" onClick={onSwitchToAdvanced}>
+                      Switch to Advanced Editor
+                    </Button>
+                  )}
                 </div>
               </TabsContent>
               

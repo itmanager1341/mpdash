@@ -13,7 +13,7 @@ import { toast } from "sonner";
 
 export default function PromptsTab() {
   const [isAddingPrompt, setIsAddingPrompt] = useState(false);
-  const [useVisualBuilder, setUseVisualBuilder] = useState(true);
+  const [editorType, setEditorType] = useState<"visual" | "advanced">("visual");
   const [editingPrompt, setEditingPrompt] = useState<LlmPrompt | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -38,7 +38,6 @@ export default function PromptsTab() {
   };
   
   const handleSuccess = () => {
-    // Immediately refetch to update the list with the new/edited prompt
     refetch();
     handleFormClose();
     toast.success(editingPrompt ? "Prompt updated successfully" : "Prompt created successfully");
@@ -81,7 +80,7 @@ export default function PromptsTab() {
       {isAddingPrompt && (
         <>
           <div className="mb-4 mt-6 flex justify-center">
-            <Tabs value={useVisualBuilder ? "visual" : "advanced"} onValueChange={(v) => setUseVisualBuilder(v === "visual")}>
+            <Tabs value={editorType} onValueChange={(v) => setEditorType(v as "visual" | "advanced")}>
               <TabsList>
                 <TabsTrigger value="visual">Visual Builder</TabsTrigger>
                 <TabsTrigger value="advanced">Advanced Editor</TabsTrigger>
@@ -89,11 +88,12 @@ export default function PromptsTab() {
             </Tabs>
           </div>
           
-          {useVisualBuilder ? (
+          {editorType === "visual" ? (
             <VisualPromptBuilder
               initialPrompt={editingPrompt}
               onSave={handleSuccess}
               onCancel={handleFormClose}
+              onSwitchToAdvanced={() => setEditorType("advanced")}
             />
           ) : (
             <PromptForm
@@ -101,6 +101,7 @@ export default function PromptsTab() {
               open={isAddingPrompt}
               onOpenChange={setIsAddingPrompt}
               onSuccess={handleSuccess}
+              onSwitchToVisual={() => setEditorType("visual")}
             />
           )}
         </>

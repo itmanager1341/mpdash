@@ -85,7 +85,7 @@ export async function testPrompt(testData: LlmTestInput): Promise<LlmTestResult>
   }
 }
 
-export function extractPromptMetadata(prompt: LlmPrompt) {
+export function extractPromptMetadata(prompt: LlmPrompt | null) {
   if (!prompt?.prompt_text) return null;
   
   const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
@@ -104,6 +104,15 @@ export function isNewsSearchPrompt(prompt: LlmPrompt): boolean {
   // Check if prompt has news search metadata
   const metadata = extractPromptMetadata(prompt);
   if (metadata?.search_settings?.is_news_search === true) {
+    return true;
+  }
+  
+  // Also check model types commonly used for news search
+  if (prompt.model && (
+      prompt.model.includes('sonar') ||
+      prompt.model.includes('online') ||
+      prompt.model.includes('perplexity')
+    )) {
     return true;
   }
   
