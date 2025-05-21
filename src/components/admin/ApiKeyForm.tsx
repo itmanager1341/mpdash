@@ -33,7 +33,8 @@ const serviceInfo: Record<string, ServiceInfo> = {
   },
   openai: {
     name: "OpenAI",
-    pattern: /^sk-[a-zA-Z0-9]{32,}$/,
+    // Updated pattern to be more flexible with OpenAI key formats
+    pattern: /^(sk-|org-)[a-zA-Z0-9-]{24,}$/,
     docUrl: "https://platform.openai.com/api-keys",
     description: "Used for content enhancement and analysis via the OpenAI API"
   },
