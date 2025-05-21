@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,7 +119,7 @@ export default function ScheduledImportSettings() {
   });
 
   // Helper function to safely get parameter values
-  const getParameterValue = <T extends any>(params: Json, key: string, defaultValue: T): T => {
+  const getParameterValue = <T,>(params: Json, key: string, defaultValue: T): T => {
     if (!params) return defaultValue;
     
     try {
@@ -154,9 +155,18 @@ export default function ScheduledImportSettings() {
       const minScoreValue = getParameterValue(jobSettings.parameters, 'minScore', 2.5);
       setMinScore(minScoreValue.toString());
       
-      const keywordsArray = getParameterValue<string[]>(jobSettings.parameters, 'keywords', 
-        ['mortgage', 'housing market', 'federal reserve', 'interest rates']);
-      setKeywords(Array.isArray(keywordsArray) ? keywordsArray.join(', ') : keywordsArray.toString());
+      // Fixed: Properly handle keywords array with explicit typing and fallback
+      const defaultKeywords = ['mortgage', 'housing market', 'federal reserve', 'interest rates'];
+      const keywordsArray = getParameterValue(jobSettings.parameters, 'keywords', defaultKeywords);
+      
+      // Check if keywordsArray is actually an array before joining
+      const keywordsString = Array.isArray(keywordsArray) 
+        ? keywordsArray.join(', ') 
+        : typeof keywordsArray === 'string' 
+          ? keywordsArray 
+          : defaultKeywords.join(', ');
+          
+      setKeywords(keywordsString);
       
       const limitValue = getParameterValue(jobSettings.parameters, 'limit', 20);
       setLimit(limitValue.toString());
