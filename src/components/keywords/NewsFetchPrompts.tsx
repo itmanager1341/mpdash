@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,29 +38,11 @@ export default function NewsFetchPrompts() {
     p.function_name.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
-  const handleSavePrompt = async (promptData: any) => {
-    try {
-      if (selectedPrompt?.id) {
-        await supabase
-          .from('llm_prompts')
-          .update(promptData)
-          .eq('id', selectedPrompt.id);
-          
-        toast.success("Prompt updated successfully");
-      } else {
-        await supabase
-          .from('llm_prompts')
-          .insert([promptData]);
-          
-        toast.success("Prompt created successfully");
-      }
-      
-      refetch();
-      setShowAddForm(false);
-      setSelectedPrompt(null);
-    } catch (error: any) {
-      toast.error(`Error saving prompt: ${error.message}`);
-    }
+  const handleSuccess = () => {
+    refetch();
+    setShowAddForm(false);
+    setSelectedPrompt(null);
+    toast.success(selectedPrompt ? "Prompt updated successfully" : "Prompt created successfully");
   };
 
   const handleEditPrompt = (prompt: LlmPrompt) => {
@@ -83,8 +66,9 @@ export default function NewsFetchPrompts() {
           {useVisualBuilder ? (
             <VisualPromptBuilder
               initialPrompt={selectedPrompt}
-              onSave={handleSavePrompt}
+              onSave={handleSuccess}
               onCancel={() => { setShowAddForm(false); setSelectedPrompt(null); }}
+              initialActiveTab="search" // Start on search tab for news fetch prompts
             />
           ) : (
             <NewsFetchPromptForm
@@ -129,6 +113,20 @@ export default function NewsFetchPrompts() {
                   </CardContent>
                 </Card>
               ))
+            ) : error ? (
+              <Card className="col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-center text-red-500">Error loading prompts</CardTitle>
+                  <CardDescription className="text-center">
+                    Failed to load news search prompts. Please try refreshing the page.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex justify-center pb-6">
+                  <Button onClick={() => refetch()}>
+                    Retry
+                  </Button>
+                </CardContent>
+              </Card>
             ) : filteredPrompts.length === 0 ? (
               <Card className="col-span-2">
                 <CardHeader>
@@ -157,8 +155,15 @@ export default function NewsFetchPrompts() {
                       {prompt.function_name}
                     </CardTitle>
                     <CardDescription>
-                      Using {prompt.model.includes('llama') ? 'Llama' : prompt.model}
-                      {prompt.model.includes('small') ? ' (Faster)' : ' (More powerful)'}
+                      {prompt.model.includes('llama') || prompt.model.includes('sonar') 
+                        ? 'Llama 3.1 Sonar with online search'
+                        : prompt.model.includes('gpt-4') 
+                          ? 'GPT-4 (Powerful)' 
+                          : prompt.model.includes('gpt-3.5')
+                            ? 'GPT-3.5 (Fast)'
+                            : prompt.model.includes('claude')
+                              ? 'Claude (High quality)'
+                              : prompt.model}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

@@ -68,7 +68,6 @@ export async function togglePromptActive(id: string, isActive: boolean): Promise
 }
 
 export async function testPrompt(testData: LlmTestInput): Promise<LlmTestResult> {
-  // Call the Supabase Edge Function for testing prompts
   try {
     const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
       body: testData
@@ -87,7 +86,9 @@ export async function testPrompt(testData: LlmTestInput): Promise<LlmTestResult>
 }
 
 export function extractPromptMetadata(prompt: LlmPrompt) {
-  const metadataMatch = prompt?.prompt_text?.match(/\/\*\n([\s\S]*?)\n\*\//);
+  if (!prompt?.prompt_text) return null;
+  
+  const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
   if (metadataMatch) {
     try {
       return JSON.parse(metadataMatch[1]);

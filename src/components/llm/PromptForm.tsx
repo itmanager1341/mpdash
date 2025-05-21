@@ -1,3 +1,4 @@
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,8 +32,10 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { createPrompt, updatePrompt } from "@/utils/llmPromptsUtils";
+import { createPrompt, updatePrompt, extractPromptMetadata } from "@/utils/llmPromptsUtils";
 import { useState } from "react";
+import { Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const promptFormSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -109,6 +112,16 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
     }
   };
 
+  const modelOptions = [
+    { value: "gpt-4o", label: "GPT-4o", description: "Best for complex analysis and reasoning" },
+    { value: "gpt-3.5-turbo", label: "GPT-3.5", description: "Faster, good for simpler tasks" },
+    { value: "claude-3-opus", label: "Claude 3 Opus", description: "High quality, slower" },
+    { value: "claude-3-sonnet", label: "Claude 3 Sonnet", description: "Balanced speed/quality" },
+    { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small", description: "Fast with online search capability" },
+    { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large", description: "More powerful with online search capability" },
+    { value: "perplexity", label: "Perplexity", description: "Best for real-time news" },
+  ];
+
   return (
     <Sheet open={open} onOpenChange={(isOpen) => {
       if (!isSubmitting) {
@@ -161,11 +174,14 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="gpt-4o">GPT-4o (Best for complex tasks)</SelectItem>
-                        <SelectItem value="gpt-3.5-turbo">GPT-3.5 (Fast, good for simple tasks)</SelectItem>
-                        <SelectItem value="claude-3-opus">Claude 3 Opus (High quality analysis)</SelectItem>
-                        <SelectItem value="claude-3-sonnet">Claude 3 Sonnet (Balanced speed/quality)</SelectItem>
-                        <SelectItem value="perplexity">Perplexity (Best for real-time news)</SelectItem>
+                        {modelOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className="flex flex-col">
+                              <span>{option.label}</span>
+                              <span className="text-xs text-muted-foreground">{option.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
@@ -190,7 +206,8 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess }: Pr
                       />
                     </FormControl>
                     <FormDescription>
-                      You can use variables like {"{article_title}"} which will be replaced with actual data
+                      You can use variables like {"{article_title}"} which will be replaced with actual data. 
+                      For keyword clusters, use {"{clusters_data}"}.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

@@ -48,6 +48,11 @@ export default function PromptsTab() {
     prompt.function_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (error) {
+    console.error("Error fetching prompts:", error);
+    toast.error("Failed to load prompts. Please try refreshing the page.");
+  }
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row gap-4 justify-between mb-6">
@@ -87,15 +92,7 @@ export default function PromptsTab() {
           {useVisualBuilder ? (
             <VisualPromptBuilder
               initialPrompt={editingPrompt}
-              onSave={async (promptData) => {
-                try {
-                  // Save the prompt data via API or supabase
-                  handleSuccess();
-                } catch (error) {
-                  console.error("Error saving prompt:", error);
-                  toast.error("Failed to save prompt");
-                }
-              }}
+              onSave={handleSuccess}
               onCancel={handleFormClose}
             />
           ) : (

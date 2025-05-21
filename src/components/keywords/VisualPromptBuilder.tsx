@@ -1,7 +1,10 @@
+
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +17,9 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { createPrompt, updatePrompt, extractPromptMetadata } from "@/utils/llmPromptsUtils";
 import { toast } from "sonner";
+import { Info, AlertCircle, HelpCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const promptSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -35,6 +41,7 @@ const promptSchema = z.object({
     sub: z.array(z.string()).default([]),
     professions: z.array(z.string()).default([]),
   }).optional(),
+  test_keyword: z.string().optional(),
 });
 
 type PromptFormValues = z.infer<typeof promptSchema>;
@@ -43,14 +50,35 @@ interface VisualPromptBuilderProps {
   initialPrompt: LlmPrompt | null;
   onSave: (promptData: any) => void;
   onCancel: () => void;
+  initialActiveTab?: string;
 }
 
-export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }: VisualPromptBuilderProps) {
-  const [activeTab, setActiveTab] = useState("basic");
+export default function VisualPromptBuilder({ 
+  initialPrompt, 
+  onSave, 
+  onCancel,
+  initialActiveTab = "basic"
+}: VisualPromptBuilderProps) {
+  const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<string | null>(null);
   
   // Extract metadata from the initial prompt if it exists
   const metadata = initialPrompt ? extractPromptMetadata(initialPrompt) : null;
+  
+  const { data: clusters, isLoading: isLoadingClusters } = useQuery({
+    queryKey: ['keyword-clusters'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('keyword_clusters')
+        .select('id, primary_theme, sub_theme')
+        .order('primary_theme');
+        
+      if (error) throw error;
+      return data || [];
+    }
+  });
   
   const form = useForm<PromptFormValues>({
     resolver: zodResolver(promptSchema),
@@ -74,6 +102,7 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
         sub: metadata?.search_settings?.selected_themes?.sub || [],
         professions: metadata?.search_settings?.selected_themes?.professions || [],
       },
+      test_keyword: "",
     },
   });
   
@@ -115,8 +144,10 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
       
       if (initialPrompt?.id) {
         await updatePrompt(initialPrompt.id, promptData);
+        toast.success("Prompt updated successfully");
       } else {
         await createPrompt(promptData);
+        toast.success("Prompt created successfully");
       }
       
       onSave(promptData);
@@ -127,6 +158,67 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
       setIsSubmitting(false);
     }
   };
+
+  const handleTestPrompt = async () => {
+    try {
+      setIsTesting(true);
+      setTestResult(null);
+      
+      const testKeyword = form.getValues("test_keyword");
+      if (!testKeyword) {
+        toast.error("Please enter a test keyword");
+        return;
+      }
+      
+      // Example implementation of testing a prompt with a keyword
+      // This would call your Supabase Edge Function to test the prompt
+      const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
+        body: {
+          prompt_text: form.getValues("prompt_text"),
+          model: form.getValues("model"),
+          input_data: {
+            search_query: testKeyword
+          },
+          include_clusters: form.getValues("include_clusters"),
+          include_tracking_summary: form.getValues("include_tracking_summary"),
+          include_sources_map: form.getValues("include_sources_map")
+        }
+      });
+      
+      if (error) throw error;
+      
+      setTestResult(data.output);
+      toast.success("Test completed successfully");
+    } catch (error: any) {
+      console.error("Error testing prompt:", error);
+      toast.error(`Failed to test prompt: ${error.message || "Unknown error"}`);
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const primaryThemeOptions = Array.from(new Set(clusters?.map(c => c.primary_theme) || []));
+  const subThemeOptions = Array.from(new Set(clusters?.map(c => c.sub_theme) || []));
+  
+  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
+  
+  const handleThemeSelect = (theme: string) => {
+    if (selectedThemes.includes(theme)) {
+      setSelectedThemes(selectedThemes.filter(t => t !== theme));
+    } else {
+      setSelectedThemes([...selectedThemes, theme]);
+    }
+  };
+
+  const modelOptions = [
+    { value: "gpt-4o", label: "GPT-4o", description: "Best for complex analysis and reasoning" },
+    { value: "gpt-3.5-turbo", label: "GPT-3.5", description: "Faster, good for simpler tasks" },
+    { value: "claude-3-opus", label: "Claude 3 Opus", description: "High quality, slower" },
+    { value: "claude-3-sonnet", label: "Claude 3 Sonnet", description: "Balanced speed/quality" },
+    { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small", description: "Fast with online search capability" },
+    { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large", description: "More powerful with online search capability" },
+    { value: "perplexity", label: "Perplexity", description: "Best for real-time news" },
+  ];
 
   return (
     <div className="space-y-6">
@@ -141,10 +233,11 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
         <CardContent>
           <form onSubmit={form.handleSubmit(handleSubmit)}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="basic">Basic Settings</TabsTrigger>
                 <TabsTrigger value="search">Search Parameters</TabsTrigger>
                 <TabsTrigger value="template">Prompt Template</TabsTrigger>
+                <TabsTrigger value="test">Test</TabsTrigger>
               </TabsList>
               
               <TabsContent value="basic" className="space-y-4 pt-4">
@@ -171,13 +264,36 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
                         <SelectValue placeholder="Select a model" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="gpt-4o">GPT-4o (Best for complex analysis)</SelectItem>
-                        <SelectItem value="gpt-3.5-turbo">GPT-3.5 (Faster, good for simple tasks)</SelectItem>
-                        <SelectItem value="claude-3-opus">Claude 3 Opus (High quality, slower)</SelectItem>
-                        <SelectItem value="claude-3-sonnet">Claude 3 Sonnet (Balanced)</SelectItem>
-                        <SelectItem value="perplexity">Perplexity (Best for real-time news)</SelectItem>
+                        {modelOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            <div className="flex flex-col">
+                              <span>{option.label}</span>
+                              <span className="text-xs text-muted-foreground">{option.description}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                    
+                    <div className="mt-2 text-sm">
+                      {form.watch("model").includes("sonar") || form.watch("model").includes("online") ? (
+                        <Alert className="bg-blue-50">
+                          <Info className="h-4 w-4" />
+                          <AlertTitle>Online search capability</AlertTitle>
+                          <AlertDescription>
+                            This model can search the internet for up-to-date information
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        <Alert variant="outline">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle>Standard model</AlertTitle>
+                          <AlertDescription>
+                            This model does not have real-time search capability
+                          </AlertDescription>
+                        </Alert>
+                      )}
+                    </div>
                   </div>
                   
                   <Separator className="my-4" />
@@ -258,9 +374,11 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
                       <SelectContent>
                         <SelectItem value="auto">Auto (Based on query)</SelectItem>
                         <SelectItem value="news">News Sites Only</SelectItem>
+                        <SelectItem value="finance">Finance & Business</SelectItem>
+                        <SelectItem value="realestate">Real Estate</SelectItem>
+                        <SelectItem value="gov">Government Sources</SelectItem>
                         <SelectItem value="blogs">Blogs & Opinion</SelectItem>
                         <SelectItem value="research">Research & Reports</SelectItem>
-                        <SelectItem value="government">Government Sources</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -275,6 +393,8 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
                         <SelectValue placeholder="Select recency filter" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="30m">Last 30 Minutes</SelectItem>
+                        <SelectItem value="hour">Last Hour</SelectItem>
                         <SelectItem value="day">Last 24 Hours</SelectItem>
                         <SelectItem value="week">Last Week</SelectItem>
                         <SelectItem value="month">Last Month</SelectItem>
@@ -323,18 +443,61 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
                 <Separator className="my-4" />
                 
                 <div className="space-y-4">
-                  <h3 className="text-sm font-medium">Theme Selection</h3>
-                  <p className="text-sm text-muted-foreground">
-                    This feature will be available in a future update
-                  </p>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">Mortgage Rates</Badge>
-                    <Badge variant="outline">Housing Market</Badge>
-                    <Badge variant="outline">Federal Reserve</Badge>
-                    <Badge variant="outline">Refinancing</Badge>
-                    <Badge variant="outline">+ Add Theme</Badge>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium">Theme Selection</h3>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <HelpCircle className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Select themes to include in your prompt for better context
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </div>
+                  
+                  {isLoadingClusters ? (
+                    <div>Loading clusters...</div>
+                  ) : (
+                    <>
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Primary Themes</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {primaryThemeOptions.map((theme) => (
+                            <Badge 
+                              key={theme}
+                              variant={selectedThemes.includes(theme) ? "default" : "outline"}
+                              className="cursor-pointer"
+                              onClick={() => handleThemeSelect(theme)}
+                            >
+                              {theme}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Sub Themes</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {subThemeOptions.map((theme) => (
+                            <Badge 
+                              key={theme}
+                              variant={selectedThemes.includes(theme) ? "default" : "outline"}
+                              className="cursor-pointer"
+                              onClick={() => handleThemeSelect(theme)}
+                            >
+                              {theme}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </TabsContent>
               
@@ -363,6 +526,53 @@ export default function VisualPromptBuilder({ initialPrompt, onSave, onCancel }:
                     <Badge variant="secondary" className="justify-start">{"{clusters_data}"}</Badge>
                     <Badge variant="secondary" className="justify-start">{"{tracking_summary}"}</Badge>
                   </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="test" className="space-y-4 pt-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="test_keyword">Test with Keyword</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <HelpCircle className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Enter a keyword to test your prompt with. This will replace {"{search_query}"} in your prompt template.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Input
+                      id="test_keyword"
+                      placeholder="e.g., mortgage rates"
+                      {...form.register("test_keyword")}
+                      className="flex-1"
+                    />
+                    <Button 
+                      type="button" 
+                      onClick={handleTestPrompt}
+                      disabled={isTesting}
+                    >
+                      {isTesting ? "Testing..." : "Test Prompt"}
+                    </Button>
+                  </div>
+                  
+                  {testResult && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium mb-2">Test Result</h4>
+                      <div className="bg-muted p-4 rounded-md overflow-auto max-h-[400px]">
+                        <pre className="whitespace-pre-wrap text-sm">{testResult}</pre>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
