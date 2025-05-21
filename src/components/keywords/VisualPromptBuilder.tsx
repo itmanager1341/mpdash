@@ -553,7 +553,7 @@ export default function VisualPromptBuilder({
                 
                 <div className="flex justify-end">
                   {onSwitchToAdvanced && (
-                    <Button type="button" variant="outline" onClick={onSwitchToAdvanced}>
+                    <Button type="button" variant="secondary" onClick={onSwitchToAdvanced}>
                       Switch to Advanced Editor
                     </Button>
                   )}
