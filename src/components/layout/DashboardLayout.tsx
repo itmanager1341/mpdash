@@ -25,7 +25,8 @@ import {
   FileText, 
   Sparkles, 
   LogOut,
-  User
+  User,
+  Search
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -124,6 +125,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     <a href="/llm-management">
                       <Sparkles />
                       <span>LLM Management</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Keyword Management">
+                    <a href="/keyword-management">
+                      <Search />
+                      <span>Keyword Management</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Sparkles, AlertCircle, TrendingUp, ChevronRight } from "lucide-react";
+import { Sparkles, AlertCircle, TrendingUp, ChevronRight, Loader2 } from "lucide-react";
 
 interface KeywordCluster {
   id: string;
@@ -21,6 +21,7 @@ interface KeywordSuggestion {
   score: number;
   related_clusters: string[];
   source: string;
+  rationale?: string;
 }
 
 interface ClusterMaintenanceTabProps {
@@ -31,6 +32,7 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
   const [view, setView] = useState<"suggestions" | "maintenance">("suggestions");
   const [isLoading, setIsLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<KeywordSuggestion[]>([]);
+  const [showRationale, setShowRationale] = useState<Record<string, boolean>>({});
 
   // Fetch existing keyword clusters for reference
   const { data: clusters, isLoading: clustersLoading } = useQuery({
@@ -43,6 +45,21 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
       
       if (error) throw error;
       return data as KeywordCluster[];
+    }
+  });
+  
+  // Fetch recent articles for context
+  const { data: recentArticles } = useQuery({
+    queryKey: ['recent-articles'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('news')
+        .select('headline, summary')
+        .order('timestamp', { ascending: false })
+        .limit(10);
+      
+      if (error) throw error;
+      return data;
     }
   });
 
@@ -58,62 +75,50 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
   // Generate AI suggestions
   const generateSuggestions = async () => {
     setIsLoading(true);
+    setSuggestions([]);
+    
     try {
       toast.info("Analyzing content and generating keyword suggestions...");
       
-      // This would call your Supabase edge function that implements ML-based keyword suggestion
-      // For now, we'll simulate some suggestions
-      // Replace this with an actual implementation in the future
+      // Prepare the context data
+      const context = {
+        existingClusters: clusters,
+        recentArticles: recentArticles
+      };
       
-      setTimeout(() => {
-        // Sample generated suggestions
-        const mockSuggestions = [
-          { 
-            keyword: "mortgage refinancing benefits", 
-            score: 0.87, 
-            related_clusters: ["Mortgage Rates", "Refinancing"], 
-            source: "Content Analysis" 
-          },
-          { 
-            keyword: "federal reserve interest policy", 
-            score: 0.92, 
-            related_clusters: ["Federal Reserve", "Interest Rates"], 
-            source: "Recent Articles" 
-          },
-          { 
-            keyword: "housing market cooling signs", 
-            score: 0.78, 
-            related_clusters: ["Housing Market", "Market Trends"], 
-            source: "Perplexity API" 
-          },
-          { 
-            keyword: "home equity line of credit", 
-            score: 0.85, 
-            related_clusters: ["Home Financing", "Equity"], 
-            source: "Content Analysis" 
-          }
-        ];
-        
-        setSuggestions(mockSuggestions);
-        setIsLoading(false);
-        toast.success("Generated keyword suggestions based on content analysis");
-      }, 1500);
-      
-      // Actual implementation would look like:
-      /*
-      const { data, error } = await supabase.functions.invoke('generate-keyword-suggestions', {
-        body: { source: "content_analysis" }
+      // Call our new edge function
+      const { data, error } = await supabase.functions.invoke('suggest-keywords', {
+        body: { 
+          source: "news_analysis",
+          context
+        }
       });
       
-      if (error) throw error;
-      setSuggestions(data.suggestions);
-      */
+      if (error) {
+        console.error("Edge function error:", error);
+        throw new Error(error.message || "Failed to generate suggestions");
+      }
       
+      if (data?.success && data.suggestions?.length > 0) {
+        setSuggestions(data.suggestions);
+        toast.success(`Generated ${data.suggestions.length} keyword suggestions`);
+      } else {
+        toast.warning("No suggestions were generated. Try again.");
+      }
     } catch (err) {
-      setIsLoading(false);
       console.error("Error generating suggestions:", err);
-      toast.error("Failed to generate keyword suggestions");
+      toast.error("Failed to generate keyword suggestions: " + (err.message || "Unknown error"));
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  // Toggle showing rationale for a suggestion
+  const toggleRationale = (keywordId: string) => {
+    setShowRationale(prev => ({
+      ...prev,
+      [keywordId]: !prev[keywordId]
+    }));
   };
 
   return (
@@ -139,8 +144,17 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
           <div className="flex justify-between items-center">
             <h3 className="text-lg font-medium">AI-Generated Suggestions</h3>
             <Button onClick={generateSuggestions} disabled={isLoading}>
-              <Sparkles className="h-4 w-4 mr-2" />
-              {isLoading ? "Generating..." : "Generate Suggestions"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate Suggestions
+                </>
+              )}
             </Button>
           </div>
           
@@ -166,7 +180,7 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
                       </p>
                     </div>
                     
-                    {suggestion.related_clusters.length > 0 && (
+                    {suggestion.related_clusters && suggestion.related_clusters.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           Potential clusters to add to:
@@ -176,6 +190,25 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
                             <Badge key={cidx} variant="secondary">{cluster}</Badge>
                           ))}
                         </div>
+                      </div>
+                    )}
+                    
+                    {suggestion.rationale && (
+                      <div className="mt-3">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => toggleRationale(suggestion.keyword)}
+                          className="p-0 h-auto text-sm text-muted-foreground hover:text-foreground"
+                        >
+                          {showRationale[suggestion.keyword] ? 'Hide rationale' : 'Show rationale'}
+                        </Button>
+                        
+                        {showRationale[suggestion.keyword] && (
+                          <p className="text-sm mt-2 text-muted-foreground">
+                            {suggestion.rationale}
+                          </p>
+                        )}
                       </div>
                     )}
                     
@@ -192,11 +225,20 @@ const ClusterMaintenanceTab = ({ searchTerm }: ClusterMaintenanceTabProps) => {
             <div className="bg-muted/50 rounded-md p-8 text-center">
               <h3 className="font-semibold mb-2">No suggestions yet</h3>
               <p className="text-muted-foreground mb-4">
-                Generate AI-powered keyword suggestions based on your content
+                Generate AI-powered keyword suggestions based on your content, industry trends, and existing keyword clusters
               </p>
               <Button onClick={generateSuggestions} disabled={isLoading}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                {isLoading ? "Generating..." : "Generate Suggestions"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Generate Suggestions
+                  </>
+                )}
               </Button>
             </div>
           )}

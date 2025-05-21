@@ -40,6 +40,7 @@ const Index = () => {
   const [viewMode, setViewMode] = useState<"pending" | "all">("pending");
   const [isAddNewsDialogOpen, setIsAddNewsDialogOpen] = useState(false);
   const [clusterView, setClusterView] = useState<"articles" | "coverage">("articles");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     showProcessed: false,
     sources: [],
@@ -205,31 +206,28 @@ const Index = () => {
   
   // Function to analyze keywords using AI
   const analyzeNewsKeywords = async () => {
+    setIsAnalyzing(true);
     toast.info("Analyzing current news items for keyword clusters...");
     
     try {
-      // This would call your edge function that analyzes news items and updates their clusters
-      // For now, we'll just show a success message
-      setTimeout(() => {
-        toast.success("News items analyzed and clusters updated");
-        refetch();
-      }, 1500);
+      // Call the edge function to analyze news items and update clusters
+      const { data, error } = await supabase.functions.invoke('analyze-news-clusters', {
+        body: { parameters: { source: "content_analysis" } }
+      });
       
-      // Commented out actual implementation that would be used later
-      // Example implementation:
-      // const { data, error } = await supabase.functions.invoke('analyze-news-clusters', {
-      //   body: { parameters: 'go here' }
-      // });
-      // 
-      // if (error) throw error;
-      // 
-      // if (data.success) {
-      //   toast.success(`${data.updated} news items updated with cluster mapping`);
-      //   refetch();
-      // }
+      if (error) throw error;
+      
+      if (data.success) {
+        toast.success(`${data.updated} news items updated with cluster mapping`);
+        refetch();
+      } else {
+        toast.warning("No updates were made. All items may already be analyzed.");
+      }
     } catch (err) {
       console.error("Error analyzing keywords:", err);
-      toast.error("Failed to analyze news items");
+      toast.error("Failed to analyze news items: " + (err.message || "Unknown error"));
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -316,9 +314,22 @@ const Index = () => {
             size="sm" 
             variant="outline" 
             onClick={analyzeNewsKeywords}
+            disabled={isAnalyzing}
           >
-            <Sparkles className="h-4 w-4 mr-2" />
-            Analyze Clusters
+            {isAnalyzing ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 mr-2" />
+                Analyze Clusters
+              </>
+            )}
           </Button>
           
           <Button 
