@@ -57,7 +57,15 @@ serve(async (req) => {
 
     // Extract parameters from job config
     const params = jobConfig.parameters || {};
-    const keywords = Array.isArray(params.keywords) ? params.keywords : [];
+    
+    // Ensure keywords is an array and has at least one default value if empty
+    let keywords = Array.isArray(params.keywords) ? params.keywords : [];
+    if (keywords.length === 0) {
+      // Add some default keywords if none are configured
+      keywords = ["mortgage rates", "housing market", "federal reserve", "interest rates", "home equity", "foreclosure"];
+      console.log(`No keywords configured, using defaults: ${keywords.join(', ')}`);
+    }
+    
     const minScore = params.minScore || 0.6;
     const limit = params.limit || 10;
     const promptId = params.promptId || null;
@@ -78,6 +86,7 @@ serve(async (req) => {
     );
 
     if (fetchError) {
+      console.error("Error calling fetch-perplexity-news:", fetchError);
       throw new Error(`Failed to fetch news: ${fetchError.message}`);
     }
 
@@ -124,18 +133,42 @@ serve(async (req) => {
       }
     }
     
-    // Update the job's last_run timestamp
-    await supabase
-      .from('scheduled_job_settings')
-      .update({ 
-        last_run: new Date().toISOString(),
-        last_run_result: JSON.stringify({
-          total_fetched: newsData.articles.length,
-          inserted: insertedCount,
-          execution_time: new Date().toISOString()
+    // Update the job's last_run timestamp and result
+    try {
+      await supabase
+        .from('scheduled_job_settings')
+        .update({ 
+          last_run: new Date().toISOString(),
+          last_run_result: {
+            total_fetched: newsData.articles.length,
+            inserted: insertedCount,
+            execution_time: new Date().toISOString()
+          }
         })
-      })
-      .eq('id', jobConfig.id);
+        .eq('id', jobConfig.id);
+    } catch (updateError) {
+      console.error("Failed to update job status:", updateError);
+      // Continue execution - this is not a critical error
+    }
+
+    // Log the job execution
+    try {
+      await supabase
+        .from('job_logs')
+        .insert([{
+          job_name: 'news_import',
+          status: 'success',
+          message: `Imported ${insertedCount} new articles`,
+          execution_time: new Date().toISOString(),
+          details: {
+            articles_found: newsData.articles.length,
+            articles_inserted: insertedCount
+          }
+        }]);
+    } catch (logError) {
+      console.error("Failed to log job execution:", logError);
+      // Continue execution - this is not a critical error
+    }
 
     return new Response(
       JSON.stringify({
@@ -155,25 +188,23 @@ serve(async (req) => {
     
     // Create a Supabase client to log the error
     try {
-      const supabase = createClient(
-        Deno.env.get('SUPABASE_URL') || '', 
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-      );
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
       
-      // Log error to a job_logs table if available
-      await supabase
-        .from('job_logs')
-        .insert([{
-          job_name: 'news_import',
-          status: 'error',
-          message: error instanceof Error ? error.message : 'Unknown error',
-          execution_time: new Date().toISOString(),
-          details: error.stack || null
-        }])
-        .catch(() => {
-          // Silently fail if job_logs table doesn't exist
-          console.log("Note: Could not log to job_logs table");
-        });
+      if (supabaseUrl && serviceRoleKey) {
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
+        
+        // Log error to job_logs table
+        await supabase
+          .from('job_logs')
+          .insert([{
+            job_name: 'news_import',
+            status: 'error',
+            message: error instanceof Error ? error.message : 'Unknown error',
+            execution_time: new Date().toISOString(),
+            details: error instanceof Error ? error.stack : null
+          }]);
+      }
     } catch (logError) {
       console.error("Could not log error to database:", logError);
     }

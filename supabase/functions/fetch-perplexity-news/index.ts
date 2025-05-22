@@ -7,8 +7,6 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const perplexityApiKey = Deno.env.get("PERPLEXITY_API_KEY");
 
-const supabase = createClient(supabaseUrl!, supabaseServiceKey!);
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -39,18 +37,55 @@ serve(async (req) => {
   }
 
   try {
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Missing Supabase URL or service key configuration");
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
     if (!perplexityApiKey) {
-      return new Response(JSON.stringify({ error: "Perplexity API key not configured" }), { 
+      // Check if the API key is stored in the api_keys table instead
+      const { data: apiKeyData, error: apiKeyError } = await supabase
+        .from('api_keys')
+        .select('*')
+        .eq('service', 'perplexity')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (apiKeyError || !apiKeyData) {
+        return new Response(JSON.stringify({ 
+          error: "Perplexity API key not found. Please add a valid API key in Admin Settings.",
+          details: "Add a Perplexity API key through the API Keys tab in Admin Settings."
+        }), { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // We can't access the actual key from here because it's stored as a secret
+      return new Response(JSON.stringify({ 
+        error: "Perplexity API key is configured but not accessible from this function",
+        details: "The API key needs to be added as an Edge Function Secret with the name PERPLEXITY_API_KEY"
+      }), { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const { keywords, promptId, minScore = 0.6, limit = 10 } = await req.json();
+    // Parse request and set default values
+    const requestData = await req.json();
+    const keywords = requestData.keywords || ["mortgage rates", "housing market", "federal reserve"];
+    const promptId = requestData.promptId;
+    const minScore = requestData.minScore || 0.6;
+    const limit = requestData.limit || 10;
     
-    // Validate required fields
-    if (!keywords || (Array.isArray(keywords) && !keywords.length)) {
-      return new Response(JSON.stringify({ error: "Keywords are required" }), {
+    // Validate keywords - ensure we have at least one
+    if (!Array.isArray(keywords) || keywords.length === 0) {
+      return new Response(JSON.stringify({ 
+        error: "No valid search keywords provided",
+        details: "Configure keywords in the Scheduled Tasks section"
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -78,45 +113,49 @@ serve(async (req) => {
         
       if (error || !promptData) {
         console.error("Error fetching prompt:", error);
-        return new Response(JSON.stringify({ error: "Failed to fetch prompt" }), {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
-      }
-      
-      // Extract metadata if present
-      const metadataMatch = promptData.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
-      if (metadataMatch) {
-        try {
-          const metadata = JSON.parse(metadataMatch[1]);
-          if (metadata.search_settings) {
-            searchSettings = {
-              ...searchSettings,
-              ...metadata.search_settings
-            };
+        // Fall back to default prompt
+        prompt = `Search for the latest news and developments related to the following topics in the mortgage and housing industry: ${keywords.join(", ")}`;
+      } else {
+        // Extract metadata if present
+        const metadataMatch = promptData.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
+        if (metadataMatch) {
+          try {
+            const metadata = JSON.parse(metadataMatch[1]);
+            if (metadata.search_settings) {
+              searchSettings = {
+                ...searchSettings,
+                ...metadata.search_settings
+              };
+            }
+          } catch (e) {
+            console.error("Error parsing metadata from prompt:", e);
           }
-        } catch (e) {
-          console.error("Error parsing metadata from prompt:", e);
         }
+        
+        // Remove metadata from prompt text
+        prompt = promptData.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
+        model = promptData.model;
+        includeClusterContext = promptData.include_clusters;
+        includeTrackingSummary = promptData.include_tracking_summary;
+        includeSourcesMap = promptData.include_sources_map;
       }
-      
-      // Remove metadata from prompt text
-      prompt = promptData.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
-      model = promptData.model;
-      includeClusterContext = promptData.include_clusters;
-      includeTrackingSummary = promptData.include_tracking_summary;
-      includeSourcesMap = promptData.include_sources_map;
     } else {
       // Default prompt
-      prompt = `Search for the latest news and developments related to the following topic in the mortgage and housing industry:`;
+      prompt = `Search for the latest news and developments related to the following topics in the mortgage and housing industry: ${keywords.join(", ")}
+
+Please return information in the following format for each article:
+{
+  "articles": [
+    {
+      "title": "Article title",
+      "url": "https://article-url.com",
+      "source": "Source name",
+      "summary": "A brief summary of the article",
+      "relevance_score": 0.95,
+      "matched_clusters": ["Cluster 1", "Cluster 2"]
     }
-    
-    // Prepare query string
-    let queryStr: string;
-    if (Array.isArray(keywords)) {
-      queryStr = keywords.join(' ');
-    } else {
-      queryStr = keywords.toString();
+  ]
+}`;
     }
     
     // Build a context object for additional information
@@ -152,7 +191,7 @@ serve(async (req) => {
       }
     }
     
-    // Fetch keyword tracking summary if requested
+    // Fetch additional context data if requested
     if (includeTrackingSummary) {
       const { data: tracking, error } = await supabase
         .from('keyword_tracking')
@@ -166,7 +205,6 @@ serve(async (req) => {
       }
     }
     
-    // Fetch sources map if requested
     if (includeSourcesMap) {
       const { data: sources, error } = await supabase
         .from('sources')
@@ -181,111 +219,151 @@ serve(async (req) => {
     }
     
     // Add topic to prompt if there's no [QUERY] placeholder
-    // This handles both old style ([QUERY]) and new style (no placeholder) prompts
     if (!prompt.includes("[QUERY]")) {
-      prompt += `\n\nTOPIC: ${queryStr}`;
+      // If using multiple keywords, create a formatted list
+      const keywordStr = keywords.length === 1 
+        ? keywords[0] 
+        : keywords.map((k: string, i: number) => `${i+1}. ${k}`).join('\n');
+      
+      prompt += `\n\nKEYWORDS: ${keywordStr}`;
     } else {
-      prompt = prompt.replace("[QUERY]", queryStr);
+      // Replace [QUERY] with joined keywords
+      prompt = prompt.replace("[QUERY]", keywords.join(", "));
     }
     
     console.log("Using model:", model);
     console.log("Search settings:", JSON.stringify(searchSettings));
     
     // Call Perplexity API
-    const response = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${perplexityApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a research assistant that helps find relevant news articles.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: searchSettings.temperature || 0.2,
-        top_p: 0.9,
-        max_tokens: searchSettings.max_tokens || 1000,
-        search_domain_filter: searchSettings.domain_filter || "auto",
-        search_recency_filter: searchSettings.recency_filter || "day",
-        return_images: false,
-        return_related_questions: false,
-        frequency_penalty: 1,
-        presence_penalty: 0
-      }),
-    });
-
-    if (!response.ok) {
-      const errorResponse = await response.text();
-      console.error("Perplexity API error:", errorResponse);
-      return new Response(JSON.stringify({ error: "Perplexity API error", details: errorResponse }), {
-        status: response.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    const data: ChatCompletionResponse = await response.json();
-    const result = data.choices[0].message.content;
-    
-    // Try to parse JSON from the response
-    let articles = [];
     try {
-      // First, look for a JSON block in the response
-      const jsonMatch = result.match(/```json\s*([\s\S]*?)\s*```/) || 
-                        result.match(/\{[\s\S]*"articles"[\s\S]*\}/);
-                        
-      const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : result;
-      const parsedData = JSON.parse(jsonContent);
+      const response = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${perplexityApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a research assistant that helps find relevant news articles.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: searchSettings.temperature || 0.2,
+          top_p: 0.9,
+          max_tokens: searchSettings.max_tokens || 1000,
+          search_domain_filter: searchSettings.domain_filter || "auto",
+          search_recency_filter: searchSettings.recency_filter || "day",
+          return_images: false,
+          return_related_questions: false,
+          frequency_penalty: 1,
+          presence_penalty: 0
+        }),
+      });
+
+      if (!response.ok) {
+        const errorResponse = await response.text();
+        console.error("Perplexity API error:", errorResponse);
+        throw new Error(`Perplexity API error (${response.status}): ${errorResponse}`);
+      }
+
+      const data: ChatCompletionResponse = await response.json();
+      const result = data.choices[0].message.content;
       
-      // Handle different formats (direct array or nested in articles property)
-      articles = Array.isArray(parsedData) ? parsedData : 
-                (parsedData.articles || parsedData.results || []);
-                
-      // Filter by minimum score if present
-      if (minScore > 0) {
-        articles = articles.filter(a => 
-          !a.relevance_score || a.relevance_score >= minScore
-        );
+      // Try to parse JSON from the response
+      let articles = [];
+      try {
+        // First, look for a JSON block in the response
+        const jsonMatch = result.match(/```json\s*([\s\S]*?)\s*```/) || 
+                          result.match(/\{[\s\S]*"articles"[\s\S]*\}/);
+                          
+        const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : result;
+        
+        // Try to clean up the content before parsing - sometimes there's markdown or other text
+        let cleanedContent = jsonContent;
+        // Remove markdown code block markers if present but weren't matched above
+        cleanedContent = cleanedContent.replace(/```json|```/g, '').trim();
+        
+        // Try to extract just a valid JSON object/array
+        const jsonObjectMatch = cleanedContent.match(/\{[\s\S]*\}/);
+        if (jsonObjectMatch) {
+          cleanedContent = jsonObjectMatch[0];
+        }
+        
+        const parsedData = JSON.parse(cleanedContent);
+        
+        // Handle different formats (direct array or nested in articles property)
+        articles = Array.isArray(parsedData) ? parsedData : 
+                  (parsedData.articles || parsedData.results || []);
+                  
+        // Filter by minimum score if present
+        if (minScore > 0) {
+          articles = articles.filter(a => 
+            !a.relevance_score || a.relevance_score >= minScore
+          );
+        }
+        
+        // Limit number of results
+        if (limit > 0 && articles.length > limit) {
+          articles = articles.slice(0, limit);
+        }
+      } catch (e) {
+        console.error("Error parsing articles:", e);
+        console.log("Raw response:", result);
+        
+        return new Response(JSON.stringify({ 
+          error: "Failed to parse articles from response",
+          raw_response: result
+        }), {
+          status: 422,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       }
       
-      // Limit number of results
-      if (limit > 0 && articles.length > limit) {
-        articles = articles.slice(0, limit);
+      // If we got no articles but the call was successful, add a placeholder with debugging info
+      if (articles.length === 0) {
+        articles = [{
+          title: "No relevant news articles found",
+          url: "https://perplexity.ai",
+          source: "Perplexity",
+          summary: "The search found no relevant articles matching your criteria. Try adjusting your keywords or search settings.",
+          relevance_score: 1.0,
+          matched_clusters: []
+        }];
+        
+        // Log this for debugging
+        console.log("No articles found in search response. Raw response:", result);
       }
-    } catch (e) {
-      console.error("Error parsing articles:", e);
-      console.log("Raw response:", result);
       
-      return new Response(JSON.stringify({ 
-        error: "Failed to parse articles from response",
-        raw_response: result
+      return new Response(JSON.stringify({
+        articles,
+        model: data.model,
+        usage: data.usage,
+        keywords: keywords,
+        prompt: prompt
       }), {
-        status: 422,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
+      
+    } catch (apiError) {
+      console.error("Perplexity API call failed:", apiError);
+      throw new Error(`Perplexity API call failed: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
     }
     
-    return new Response(JSON.stringify({
-      articles,
-      model: data.model,
-      usage: data.usage,
-      queryStr,
-      prompt: prompt
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
   } catch (error) {
     console.error("Error in fetch-perplexity-news:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      stack: error instanceof Error ? error.stack : null
+    }), {
+      status: 500, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 });

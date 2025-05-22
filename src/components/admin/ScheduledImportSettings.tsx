@@ -36,6 +36,16 @@ const hasJobParameters = (params: any): params is {
     ('minScore' in params || 'limit' in params || 'keywords' in params);
 };
 
+// Default keywords to use if none are provided
+const DEFAULT_KEYWORDS = [
+  "mortgage rates", 
+  "housing market", 
+  "federal reserve", 
+  "interest rates", 
+  "home equity", 
+  "foreclosure"
+];
+
 export default function ScheduledImportSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -43,7 +53,7 @@ export default function ScheduledImportSettings() {
     isEnabled: true,
     minScore: "0.6",
     limit: "10",
-    keywords: "",
+    keywords: DEFAULT_KEYWORDS.join("\n"),
   });
   const [useEnhancedPrompt, setUseEnhancedPrompt] = useState(false);
   const [selectedPromptId, setSelectedPromptId] = useState("");
@@ -96,16 +106,19 @@ export default function ScheduledImportSettings() {
   useEffect(() => {
     if (job) {
       const params = job.parameters;
-      const jobParams = hasJobParameters(params) ? params : { minScore: 0.6, limit: 10, keywords: [] };
+      const jobParams = hasJobParameters(params) ? params : { minScore: 0.6, limit: 10, keywords: DEFAULT_KEYWORDS };
+      
+      // If keywords array is empty, use the defaults
+      const keywordsArray = Array.isArray(jobParams.keywords) && jobParams.keywords.length > 0 
+        ? jobParams.keywords 
+        : DEFAULT_KEYWORDS;
       
       setFormData({
         schedule: job.schedule || "0 */12 * * *",
         isEnabled: job.is_enabled,
         minScore: jobParams.minScore?.toString() || "0.6",
         limit: jobParams.limit?.toString() || "10",
-        keywords: Array.isArray(jobParams.keywords)
-          ? jobParams.keywords.join("\n")
-          : typeof jobParams.keywords === 'string' ? jobParams.keywords : "",
+        keywords: keywordsArray.join("\n"),
       });
 
       setUseEnhancedPrompt(!!jobParams.promptId);
@@ -123,6 +136,9 @@ export default function ScheduledImportSettings() {
         .map((k: string) => k.trim())
         .filter((k: string) => k);
 
+      // If keywords array is empty after filtering, use defaults
+      const finalKeywords = keywordsArray.length > 0 ? keywordsArray : DEFAULT_KEYWORDS;
+
       const jobData = {
         job_name: "news_import",
         schedule: formData.schedule,
@@ -130,7 +146,7 @@ export default function ScheduledImportSettings() {
         parameters: {
           minScore: parseFloat(formData.minScore),
           limit: parseInt(formData.limit),
-          keywords: keywordsArray,
+          keywords: finalKeywords,
         } as Record<string, any>, // Use type assertion to allow adding promptId
       };
 
@@ -221,7 +237,7 @@ export default function ScheduledImportSettings() {
     return "custom";
   };
   
-  const extractMetadata = (prompt: LlmPrompt | undefined) => {
+  const extractMetadata = (prompt: any | undefined) => {
     if (!prompt) return null;
     
     const metadataMatch = prompt.prompt_text.match(/\/\*\n([\s\S]*?)\n\*\//);
@@ -504,6 +520,14 @@ export default function ScheduledImportSettings() {
             <p className="text-sm text-muted-foreground">
               Enter one search phrase per line (e.g., mortgage rates)
             </p>
+            
+            <Alert className="mt-2 bg-blue-50 text-blue-800 border border-blue-200">
+              <Info className="h-4 w-4" />
+              <AlertTitle>Default Keywords</AlertTitle>
+              <AlertDescription>
+                If no keywords are provided, the system will use these defaults: mortgage rates, housing market, federal reserve, interest rates, home equity, foreclosure
+              </AlertDescription>
+            </Alert>
           </div>
         </CardContent>
 
