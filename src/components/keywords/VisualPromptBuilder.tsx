@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Info, AlertCircle, HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import NewsSearchPromptTemplate from "./NewsSearchPromptTemplate";
 
 const promptSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -88,6 +89,20 @@ export default function VisualPromptBuilder({
   const [selectedPrimaryThemes, setSelectedPrimaryThemes] = useState<string[]>(initialPrimaryThemes);
   const [selectedSubThemes, setSelectedSubThemes] = useState<string[]>(initialSubThemes);
   
+  // Fetch sources data for the prompt template
+  const { data: sources } = useQuery({
+    queryKey: ['sources'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sources')
+        .select('*')
+        .order('priority_tier');
+        
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
   const form = useForm<PromptFormValues>({
     resolver: zodResolver(promptSchema),
     defaultValues: {
@@ -526,19 +541,35 @@ export default function VisualPromptBuilder({
               
               <TabsContent value="template" className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label htmlFor="prompt_text">Prompt Template</Label>
-                  <Textarea
-                    id="prompt_text"
-                    placeholder="Enter your prompt template..."
-                    className="min-h-[300px] font-mono text-sm"
-                    {...form.register("prompt_text")}
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="prompt_text">Prompt Template</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <HelpCircle className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Use our structured template builder to create an optimized prompt that leverages your keyword clusters and sources.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  
+                  {/* Add the new template builder component */}
+                  <NewsSearchPromptTemplate 
+                    value={form.watch("prompt_text")}
+                    onChange={(value) => form.setValue("prompt_text", value)}
+                    clusters={clusters || []}
+                    sources={sources || []}
                   />
+                  
                   {form.formState.errors.prompt_text && (
                     <p className="text-sm text-red-500">{form.formState.errors.prompt_text.message}</p>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    You can use variables like {"{search_query}"} which will be replaced with actual data
-                  </p>
                 </div>
                 
                 <div className="bg-muted p-4 rounded-md">

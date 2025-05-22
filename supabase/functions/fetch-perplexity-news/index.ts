@@ -173,8 +173,11 @@ Please return information in the following format for each article:
           keyword_clusters: clusters
         };
         
-        // If the prompt is using the Visual Builder format, add cluster info
-        if (searchSettings.selected_themes) {
+        // If the prompt is using the structured format, add cluster info
+        if (prompt.includes("Topical Relevance") && clusters.length > 0) {
+          // The clusters are already in the prompt in the structured format
+          console.log("Using structured prompt with embedded cluster data");
+        } else if (searchSettings.selected_themes) {
           // Filter clusters based on selected themes
           const relevantClusters = clusters.filter((c: any) => 
             searchSettings.selected_themes.primary?.includes(c.primary_theme) || 
@@ -225,7 +228,14 @@ Please return information in the following format for each article:
         ? keywords[0] 
         : keywords.map((k: string, i: number) => `${i+1}. ${k}`).join('\n');
       
-      prompt += `\n\nKEYWORDS: ${keywordStr}`;
+      // Check if prompt is using the structured format
+      if (prompt.includes("SEARCH & FILTER RULES:")) {
+        // Already structured - keywords will be used for search
+        console.log("Using structured prompt format with keywords:", keywords);
+      } else {
+        // Add keywords to standard prompt
+        prompt += `\n\nKEYWORDS: ${keywordStr}`;
+      }
     } else {
       // Replace [QUERY] with joined keywords
       prompt = prompt.replace("[QUERY]", keywords.join(", "));
@@ -312,6 +322,21 @@ Please return information in the following format for each article:
         if (limit > 0 && articles.length > limit) {
           articles = articles.slice(0, limit);
         }
+
+        // Enhanced fields for structured prompts
+        articles = articles.map(article => {
+          // Ensure each article has a matched_clusters field if it has a cluster field
+          if (article.cluster && !article.matched_clusters) {
+            article.matched_clusters = [article.cluster];
+          }
+          
+          // Ensure each article has a relevance_score
+          if (!article.relevance_score) {
+            article.relevance_score = 1.0;
+          }
+          
+          return article;
+        });
       } catch (e) {
         console.error("Error parsing articles:", e);
         console.log("Raw response:", result);

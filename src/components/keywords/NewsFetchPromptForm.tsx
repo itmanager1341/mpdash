@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertCircle, Info } from "lucide-react";
+import { AlertCircle, Info, Wand2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -198,6 +198,20 @@ export default function NewsFetchPromptForm({
       <CardContent>
         <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
           <div className="space-y-4">
+            {/* Add structured prompt builder button */}
+            <Alert>
+              <Wand2 className="h-4 w-4" />
+              <AlertTitle>Try our new structured prompt builder</AlertTitle>
+              <AlertDescription>
+                Create optimized news search prompts with our visual builder that leverages your clusters and sources.
+                <div className="mt-2">
+                  <Button variant="outline" size="sm" onClick={onSwitchToVisual}>
+                    Switch to Visual Builder
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="function_name">Function Name</Label>

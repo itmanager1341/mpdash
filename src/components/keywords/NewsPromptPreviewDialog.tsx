@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Import, Loader2, Code, Maximize2, Minimize2 } from "lucide-react";
+import { Import, Loader2, Code, Maximize2, Minimize2, FileCheck } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface NewsPromptPreviewDialogProps {
@@ -34,6 +34,67 @@ export default function NewsPromptPreviewDialog({
   
   // Clean prompt text (remove metadata block)
   const cleanPromptText = prompt.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
+  
+  // Function to determine if this is a structured prompt
+  const isStructuredPrompt = cleanPromptText.includes("SEARCH & FILTER RULES") || 
+                            cleanPromptText.includes("Source Prioritization") ||
+                            cleanPromptText.includes("Topical Relevance");
+
+  // Extract tiers from structured prompt
+  const extractTiers = () => {
+    const tiers: string[] = [];
+    const tierRegex = /Tier \d+:\s*([^\n]+)/g;
+    let match;
+    
+    while ((match = tierRegex.exec(cleanPromptText)) !== null) {
+      tiers.push(match[1].trim());
+    }
+    
+    return tiers;
+  };
+  
+  // Extract topical clusters from structured prompt
+  const extractClusters = () => {
+    const clusters: string[] = [];
+    
+    // Try to extract the Cluster Keywords section
+    const clusterSection = cleanPromptText.match(/Topical Relevance[\s\S]*?(?=OUTPUT FORMAT|$)/);
+    
+    if (clusterSection) {
+      const lines = clusterSection[0].split('\n');
+      lines.forEach(line => {
+        // Look for lines that aren't headers and have content
+        if (line && !line.includes("Topical Relevance") && !line.includes("Cluster Keywords") && line.trim()) {
+          const parts = line.split(' ');
+          if (parts.length > 0) {
+            // First part is usually the cluster name
+            clusters.push(parts[0].trim());
+          }
+        }
+      });
+    }
+    
+    return clusters;
+  };
+  
+  // Extract sources from structured prompt
+  const extractSources = () => {
+    const sources: string[] = [];
+    
+    // Look for site: directives
+    const siteRegex = /site:([a-zA-Z0-9.-]+)/g;
+    let match;
+    
+    while ((match = siteRegex.exec(cleanPromptText)) !== null) {
+      sources.push(match[1].trim());
+    }
+    
+    return sources;
+  };
+  
+  const tiers = isStructuredPrompt ? extractTiers() : [];
+  const structuredClusters = isStructuredPrompt ? extractClusters() : [];
+  const sources = isStructuredPrompt ? extractSources() : [];
   
   // Function to handle the import now action
   const handleImportNow = async () => {
@@ -73,6 +134,9 @@ export default function NewsPromptPreviewDialog({
           <DialogHeader>
             <DialogTitle>{prompt.function_name}</DialogTitle>
             <DialogDescription>
+              {isStructuredPrompt ? (
+                <Badge variant="secondary" className="mr-2">Structured Editorial Format</Badge>
+              ) : null}
               {prompt.model.includes('perplexity') 
                 ? 'Perplexity News Search'
                 : prompt.model.includes('sonar')
@@ -82,33 +146,85 @@ export default function NewsPromptPreviewDialog({
           </DialogHeader>
           
           <div className="space-y-4 my-4">
-            {/* Keywords section */}
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Keywords</h3>
-              {keywords.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {keywords.map((keyword: string, idx: number) => (
-                    <Badge key={idx} variant="outline">{keyword}</Badge>
-                  ))}
+            {isStructuredPrompt ? (
+              <>
+                {/* Tiers section */}
+                {tiers.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">Source Prioritization</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {tiers.map((tier, idx) => (
+                        <Badge key={idx} variant="outline" className="bg-blue-50">{tier}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Sources section */}
+                {sources.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">Sources</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {sources.map((source, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">{source}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Clusters section from structured prompt */}
+                {structuredClusters.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold mb-2">Content Clusters</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {structuredClusters.map((cluster, idx) => (
+                        <Badge key={idx} variant="secondary">{cluster}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <Alert className="bg-green-50">
+                  <FileCheck className="h-4 w-4" />
+                  <AlertTitle>Optimized Editorial Structure</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    This prompt uses the recommended structured editorial format with tiered sources, 
+                    cluster-based keyword organization, and standardized output formats.
+                  </AlertDescription>
+                </Alert>
+              </>
+            ) : (
+              <>
+                {/* Legacy format display */}
+                {/* Keywords section */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-2">Keywords</h3>
+                  {keywords.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {keywords.map((keyword: string, idx: number) => (
+                        <Badge key={idx} variant="outline">{keyword}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No specific keywords configured. Will use system defaults.</p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No specific keywords configured. Will use system defaults.</p>
-              )}
-            </div>
-            
-            {/* Clusters section */}
-            <div>
-              <h3 className="text-sm font-semibold mb-2">Selected Clusters</h3>
-              {clusters.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {clusters.map((cluster: string, idx: number) => (
-                    <Badge key={idx} variant="secondary">{cluster}</Badge>
-                  ))}
+                
+                {/* Clusters section */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-2">Selected Clusters</h3>
+                  {clusters.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {clusters.map((cluster: string, idx: number) => (
+                        <Badge key={idx} variant="secondary">{cluster}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No specific clusters selected.</p>
+                  )}
                 </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No specific clusters selected.</p>
-              )}
-            </div>
+              </>
+            )}
             
             <Separator />
             
@@ -149,6 +265,9 @@ export default function NewsPromptPreviewDialog({
                 )}
                 {prompt.include_sources_map && (
                   <Badge variant="secondary">Source Mapping</Badge>
+                )}
+                {isStructuredPrompt && (
+                  <Badge variant="secondary">Editorial Structure</Badge>
                 )}
               </div>
             </div>
