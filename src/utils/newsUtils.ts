@@ -14,6 +14,7 @@ export interface PerplexityNewsItem {
   source?: string;
   perplexity_score?: number;
   relevance_score?: number; // Support both formats
+  score?: number; // Support another format variant
   timestamp?: string;
   matched_clusters?: string[];
   clusters?: string[]; // Support both formats
@@ -85,8 +86,8 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
     // Normalize and clean the data before insertion
     const headline = newsItem.headline || newsItem.title || "";
     const summary = newsItem.summary || newsItem.description || "";
-    const source = newsItem.source || new URL(newsItem.url).hostname.replace('www.', '');
-    const score = newsItem.perplexity_score || newsItem.relevance_score || 0.5;
+    const source = newsItem.source || (newsItem.url ? new URL(newsItem.url).hostname.replace('www.', '') : "");
+    const score = newsItem.perplexity_score || newsItem.relevance_score || newsItem.score || 0.5;
     const matched_clusters = Array.isArray(newsItem.matched_clusters) ? newsItem.matched_clusters : 
                              Array.isArray(newsItem.clusters) ? newsItem.clusters : [];
                              
@@ -134,13 +135,38 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
       inserted: 0,
       duplicates: 0,
       lowScore: 0,
-      errors: 0
+      errors: 0,
+      invalidData: 0
     };
+
+    // Validate that we have actual news items to process
+    if (!Array.isArray(newsItems)) {
+      console.error("Invalid data: newsItems is not an array", newsItems);
+      return {
+        success: false,
+        error: "Invalid data: newsItems is not an array",
+        results
+      };
+    }
 
     // Process each item individually to apply validation and filtering
     for (const item of newsItems) {
-      // Get score from either property
-      const score = item.perplexity_score || item.relevance_score || 0;
+      // Basic data validation
+      if (!item || typeof item !== 'object') {
+        console.warn("Invalid item in newsItems array:", item);
+        results.invalidData++;
+        continue;
+      }
+
+      // Skip items without URL or headline/title
+      if (!item.url || (!item.headline && !item.title)) {
+        console.warn("Skipping invalid item missing URL or headline:", item);
+        results.invalidData++;
+        continue;
+      }
+
+      // Get score from all possible properties
+      const score = item.perplexity_score || item.relevance_score || item.score || 0;
       
       // Skip items with low perplexity score
       if (score < options.minScore) {
@@ -169,10 +195,16 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
       }
     }
     
-    return { success: results.errors === 0, results };
+    return { 
+      success: results.errors === 0 && results.invalidData === 0, 
+      results 
+    };
   } catch (err) {
     console.error("Error batch inserting news items:", err);
-    return { success: false, error: err instanceof Error ? err.message : String(err) };
+    return { 
+      success: false, 
+      error: err instanceof Error ? err.message : String(err) 
+    };
   }
 };
 

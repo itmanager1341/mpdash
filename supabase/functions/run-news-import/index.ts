@@ -124,23 +124,45 @@ serve(async (req) => {
     
     // Format articles for insertion
     const articlesToInsert = newsData.articles.map(article => ({
-      headline: article.title,
-      url: article.url,
+      headline: article.title || article.headline || "",
+      url: article.url || "",
       summary: article.summary || article.description || "",
-      source: article.source || new URL(article.url).hostname.replace('www.', ''),
-      perplexity_score: article.relevance_score || 0.7,
-      matched_clusters: Array.isArray(article.clusters) ? article.clusters : 
-                         Array.isArray(article.matched_clusters) ? article.matched_clusters : [],
+      source: article.source || (article.url ? new URL(article.url).hostname.replace('www.', '') : ""),
+      perplexity_score: article.relevance_score || article.score || 0.7,
+      matched_clusters: Array.isArray(article.matched_clusters) ? article.matched_clusters : 
+                         Array.isArray(article.clusters) ? article.clusters : [],
       status: 'pending',
       is_competitor_covered: article.is_competitor_covered || false,
       timestamp: new Date().toISOString()
     }));
     
+    // Validate articles before insertion
+    const validArticles = articlesToInsert.filter(article => {
+      if (!article.headline || !article.url) {
+        console.warn("Skipping invalid article missing headline or URL:", article);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validArticles.length === 0) {
+      console.error("No valid articles to insert after filtering");
+      return new Response(JSON.stringify({
+        success: false,
+        message: "No valid articles found for insertion",
+        details: {
+          original_count: newsData.articles.length,
+          debug: newsData.debug || {}
+        }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    
     // Insert only new articles (skip if URL already exists)
     let insertedCount = 0;
     let skippedCount = 0;
+    let errorCount = 0;
     
-    for (const article of articlesToInsert) {
+    for (const article of validArticles) {
       try {
         // Check if article URL already exists
         const { data: existing } = await supabase
@@ -157,18 +179,20 @@ serve(async (req) => {
           if (!insertError) {
             insertedCount++;
           } else {
-            console.error(`Failed to insert article: ${insertError.message}`);
+            console.error(`Failed to insert article: ${insertError.message}`, article);
+            errorCount++;
           }
         } else {
           skippedCount++;
         }
       } catch (insertErr) {
         console.error("Error processing article:", insertErr, "Article data:", article);
+        errorCount++;
       }
     }
     
-    if (insertedCount === 0 && articlesToInsert.length > 0) {
-      console.warn("No articles were inserted despite having articles to insert. Check for schema issues.");
+    if (insertedCount === 0 && validArticles.length > 0) {
+      console.warn("No articles were inserted despite having valid articles to insert. Check for schema issues or duplicates.");
     }
     
     // Log the job execution
@@ -177,15 +201,17 @@ serve(async (req) => {
         .from('job_logs')
         .insert([{
           job_name: 'news_import',
-          status: insertedCount > 0 ? 'success' : 'warning',
+          status: insertedCount > 0 ? 'success' : (errorCount > 0 ? 'error' : 'warning'),
           message: insertedCount > 0 ? 
                    `Imported ${insertedCount} new articles` : 
-                   `Found ${articlesToInsert.length} articles but none were inserted`,
+                   `Found ${validArticles.length} articles but none were inserted`,
           execution_time: new Date().toISOString(),
           details: {
             articles_found: newsData.articles.length,
+            valid_articles: validArticles.length,
             articles_inserted: insertedCount,
             articles_skipped: skippedCount,
+            articles_error: errorCount,
             prompt_used: promptToUse || 'default'
           }
         }]);
@@ -219,13 +245,16 @@ serve(async (req) => {
         success: insertedCount > 0,
         message: insertedCount > 0 ? 
                  `News import job ran successfully` : 
-                 `Found ${articlesToInsert.length} articles but none were inserted`,
+                 `Found ${validArticles.length} articles but none were inserted`,
         details: {
           articles_found: newsData.articles.length,
+          valid_articles: validArticles.length,
           articles_inserted: insertedCount,
           articles_skipped: skippedCount,
+          articles_error: errorCount,
           execution_time: new Date().toISOString(),
-          prompt_used: promptToUse || 'default'
+          prompt_used: promptToUse || 'default',
+          debug: newsData.debug || {}
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
