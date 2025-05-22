@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Import, Loader2, Code, Maximize2, Minimize2, FileCheck } from "lucide-react";
+import { Import, Loader2, Code, Maximize2, Minimize2, FileCheck, Clock, Globe } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface NewsPromptPreviewDialogProps {
@@ -54,25 +54,55 @@ export default function NewsPromptPreviewDialog({
     return tiers;
   };
   
+  // Extract time range from structured prompt
+  const extractTimeRange = () => {
+    const timeMatch = cleanPromptText.match(/Time Range:[\s\S]*?include articles published within the last ([^\n\.]+)/);
+    return timeMatch ? timeMatch[1] : settings.recency_filter || 'Default';
+  };
+  
   // Extract topical clusters from structured prompt
   const extractClusters = () => {
-    const clusters: string[] = [];
+    const clusters: { theme: string, keywords: string[] }[] = [];
     
     // Try to extract the Cluster Keywords section
-    const clusterSection = cleanPromptText.match(/Topical Relevance[\s\S]*?(?=OUTPUT FORMAT|$)/);
+    const clusterSection = cleanPromptText.match(/Cluster Keywords[\s\S]*?(?=OUTPUT FORMAT|$)/i);
     
     if (clusterSection) {
       const lines = clusterSection[0].split('\n');
+      let currentTheme = '';
+      let currentKeywords: string[] = [];
+      
       lines.forEach(line => {
-        // Look for lines that aren't headers and have content
-        if (line && !line.includes("Topical Relevance") && !line.includes("Cluster Keywords") && line.trim()) {
-          const parts = line.split(' ');
-          if (parts.length > 0) {
-            // First part is usually the cluster name
-            clusters.push(parts[0].trim());
+        // Skip header lines
+        if (line.includes("Cluster Keywords")) return;
+        
+        const trimmedLine = line.trim();
+        if (!trimmedLine) return;
+        
+        // Check if this is a new theme line
+        const themeMatch = trimmedLine.match(/^([A-Za-z &]+) (.*)/);
+        if (themeMatch) {
+          // If we already have a theme, add it to our results
+          if (currentTheme && currentKeywords.length > 0) {
+            clusters.push({
+              theme: currentTheme,
+              keywords: currentKeywords
+            });
           }
+          
+          // Start new theme
+          currentTheme = themeMatch[1].trim();
+          currentKeywords = themeMatch[2].split(',').map(k => k.trim());
         }
       });
+      
+      // Add the last theme
+      if (currentTheme && currentKeywords.length > 0) {
+        clusters.push({
+          theme: currentTheme,
+          keywords: currentKeywords
+        });
+      }
     }
     
     return clusters;
@@ -80,21 +110,43 @@ export default function NewsPromptPreviewDialog({
   
   // Extract sources from structured prompt
   const extractSources = () => {
-    const sources: string[] = [];
+    const sources: {tier: string, sites: string[]}[] = [];
     
-    // Look for site: directives
-    const siteRegex = /site:([a-zA-Z0-9.-]+)/g;
-    let match;
+    // Look for site: directives grouped by tiers
+    const tierSections = cleanPromptText.match(/Tier \d+:[\s\S]*?(?=Tier \d+:|3\. Topical|$)/g);
     
-    while ((match = siteRegex.exec(cleanPromptText)) !== null) {
-      sources.push(match[1].trim());
+    if (tierSections) {
+      tierSections.forEach(section => {
+        const tierMatch = section.match(/Tier (\d+):\s*([^\n]+)/);
+        if (!tierMatch) return;
+        
+        const tierNumber = tierMatch[1];
+        const tierName = tierMatch[2].trim();
+        
+        // Extract site: directives
+        const siteRegex = /site:([a-zA-Z0-9.-]+)/g;
+        let siteMatch;
+        const sites: string[] = [];
+        
+        while ((siteMatch = siteRegex.exec(section)) !== null) {
+          sites.push(siteMatch[1].trim());
+        }
+        
+        if (sites.length > 0) {
+          sources.push({
+            tier: `Tier ${tierNumber}: ${tierName}`,
+            sites: sites
+          });
+        }
+      });
     }
     
     return sources;
   };
   
+  const timeRange = isStructuredPrompt ? extractTimeRange() : (settings.recency_filter || 'Default');
   const tiers = isStructuredPrompt ? extractTiers() : [];
-  const structuredClusters = isStructuredPrompt ? extractClusters() : [];
+  const extractedClusters = isStructuredPrompt ? extractClusters() : [];
   const sources = isStructuredPrompt ? extractSources() : [];
   
   // Function to handle the import now action
@@ -149,37 +201,51 @@ export default function NewsPromptPreviewDialog({
           <div className="space-y-4 my-4">
             {isStructuredPrompt ? (
               <>
-                {/* Tiers section */}
-                {tiers.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold mb-2">Source Prioritization</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {tiers.map((tier, idx) => (
-                        <Badge key={idx} variant="outline" className="bg-blue-50">{tier}</Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                
-                {/* Sources section */}
+                {/* Time Range */}
+                <div>
+                  <h3 className="text-sm font-semibold mb-2 flex items-center">
+                    <Clock className="mr-2 h-4 w-4" />
+                    Time Range
+                  </h3>
+                  <p className="text-sm ml-6">Articles published within the last {timeRange}</p>
+                </div>
+              
+                {/* Sources by tier */}
                 {sources.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-semibold mb-2">Sources</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {sources.map((source, idx) => (
-                        <Badge key={idx} variant="outline" className="text-xs">{source}</Badge>
+                    <h3 className="text-sm font-semibold mb-2 flex items-center">
+                      <Globe className="mr-2 h-4 w-4" />
+                      Source Prioritization
+                    </h3>
+                    <div className="space-y-2 ml-6">
+                      {sources.map((tier, idx) => (
+                        <div key={idx} className="space-y-1">
+                          <p className="text-sm font-medium">{tier.tier}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {tier.sites.map((site, siteIdx) => (
+                              <Badge key={siteIdx} variant="outline" className="text-xs">{site}</Badge>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
                 
-                {/* Clusters section from structured prompt */}
-                {structuredClusters.length > 0 && (
+                {/* Clusters section with keywords */}
+                {extractedClusters.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold mb-2">Content Clusters</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {structuredClusters.map((cluster, idx) => (
-                        <Badge key={idx} variant="secondary">{cluster}</Badge>
+                    <div className="space-y-3 ml-6">
+                      {extractedClusters.map((cluster, idx) => (
+                        <div key={idx} className="space-y-1">
+                          <p className="text-sm font-medium">{cluster.theme}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {cluster.keywords.map((keyword, kidx) => (
+                              <Badge key={kidx} variant="secondary" className="text-xs">{keyword}</Badge>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>

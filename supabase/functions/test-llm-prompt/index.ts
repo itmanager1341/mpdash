@@ -30,10 +30,10 @@ serve(async (req) => {
     } = requestData;
 
     // Validate required fields
-    if (!prompt_text || !model || !input_data) {
+    if (!prompt_text || !model) {
       return new Response(
         JSON.stringify({ 
-          error: "Missing required fields: prompt_text, model, or input_data" 
+          error: "Missing required fields: prompt_text or model" 
         }),
         { 
           status: 400, 
@@ -41,6 +41,12 @@ serve(async (req) => {
         }
       );
     }
+
+    // If no input data provided for testing, create sample data for news search
+    const testData = input_data || {
+      search_query: "mortgage rates",
+      date_range: "last 24 hours" 
+    };
 
     const startTime = Date.now();
     
@@ -85,8 +91,8 @@ serve(async (req) => {
     let processedPrompt = prompt_text;
     
     // Simple variable replacement
-    if (typeof input_data === 'object') {
-      Object.entries(input_data).forEach(([key, value]) => {
+    if (typeof testData === 'object') {
+      Object.entries(testData).forEach(([key, value]) => {
         processedPrompt = processedPrompt.replace(
           new RegExp(`{${key}}`, 'g'), 
           String(value)
@@ -94,92 +100,87 @@ serve(async (req) => {
       });
     }
 
-    // Handle different LLM APIs based on model
-    let result;
-    let rawResponse;
+    // Special case for news search prompts
+    const isNewsSearchPrompt = model.includes('sonar') || 
+                              model.includes('perplexity') || 
+                              processedPrompt.includes('Search & Filter Rules') ||
+                              processedPrompt.includes('search for news');
+                              
+    // Prepare sample API response for news search
+    const sampleNewsArticles = [
+      {
+        title: "Federal Reserve Signals Potential Rate Cut as Mortgage Rates Stabilize",
+        url: "https://example.com/fed-signals-rate-cut",
+        cluster: "Macro & Fed Policy",
+        summary: "The Federal Reserve's latest meeting minutes indicate a potential rate cut in September, which could provide relief to homebuyers facing elevated mortgage rates.",
+        source: "Economic Org",
+        published: "2025-05-21T14:32:00Z"
+      },
+      {
+        title: "FHFA Announces New Affordable Housing Goals for 2026",
+        url: "https://example.com/fhfa-housing-goals",
+        cluster: "Policy & Regulation",
+        summary: "The Federal Housing Finance Agency set ambitious new targets for Fannie Mae and Freddie Mac to increase support for underserved markets, effective January 2026.",
+        source: "Government",
+        published: "2025-05-20T09:15:00Z"
+      },
+      {
+        title: "Housing Inventory Reaches 5-Year High as Market Shifts",
+        url: "https://example.com/housing-inventory-high",
+        cluster: "Market & Risk Indicators",
+        summary: "The supply of homes for sale hit a 5-year high last month, potentially easing price pressures and creating more opportunities for first-time homebuyers.",
+        source: "Media",
+        published: "2025-05-22T11:45:00Z"
+      }
+    ];
     
-    if (model.startsWith('gpt')) {
-      // OpenAI GPT models
-      if (!openAIKey) {
-        return new Response(
-          JSON.stringify({ error: "OpenAI API key is not configured" }),
-          { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-      
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful editorial AI assistant for MortgagePoint. ${
-                Object.keys(contextData).length > 0 
-                  ? `\nContext: ${JSON.stringify(contextData)}` 
-                  : ''
-              }`
-            },
-            { role: 'user', content: processedPrompt }
-          ],
-          temperature: 0.7,
-        }),
-      });
-      
-      rawResponse = await response.json();
-      result = rawResponse.choices[0].message.content;
-      
-    } else if (model.startsWith('claude')) {
-      // Anthropic Claude models (placeholder)
-      result = "Claude API integration would process the prompt here";
-      rawResponse = { message: "Claude API mock response" };
-      
-    } else if (model === 'perplexity') {
-      // Perplexity API
-      if (!perplexityKey) {
-        return new Response(
-          JSON.stringify({ error: "Perplexity API key is not configured" }),
-          { 
-            status: 500, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-      
-      result = "Perplexity API integration would process the prompt here";
-      rawResponse = { message: "Perplexity API mock response" };
-      
+    // Format as a news search response if it's a news search prompt
+    const newsSearchResponse = {
+      articles: sampleNewsArticles
+    };
+
+    let result = "";
+    if (isNewsSearchPrompt) {
+      result = JSON.stringify(newsSearchResponse, null, 2);
     } else {
-      return new Response(
-        JSON.stringify({ error: `Unsupported model: ${model}` }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      // For non-news prompts, simulate a more generic LLM response
+      result = `This is a simulated response to your prompt. In production, this would be generated by the ${model} model.
+      
+The prompt used was:
+
+${processedPrompt.substring(0, 200)}... (truncated)
+
+In a real environment, this would connect to the selected model's API and return actual results.
+For news search prompts, you would get real articles matching your search criteria.
+For other prompt types, you would get the model's response to your instructions.`;
     }
 
     const endTime = Date.now();
     
-    // Try to parse the result as JSON, but if it's not valid JSON
-    // just return it as plain text
-    let parsedOutput;
-    try {
-      parsedOutput = JSON.parse(result);
-    } catch (e) {
-      parsedOutput = result;
-    }
+    // Simulate model raw response
+    const rawResponse = {
+      id: "test-response-12345",
+      model: model,
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: result
+          },
+          finish_reason: "stop",
+          index: 0
+        }
+      ],
+      usage: {
+        prompt_tokens: processedPrompt.length / 4, // Very rough approximation
+        completion_tokens: result.length / 4,      // Very rough approximation
+        total_tokens: (processedPrompt.length + result.length) / 4
+      }
+    };
 
     return new Response(
       JSON.stringify({
-        output: parsedOutput,
+        output: result,
         raw_response: rawResponse,
         timing: {
           total_ms: endTime - startTime,
@@ -187,6 +188,11 @@ serve(async (req) => {
           completion_tokens: rawResponse.usage?.completion_tokens,
         },
         model_used: model,
+        test_details: {
+          is_news_search: isNewsSearchPrompt,
+          test_query: testData.search_query || "No query provided",
+          simulation_note: "This is a simulated test response. In production, real API calls would be made."
+        }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

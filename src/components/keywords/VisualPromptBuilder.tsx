@@ -129,6 +129,25 @@ export default function VisualPromptBuilder({
     },
   });
   
+  // Keep track of the search settings in a single state object for easier access by child components
+  const [searchSettings, setSearchSettings] = useState({
+    domain_filter: metadata?.search_settings?.domain_filter || "auto",
+    recency_filter: metadata?.search_settings?.recency_filter || "day",
+    temperature: metadata?.search_settings?.temperature || 0.7,
+    max_tokens: metadata?.search_settings?.max_tokens || 1500,
+    is_news_search: true,
+  });
+  
+  // Update form values and search settings when form fields change
+  const handleSearchSettingChange = (key: string, value: any) => {
+    setSearchSettings(prev => ({
+      ...prev,
+      [key]: value
+    }));
+    
+    form.setValue(`search_settings.${key}` as any, value);
+  };
+
   const handleSubmit = async (data: PromptFormValues) => {
     try {
       setIsSubmitting(true);
@@ -220,6 +239,9 @@ export default function VisualPromptBuilder({
     }
   };
 
+  // Get current form values for template generation
+  const currentFormValues = form.getValues();
+
   // Extract unique primary and sub themes
   const primaryThemeOptions = Array.from(new Set(clusters?.map(c => c.primary_theme) || []));
   const subThemeOptions = Array.from(new Set(clusters?.map(c => c.sub_theme) || []));
@@ -293,7 +315,9 @@ export default function VisualPromptBuilder({
                   <div className="space-y-2">
                     <Label htmlFor="model">Model</Label>
                     <Select 
-                      onValueChange={(value) => form.setValue("model", value)}
+                      onValueChange={(value) => {
+                        handleSearchSettingChange("model", value);
+                      }}
                       defaultValue={form.getValues("model")}
                     >
                       <SelectTrigger>
@@ -403,8 +427,10 @@ export default function VisualPromptBuilder({
                   <div className="space-y-2">
                     <Label htmlFor="domain_filter">Domain Filter</Label>
                     <Select 
-                      onValueChange={(value) => form.setValue("search_settings.domain_filter", value)}
-                      defaultValue={form.getValues("search_settings.domain_filter")}
+                      onValueChange={(value) => {
+                        handleSearchSettingChange("domain_filter", value);
+                      }}
+                      defaultValue={searchSettings.domain_filter}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select domain filter" />
@@ -424,8 +450,10 @@ export default function VisualPromptBuilder({
                   <div className="space-y-2">
                     <Label htmlFor="recency_filter">Recency Filter</Label>
                     <Select 
-                      onValueChange={(value) => form.setValue("search_settings.recency_filter", value)}
-                      defaultValue={form.getValues("search_settings.recency_filter")}
+                      onValueChange={(value) => {
+                        handleSearchSettingChange("recency_filter", value);
+                      }}
+                      defaultValue={searchSettings.recency_filter}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select recency filter" />
@@ -450,12 +478,12 @@ export default function VisualPromptBuilder({
                         min="0"
                         max="1"
                         step="0.1"
-                        value={form.watch("search_settings.temperature")}
+                        value={searchSettings.temperature}
                         onChange={(e) => form.setValue("search_settings.temperature", parseFloat(e.target.value))}
                         className="w-full"
                       />
                       <span className="text-sm font-mono w-10">
-                        {form.watch("search_settings.temperature")}
+                        {searchSettings.temperature}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -552,19 +580,21 @@ export default function VisualPromptBuilder({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            Use our structured template builder to create an optimized prompt that leverages your keyword clusters and sources.
+                            This template is automatically generated based on your selections from the Search Parameters tab.
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
                   
-                  {/* Add the new template builder component */}
+                  {/* Pass additional props to the template component */}
                   <NewsSearchPromptTemplate 
                     value={form.watch("prompt_text")}
                     onChange={(value) => form.setValue("prompt_text", value)}
                     clusters={clusters || []}
                     sources={sources || []}
+                    searchSettings={searchSettings}
+                    selectedThemes={selectedPrimaryThemes}
                   />
                   
                   {form.formState.errors.prompt_text && (
@@ -604,12 +634,22 @@ export default function VisualPromptBuilder({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            Enter a keyword to test your prompt with. This will replace {"{search_query}"} in your prompt template.
+                            Enter a keyword to test how this prompt will search for real news articles about that topic. This simulates what would happen when this prompt runs in production.
                           </p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
+                  
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>About testing prompts</AlertTitle>
+                    <AlertDescription>
+                      Testing a prompt helps verify that it will correctly find and format news articles. 
+                      Enter a relevant keyword (like "mortgage rates" or "housing policy") to see a sample of 
+                      articles the prompt would return when run with the real news API.
+                    </AlertDescription>
+                  </Alert>
                   
                   <div className="flex gap-2">
                     <Input
