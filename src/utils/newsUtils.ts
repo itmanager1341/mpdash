@@ -6,14 +6,18 @@ import { toast } from "sonner";
  * Interface for news data coming from Perplexity
  */
 export interface PerplexityNewsItem {
-  headline: string;
+  headline?: string;
+  title?: string;  // Support both formats
   url: string;
-  summary: string;
-  source: string;
-  perplexity_score: number;
-  timestamp: string;
-  matched_clusters: string[];
-  is_competitor_covered: boolean;
+  summary?: string;
+  description?: string; // Support both formats
+  source?: string;
+  perplexity_score?: number;
+  relevance_score?: number; // Support both formats
+  timestamp?: string;
+  matched_clusters?: string[];
+  clusters?: string[]; // Support both formats
+  is_competitor_covered?: boolean;
 }
 
 /**
@@ -38,28 +42,35 @@ export const checkForDuplicateNews = async (newsItem: PerplexityNewsItem): Promi
       return true; // Duplicate found
     }
     
+    // Get headline from either property
+    const headline = newsItem.headline || newsItem.title || "";
+    
     // Check for very similar headline (might be same news from different source)
     // This is a simple implementation - in production you might use more sophisticated text matching
-    const { data: headlineMatches, error: headlineError } = await supabase
-      .from('news')
-      .select('id, headline')
-      .ilike('headline', `%${newsItem.headline.substring(0, 15)}%`)
-      .limit(5);
-    
-    if (headlineError) {
-      console.error("Error checking for headline duplicates:", headlineError);
-      return false; // Continue with import if we can't check
+    if (headline && headline.length > 15) {
+      const { data: headlineMatches, error: headlineError } = await supabase
+        .from('news')
+        .select('id, headline')
+        .ilike('headline', `%${headline.substring(0, 15)}%`)
+        .limit(5);
+      
+      if (headlineError) {
+        console.error("Error checking for headline duplicates:", headlineError);
+        return false; // Continue with import if we can't check
+      }
+      
+      // Check for headline similarity (basic implementation)
+      const similarHeadlineFound = headlineMatches?.some(item => {
+        // Calculate similarity (very basic - in production use a proper similarity algorithm)
+        const normalizedA = item.headline.toLowerCase();
+        const normalizedB = headline.toLowerCase();
+        return normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA);
+      });
+      
+      return !!similarHeadlineFound;
     }
     
-    // Check for headline similarity (basic implementation)
-    const similarHeadlineFound = headlineMatches?.some(item => {
-      // Calculate similarity (very basic - in production use a proper similarity algorithm)
-      const normalizedA = item.headline.toLowerCase();
-      const normalizedB = newsItem.headline.toLowerCase();
-      return normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA);
-    });
-    
-    return !!similarHeadlineFound;
+    return false;
   } catch (err) {
     console.error("Error in duplicate check:", err);
     return false; // If error in checking, continue with import
@@ -72,21 +83,32 @@ export const checkForDuplicateNews = async (newsItem: PerplexityNewsItem): Promi
 export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => {
   try {
     // Normalize and clean the data before insertion
+    const headline = newsItem.headline || newsItem.title || "";
+    const summary = newsItem.summary || newsItem.description || "";
+    const source = newsItem.source || new URL(newsItem.url).hostname.replace('www.', '');
+    const score = newsItem.perplexity_score || newsItem.relevance_score || 0.5;
+    const matched_clusters = Array.isArray(newsItem.matched_clusters) ? newsItem.matched_clusters : 
+                             Array.isArray(newsItem.clusters) ? newsItem.clusters : [];
+                             
+    if (!headline || !newsItem.url) {
+      return { success: false, error: "Missing required headline or URL" };
+    }
+    
     const cleanedItem = {
-      headline: newsItem.headline.trim(),
+      headline: headline.trim(),
       url: newsItem.url.trim(),
-      summary: newsItem.summary.trim(),
-      source: newsItem.source.trim(),
-      perplexity_score: parseFloat(newsItem.perplexity_score.toString()), // Ensure it's a number
+      summary: summary.trim(),
+      source: source.trim(),
+      perplexity_score: parseFloat(score.toString()), // Ensure it's a number
       timestamp: newsItem.timestamp || new Date().toISOString(),
-      matched_clusters: Array.isArray(newsItem.matched_clusters) ? newsItem.matched_clusters : [],
+      matched_clusters: matched_clusters,
       is_competitor_covered: Boolean(newsItem.is_competitor_covered),
       status: 'pending', // All new items start as pending with our new schema
       destinations: [] // Empty destinations array
     };
     
     // Insert the news item into the database
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('news')
       .insert(cleanedItem);
     
@@ -95,7 +117,7 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
       return { success: false, error: error.message };
     }
     
-    return { success: true, data };
+    return { success: true };
   } catch (err) {
     console.error("Error inserting news item:", err);
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -117,9 +139,12 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
 
     // Process each item individually to apply validation and filtering
     for (const item of newsItems) {
+      // Get score from either property
+      const score = item.perplexity_score || item.relevance_score || 0;
+      
       // Skip items with low perplexity score
-      if (item.perplexity_score < options.minScore) {
-        console.log(`Skipping low-scored item (${item.perplexity_score}): ${item.headline}`);
+      if (score < options.minScore) {
+        console.log(`Skipping low-scored item (${score}): ${item.headline || item.title}`);
         results.lowScore++;
         continue;
       }
@@ -128,7 +153,7 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
       if (!options.skipDuplicateCheck) {
         const isDuplicate = await checkForDuplicateNews(item);
         if (isDuplicate) {
-          console.log(`Skipping duplicate: ${item.headline}`);
+          console.log(`Skipping duplicate: ${item.headline || item.title}`);
           results.duplicates++;
           continue;
         }
@@ -140,7 +165,7 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
         results.inserted++;
       } else {
         results.errors++;
-        console.error(`Error inserting item ${item.headline}: ${result.error}`);
+        console.error(`Error inserting item ${item.headline || item.title}: ${result.error}`);
       }
     }
     
@@ -156,11 +181,11 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
  */
 export const insertExampleNewsItem = async () => {
   const exampleNewsItem: PerplexityNewsItem = {
-    headline: "Current Mortgage Rates: May 2, 2025",
+    title: "Current Mortgage Rates: May 2, 2025",
     url: "https://money.com/current-mortgage-rates/",
     summary: "Mortgage rates continued a slight downward trend, with the 30-year fixed averaging 6.85%, but remain historically elevated as GDP unexpectedly turned negative and recession fears persist. Despite improved affordability, buyer demand is subdued amid economic uncertainty, signaling ongoing risk for lenders and servicers.",
     source: "money.com",
-    perplexity_score: 3.6,
+    relevance_score: 3.6,
     timestamp: "2025-05-02T00:00:00Z",
     matched_clusters: ["Core Mortgage Industry", "Market & Risk Indicators", "Macro & Fed Policy"],
     is_competitor_covered: false

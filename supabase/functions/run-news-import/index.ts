@@ -102,46 +102,73 @@ serve(async (req) => {
     }
 
     if (!newsData || !newsData.articles) {
-      throw new Error("No articles returned from news fetch");
+      console.error("No articles returned from news fetch or invalid format:", newsData);
+      throw new Error("No articles returned from news fetch or invalid response format");
     }
 
     console.log(`Successfully fetched ${newsData.articles.length} articles`);
+    
+    if (newsData.articles.length === 0) {
+      // Log the full response to understand what we're getting
+      console.log("Got empty articles array. Full response:", JSON.stringify(newsData));
+      
+      return new Response(JSON.stringify({
+        success: false,
+        message: "No articles found. Please check keywords and try again.",
+        details: { 
+          keywords,
+          response: newsData
+        }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     
     // Format articles for insertion
     const articlesToInsert = newsData.articles.map(article => ({
       headline: article.title,
       url: article.url,
-      summary: article.summary || article.description,
+      summary: article.summary || article.description || "",
       source: article.source || new URL(article.url).hostname.replace('www.', ''),
       perplexity_score: article.relevance_score || 0.7,
-      matched_clusters: article.clusters || article.matched_clusters || [],
+      matched_clusters: Array.isArray(article.clusters) ? article.clusters : 
+                         Array.isArray(article.matched_clusters) ? article.matched_clusters : [],
       status: 'pending',
       is_competitor_covered: article.is_competitor_covered || false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      timestamp: new Date().toISOString()
     }));
     
     // Insert only new articles (skip if URL already exists)
     let insertedCount = 0;
+    let skippedCount = 0;
+    
     for (const article of articlesToInsert) {
-      // Check if article URL already exists
-      const { data: existing } = await supabase
-        .from('news')
-        .select('id')
-        .eq('url', article.url)
-        .maybeSingle();
-      
-      if (!existing) {
-        const { error: insertError } = await supabase
+      try {
+        // Check if article URL already exists
+        const { data: existing } = await supabase
           .from('news')
-          .insert([article]);
-          
-        if (!insertError) {
-          insertedCount++;
+          .select('id')
+          .eq('url', article.url)
+          .maybeSingle();
+        
+        if (!existing) {
+          const { error: insertError } = await supabase
+            .from('news')
+            .insert([article]);
+            
+          if (!insertError) {
+            insertedCount++;
+          } else {
+            console.error(`Failed to insert article: ${insertError.message}`);
+          }
         } else {
-          console.error(`Failed to insert article: ${insertError.message}`);
+          skippedCount++;
         }
+      } catch (insertErr) {
+        console.error("Error processing article:", insertErr, "Article data:", article);
       }
+    }
+    
+    if (insertedCount === 0 && articlesToInsert.length > 0) {
+      console.warn("No articles were inserted despite having articles to insert. Check for schema issues.");
     }
     
     // Log the job execution
@@ -150,12 +177,15 @@ serve(async (req) => {
         .from('job_logs')
         .insert([{
           job_name: 'news_import',
-          status: 'success',
-          message: `Imported ${insertedCount} new articles`,
+          status: insertedCount > 0 ? 'success' : 'warning',
+          message: insertedCount > 0 ? 
+                   `Imported ${insertedCount} new articles` : 
+                   `Found ${articlesToInsert.length} articles but none were inserted`,
           execution_time: new Date().toISOString(),
           details: {
             articles_found: newsData.articles.length,
             articles_inserted: insertedCount,
+            articles_skipped: skippedCount,
             prompt_used: promptToUse || 'default'
           }
         }]);
@@ -186,11 +216,14 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        success: true,
-        message: `News import job ran successfully`,
+        success: insertedCount > 0,
+        message: insertedCount > 0 ? 
+                 `News import job ran successfully` : 
+                 `Found ${articlesToInsert.length} articles but none were inserted`,
         details: {
           articles_found: newsData.articles.length,
           articles_inserted: insertedCount,
+          articles_skipped: skippedCount,
           execution_time: new Date().toISOString(),
           prompt_used: promptToUse || 'default'
         }
