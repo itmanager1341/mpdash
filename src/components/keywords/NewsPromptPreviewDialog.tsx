@@ -7,7 +7,8 @@ import { Separator } from "@/components/ui/separator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Import, Loader2 } from "lucide-react";
+import { Import, Loader2, Code, Maximize2, Minimize2 } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface NewsPromptPreviewDialogProps {
   open: boolean;
@@ -24,11 +25,15 @@ export default function NewsPromptPreviewDialog({
 }: NewsPromptPreviewDialogProps) {
   const [isImporting, setIsImporting] = useState(false);
   const [confirmImportOpen, setConfirmImportOpen] = useState(false);
+  const [showFullPrompt, setShowFullPrompt] = useState(false);
   
   // Extract settings from metadata
   const settings = metadata?.search_settings || {};
   const keywords = settings.keywords || [];
   const clusters = settings.selected_themes?.primary || [];
+  
+  // Clean prompt text (remove metadata block)
+  const cleanPromptText = prompt.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
   
   // Function to handle the import now action
   const handleImportNow = async () => {
@@ -148,14 +153,37 @@ export default function NewsPromptPreviewDialog({
               </div>
             </div>
             
-            {/* Prompt preview snippet */}
+            {/* Prompt preview snippet with expand toggle */}
             <div>
-              <h3 className="text-sm font-semibold mb-2">Prompt Preview</h3>
-              <div className="bg-muted p-3 rounded-md text-xs max-h-32 overflow-y-auto">
-                <pre className="whitespace-pre-wrap">
-                  {prompt.prompt_text.substring(0, 500)}
-                  {prompt.prompt_text.length > 500 ? '...' : ''}
-                </pre>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-semibold">Prompt Preview</h3>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 px-2"
+                  onClick={() => setShowFullPrompt(!showFullPrompt)}
+                >
+                  {showFullPrompt ? (
+                    <><Minimize2 className="h-3.5 w-3.5 mr-1" /> Collapse</>
+                  ) : (
+                    <><Maximize2 className="h-3.5 w-3.5 mr-1" /> Expand</>
+                  )}
+                </Button>
+              </div>
+              
+              <div className={`bg-muted rounded-md ${showFullPrompt ? "" : "max-h-48"} overflow-hidden`}>
+                {showFullPrompt ? (
+                  <ScrollArea className="h-[400px] p-3">
+                    <pre className="whitespace-pre-wrap text-xs">{prompt.prompt_text}</pre>
+                  </ScrollArea>
+                ) : (
+                  <div className="p-3 text-xs overflow-y-auto max-h-48">
+                    <pre className="whitespace-pre-wrap">{cleanPromptText}</pre>
+                    {cleanPromptText.length > 500 && !showFullPrompt && (
+                      <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-muted to-transparent pointer-events-none"></div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
