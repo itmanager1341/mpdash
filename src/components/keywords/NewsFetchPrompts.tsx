@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Plus, PlusCircle, Search } from "lucide-react";
+import { Plus, PlusCircle, Search, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,12 +13,17 @@ import VisualPromptBuilder from "./VisualPromptBuilder";
 import NewsFetchPromptForm from "./NewsFetchPromptForm";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { filterNewsSearchPrompts, extractPromptMetadata } from "@/utils/llmPromptsUtils";
+import NewsPromptPreviewDialog from "./NewsPromptPreviewDialog";
+import { Separator } from "@/components/ui/separator";
 
 export default function NewsFetchPrompts() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [editorType, setEditorType] = useState<"visual" | "advanced">("visual");
   const [selectedPrompt, setSelectedPrompt] = useState<LlmPrompt | null>(null);
+  const [previewPrompt, setPreviewPrompt] = useState<LlmPrompt | null>(null);
+  const [previewMetadata, setPreviewMetadata] = useState<any>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   
   const { data: prompts, isLoading, error, refetch } = useQuery({
     queryKey: ['news-search-prompts'],
@@ -48,6 +53,13 @@ export default function NewsFetchPrompts() {
   const handleEditPrompt = (prompt: LlmPrompt) => {
     setSelectedPrompt(prompt);
     setShowAddForm(true);
+  };
+  
+  const handleShowPreview = (prompt: LlmPrompt) => {
+    const metadata = extractPromptMetadata(prompt);
+    setPreviewPrompt(prompt);
+    setPreviewMetadata(metadata);
+    setIsPreviewOpen(true);
   };
 
   return (
@@ -203,7 +215,18 @@ export default function NewsFetchPrompts() {
                       )}
                     </div>
                     
-                    <div className="flex justify-end">
+                    <Separator className="my-4" />
+                    
+                    <div className="flex justify-between items-center">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleShowPreview(prompt)}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Preview & Import
+                      </Button>
+                      
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -218,6 +241,16 @@ export default function NewsFetchPrompts() {
             })}
           </div>
         </>
+      )}
+      
+      {/* Preview dialog */}
+      {previewPrompt && (
+        <NewsPromptPreviewDialog
+          open={isPreviewOpen}
+          onOpenChange={setIsPreviewOpen}
+          prompt={previewPrompt}
+          metadata={previewMetadata}
+        />
       )}
     </div>
   );

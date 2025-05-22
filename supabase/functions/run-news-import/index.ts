@@ -27,50 +27,61 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Parse request body
-    const { manual = false } = await req.json().catch(() => ({}));
+    const { manual = false, promptId = null } = await req.json().catch(() => ({}));
     
-    // Try to get the job configuration first
-    const { data: jobConfig, error: configError } = await supabase
-      .from('scheduled_job_settings')
-      .select('*')
-      .eq('job_name', 'news_import')
-      .maybeSingle();
+    console.log(`Running news import. Manual: ${manual}, PromptId: ${promptId || 'default'}`);
+    
+    // If promptId is provided, use that specific prompt
+    let keywords = [];
+    let minScore = 0.6;
+    let limit = 10;
+    let promptToUse = promptId;
+    
+    // Try to get the job configuration first if no specific prompt is provided
+    if (!promptId) {
+      const { data: jobConfig, error: configError } = await supabase
+        .from('scheduled_job_settings')
+        .select('*')
+        .eq('job_name', 'news_import')
+        .maybeSingle();
+        
+      if (configError) {
+        throw new Error(`Failed to fetch job config: ${configError.message}`);
+      }
+
+      if (!jobConfig) {
+        throw new Error("News import job configuration not found");
+      }
+
+      // Check if job is enabled or manual override
+      if (!jobConfig.is_enabled && !manual) {
+        return new Response(JSON.stringify({
+          success: false,
+          message: "News import job is disabled",
+          info: "Use manual=true parameter to run anyway"
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Extract parameters from job config
+      const params = jobConfig.parameters || {};
       
-    if (configError) {
-      throw new Error(`Failed to fetch job config: ${configError.message}`);
+      // Extract parameters
+      keywords = Array.isArray(params.keywords) ? params.keywords : [];
+      minScore = params.minScore || 0.6;
+      limit = params.limit || 10;
+      promptToUse = params.promptId || null;
     }
-
-    if (!jobConfig) {
-      throw new Error("News import job configuration not found");
-    }
-
-    // Check if job is enabled or manual override
-    if (!jobConfig.is_enabled && !manual) {
-      return new Response(JSON.stringify({
-        success: false,
-        message: "News import job is disabled",
-        info: "Use manual=true parameter to run anyway"
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Extract parameters from job config
-    const params = jobConfig.parameters || {};
     
     // Ensure keywords is an array and has at least one default value if empty
-    let keywords = Array.isArray(params.keywords) ? params.keywords : [];
     if (keywords.length === 0) {
       // Add some default keywords if none are configured
       keywords = ["mortgage rates", "housing market", "federal reserve", "interest rates", "home equity", "foreclosure"];
       console.log(`No keywords configured, using defaults: ${keywords.join(', ')}`);
     }
     
-    const minScore = params.minScore || 0.6;
-    const limit = params.limit || 10;
-    const promptId = params.promptId || null;
-    
-    console.log(`Running news import with ${keywords.length} keywords, min score ${minScore}`);
+    console.log(`Running news import with ${keywords.length} keywords, min score ${minScore}, prompt ${promptToUse || 'default'}`);
 
     // Call the fetch-perplexity-news function
     const { data: newsData, error: fetchError } = await supabase.functions.invoke(
@@ -78,7 +89,7 @@ serve(async (req) => {
       {
         body: {
           keywords,
-          promptId,
+          promptId: promptToUse,
           minScore,
           limit
         }
@@ -133,24 +144,6 @@ serve(async (req) => {
       }
     }
     
-    // Update the job's last_run timestamp and result
-    try {
-      await supabase
-        .from('scheduled_job_settings')
-        .update({ 
-          last_run: new Date().toISOString(),
-          last_run_result: {
-            total_fetched: newsData.articles.length,
-            inserted: insertedCount,
-            execution_time: new Date().toISOString()
-          }
-        })
-        .eq('id', jobConfig.id);
-    } catch (updateError) {
-      console.error("Failed to update job status:", updateError);
-      // Continue execution - this is not a critical error
-    }
-
     // Log the job execution
     try {
       await supabase
@@ -162,12 +155,33 @@ serve(async (req) => {
           execution_time: new Date().toISOString(),
           details: {
             articles_found: newsData.articles.length,
-            articles_inserted: insertedCount
+            articles_inserted: insertedCount,
+            prompt_used: promptToUse || 'default'
           }
         }]);
     } catch (logError) {
       console.error("Failed to log job execution:", logError);
       // Continue execution - this is not a critical error
+    }
+
+    // If this was a job from the scheduled task, update its last run timestamp
+    if (!manual && !promptId) {
+      try {
+        await supabase
+          .from('scheduled_job_settings')
+          .update({ 
+            last_run: new Date().toISOString(),
+            last_run_result: {
+              total_fetched: newsData.articles.length,
+              inserted: insertedCount,
+              execution_time: new Date().toISOString()
+            }
+          })
+          .eq('job_name', 'news_import');
+      } catch (updateError) {
+        console.error("Failed to update job status:", updateError);
+        // Continue execution - this is not a critical error
+      }
     }
 
     return new Response(
@@ -177,7 +191,8 @@ serve(async (req) => {
         details: {
           articles_found: newsData.articles.length,
           articles_inserted: insertedCount,
-          execution_time: new Date().toISOString()
+          execution_time: new Date().toISOString(),
+          prompt_used: promptToUse || 'default'
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
