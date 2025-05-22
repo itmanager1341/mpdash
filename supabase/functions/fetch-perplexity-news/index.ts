@@ -92,7 +92,8 @@ serve(async (req) => {
     }
     
     let prompt: string;
-    let model = "llama-3.1-sonar-large-128k-online";
+    // UPDATE: Use a supported model - llama-3.1 models are currently supported by Perplexity
+    let model = "llama-3.1-sonar-small-128k-online";
     let searchSettings: any = {
       search_domain_filter: "auto",
       search_recency_filter: "day",
@@ -134,7 +135,22 @@ serve(async (req) => {
         
         // Remove metadata from prompt text
         prompt = promptData.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
-        model = promptData.model;
+        
+        // Check if the model specified is a Perplexity model and convert to the right format
+        if (promptData.model) {
+          // Handle different model formats
+          if (promptData.model === "perplexity/sonar-medium-online") {
+            model = "llama-3.1-sonar-small-128k-online"; // Use a supported model
+          } else if (promptData.model === "perplexity/sonar-small-online") {
+            model = "llama-3.1-sonar-small-128k-online";
+          } else if (promptData.model.startsWith("llama-3.1")) {
+            model = promptData.model; // Already using the correct format
+          } else {
+            // Default to small model if unrecognized
+            model = "llama-3.1-sonar-small-128k-online";
+          }
+        }
+        
         includeClusterContext = promptData.include_clusters;
         includeTrackingSummary = promptData.include_tracking_summary;
         includeSourcesMap = promptData.include_sources_map;
