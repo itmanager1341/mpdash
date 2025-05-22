@@ -52,6 +52,7 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       case '30m': return "30 minutes";
       case 'hour': return "1 hour";
       case 'day': return "24 hours";
+      case '48h': return "48 hours";
       case 'week': return "7 days";
       case 'month': return "30 days";
       case 'year': return "365 days";
@@ -153,7 +154,10 @@ Only include articles published within the last ${timeRange}.
         // Add theme and its keywords if any exist
         if (allKeywords.length > 0) {
           const uniqueKeywords = Array.from(new Set(allKeywords));
-          template += `${theme} ${uniqueKeywords.join(', ')}\n`;
+          template += `${theme}: ${uniqueKeywords.join(', ')}\n`;
+        } else {
+          // If no keywords found but the cluster exists, add the theme name as keyword
+          template += `${theme}: ${theme.toLowerCase()}\n`;
         }
       }
     });

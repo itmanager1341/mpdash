@@ -79,7 +79,6 @@ export default function PromptsTab() {
           initialPrompt={editingPrompt}
           onSave={handleSuccess}
           onCancel={handleFormClose}
-          onSwitchToAdvanced={() => {}} // Empty function since we're removing advanced editor
         />
       )}
     </div>

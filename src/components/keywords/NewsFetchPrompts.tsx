@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import VisualPromptBuilder from "./VisualPromptBuilder";
-import NewsFetchPromptForm from "./NewsFetchPromptForm";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { filterNewsSearchPrompts, extractPromptMetadata } from "@/utils/llmPromptsUtils";
 import NewsPromptPreviewDialog from "./NewsPromptPreviewDialog";
@@ -71,7 +70,7 @@ export default function NewsFetchPrompts() {
           initialActiveTab="search" // Start on search tab for news fetch prompts
         />
       ) : (
-        <>
+        <Fragment>
           <div className="flex items-center justify-between mb-4">
             <div className="relative w-64">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -168,13 +167,21 @@ export default function NewsFetchPrompts() {
                     <div className="flex flex-wrap gap-2 mb-4">
                       {settings.recency_filter && (
                         <Badge variant="outline">
-                          {settings.recency_filter === 'day' ? '24h' : settings.recency_filter}
+                          {settings.recency_filter === 'day' ? '24h' : 
+                           settings.recency_filter === '48h' ? '48h' : 
+                           settings.recency_filter}
                         </Badge>
                       )}
                       
                       {settings.domain_filter && settings.domain_filter !== 'auto' && (
                         <Badge variant="outline">
                           {settings.domain_filter}
+                        </Badge>
+                      )}
+                      
+                      {settings.domain_filter === 'auto' && (
+                        <Badge variant="outline">
+                          Auto domain selection
                         </Badge>
                       )}
                       
@@ -218,7 +225,7 @@ export default function NewsFetchPrompts() {
               );
             })}
           </div>
-        </>
+        </Fragment>
       )}
       
       {/* Preview dialog */}

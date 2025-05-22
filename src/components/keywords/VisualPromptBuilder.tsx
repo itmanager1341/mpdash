@@ -31,7 +31,7 @@ const promptSchema = z.object({
   is_active: z.boolean().default(true),
   search_settings: z.object({
     domain_filter: z.string().default("auto"),
-    recency_filter: z.string().default("week"),
+    recency_filter: z.string().default("day"),
     temperature: z.number().min(0).max(1).default(0.7),
     max_tokens: z.number().min(100).max(4000).default(1500),
     is_news_search: z.boolean().default(true),
@@ -65,6 +65,7 @@ export default function VisualPromptBuilder({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [currentModel, setCurrentModel] = useState<string>(initialPrompt?.model || "gpt-4o");
   
   // Extract metadata from the initial prompt if it exists
   const metadata = initialPrompt ? extractPromptMetadata(initialPrompt) : null;
@@ -74,7 +75,7 @@ export default function VisualPromptBuilder({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('keyword_clusters')
-        .select('id, primary_theme, sub_theme')
+        .select('id, primary_theme, sub_theme, keywords')
         .order('primary_theme');
         
       if (error) throw error;
@@ -109,13 +110,13 @@ export default function VisualPromptBuilder({
       function_name: initialPrompt?.function_name || "",
       model: initialPrompt?.model || "gpt-4o",
       prompt_text: initialPrompt?.prompt_text || "",
-      include_clusters: initialPrompt?.include_clusters || false,
+      include_clusters: initialPrompt?.include_clusters || true,
       include_tracking_summary: initialPrompt?.include_tracking_summary || false,
       include_sources_map: initialPrompt?.include_sources_map || false,
       is_active: initialPrompt?.is_active ?? true,
       search_settings: {
         domain_filter: metadata?.search_settings?.domain_filter || "auto",
-        recency_filter: metadata?.search_settings?.recency_filter || "week",
+        recency_filter: metadata?.search_settings?.recency_filter || "day",
         temperature: metadata?.search_settings?.temperature || 0.7,
         max_tokens: metadata?.search_settings?.max_tokens || 1500,
         is_news_search: true,
@@ -148,6 +149,17 @@ export default function VisualPromptBuilder({
     form.setValue(`search_settings.${key}` as any, value);
   };
 
+  useEffect(() => {
+    // Update model state when it changes in the form
+    const subscription = form.watch((value, { name }) => {
+      if (name === 'model' && value.model) {
+        setCurrentModel(value.model as string);
+      }
+    });
+    
+    return () => subscription.unsubscribe();
+  }, [form.watch]);
+
   const handleSubmit = async (data: PromptFormValues) => {
     try {
       setIsSubmitting(true);
@@ -156,7 +168,7 @@ export default function VisualPromptBuilder({
       const metadata = {
         search_settings: {
           domain_filter: data.search_settings?.domain_filter || "auto",
-          recency_filter: data.search_settings?.recency_filter || "week",
+          recency_filter: data.search_settings?.recency_filter || "day",
           temperature: data.search_settings?.temperature || 0.7,
           max_tokens: data.search_settings?.max_tokens || 1500,
           is_news_search: true,
@@ -176,7 +188,7 @@ export default function VisualPromptBuilder({
       
       const promptData = {
         function_name: data.function_name,
-        model: data.model,
+        model: data.model, // Ensure we save the selected model
         prompt_text: promptTextWithMetadata,
         include_clusters: data.include_clusters,
         include_tracking_summary: data.include_tracking_summary,
@@ -201,46 +213,6 @@ export default function VisualPromptBuilder({
     }
   };
 
-  const handleTestPrompt = async () => {
-    try {
-      setIsTesting(true);
-      setTestResult(null);
-      
-      const testKeyword = form.getValues("test_keyword");
-      if (!testKeyword) {
-        toast.error("Please enter a test keyword");
-        return;
-      }
-      
-      // Example implementation of testing a prompt with a keyword
-      const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
-        body: {
-          prompt_text: form.getValues("prompt_text"),
-          model: form.getValues("model"),
-          input_data: {
-            search_query: testKeyword,
-            date_range: searchSettings.recency_filter === 'day' ? 'last 24 hours' : 
-                       searchSettings.recency_filter === 'week' ? 'last 7 days' : 
-                       searchSettings.recency_filter === 'month' ? 'last 30 days' : 'recent'
-          },
-          include_clusters: form.getValues("include_clusters"),
-          include_tracking_summary: form.getValues("include_tracking_summary"),
-          include_sources_map: form.getValues("include_sources_map")
-        }
-      });
-      
-      if (error) throw error;
-      
-      setTestResult(data.output);
-      toast.success("Test completed successfully");
-    } catch (error: any) {
-      console.error("Error testing prompt:", error);
-      toast.error(`Failed to test prompt: ${error.message || "Unknown error"}`);
-    } finally {
-      setIsTesting(false);
-    }
-  };
-
   // Get current form values for template generation
   const currentFormValues = form.getValues();
 
@@ -262,6 +234,15 @@ export default function VisualPromptBuilder({
     } else {
       setSelectedSubThemes([...selectedSubThemes, theme]);
     }
+  };
+
+  // Check if the selected model has online search capabilities
+  const hasOnlineSearch = (modelName: string): boolean => {
+    return (
+      modelName.includes('sonar') || 
+      modelName.includes('online') || 
+      modelName.includes('perplexity')
+    );
   };
 
   // Comprehensive model options including Perplexity-specific options
@@ -296,7 +277,7 @@ export default function VisualPromptBuilder({
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="basic">Basic Settings</TabsTrigger>
                 <TabsTrigger value="search">Search Parameters</TabsTrigger>
-                <TabsTrigger value="test">Test & Preview</TabsTrigger>
+                <TabsTrigger value="test">Preview</TabsTrigger>
               </TabsList>
               
               <TabsContent value="basic" className="space-y-4 pt-4">
@@ -317,9 +298,10 @@ export default function VisualPromptBuilder({
                     <Label htmlFor="model">Model</Label>
                     <Select 
                       onValueChange={(value) => {
-                        handleSearchSettingChange("model", value);
+                        form.setValue("model", value);
+                        setCurrentModel(value);
                       }}
-                      defaultValue={form.getValues("model")}
+                      value={currentModel}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a model" />
@@ -337,9 +319,7 @@ export default function VisualPromptBuilder({
                     </Select>
                     
                     <div className="mt-2 text-sm">
-                      {form.watch("model").includes("sonar") || 
-                       form.watch("model").includes("online") || 
-                       form.watch("model").includes("perplexity") ? (
+                      {hasOnlineSearch(currentModel) ? (
                         <Alert className="bg-blue-50">
                           <Info className="h-4 w-4" />
                           <AlertTitle>Online search capability</AlertTitle>
@@ -431,7 +411,7 @@ export default function VisualPromptBuilder({
                       onValueChange={(value) => {
                         handleSearchSettingChange("domain_filter", value);
                       }}
-                      defaultValue={searchSettings.domain_filter}
+                      value={searchSettings.domain_filter}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select domain filter" />
@@ -446,6 +426,9 @@ export default function VisualPromptBuilder({
                         <SelectItem value="research">Research & Reports</SelectItem>
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      "Auto" intelligently adapts domain preferences based on search query content and context.
+                    </p>
                   </div>
                   
                   <div className="space-y-2">
@@ -454,7 +437,7 @@ export default function VisualPromptBuilder({
                       onValueChange={(value) => {
                         handleSearchSettingChange("recency_filter", value);
                       }}
-                      defaultValue={searchSettings.recency_filter}
+                      value={searchSettings.recency_filter}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select recency filter" />
@@ -463,6 +446,7 @@ export default function VisualPromptBuilder({
                         <SelectItem value="30m">Last 30 Minutes</SelectItem>
                         <SelectItem value="hour">Last Hour</SelectItem>
                         <SelectItem value="day">Last 24 Hours</SelectItem>
+                        <SelectItem value="48h">Last 48 Hours</SelectItem>
                         <SelectItem value="week">Last Week</SelectItem>
                         <SelectItem value="month">Last Month</SelectItem>
                         <SelectItem value="year">Last Year</SelectItem>
@@ -480,7 +464,7 @@ export default function VisualPromptBuilder({
                         max="1"
                         step="0.1"
                         value={searchSettings.temperature}
-                        onChange={(e) => form.setValue("search_settings.temperature", parseFloat(e.target.value))}
+                        onChange={(e) => handleSearchSettingChange("temperature", parseFloat(e.target.value))}
                         className="w-full"
                       />
                       <span className="text-sm font-mono w-10">
@@ -499,7 +483,8 @@ export default function VisualPromptBuilder({
                       type="number"
                       min="100"
                       max="4000"
-                      {...form.register("search_settings.max_tokens", { valueAsNumber: true })}
+                      value={searchSettings.max_tokens}
+                      onChange={(e) => handleSearchSettingChange("max_tokens", Number(e.target.value))}
                     />
                     <p className="text-xs text-muted-foreground">
                       Maximum length of the generated response
@@ -570,53 +555,15 @@ export default function VisualPromptBuilder({
               
               <TabsContent value="test" className="space-y-4 pt-4">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="test_keyword">Test with Keyword</Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <HelpCircle className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            Testing helps verify if your prompt will find relevant articles about a specific topic.
-                            Enter a keyword to see a simulation of actual search results.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  
-                  <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>About Testing News Search Prompts</AlertTitle>
-                    <AlertDescription>
-                      Enter a relevant keyword (like "mortgage rates" or "housing policy") to test how this prompt 
-                      will search for news. This simulates what would happen when used in production, 
-                      returning sample articles that match your criteria.
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <div className="flex gap-2">
-                    <Input
-                      id="test_keyword"
-                      placeholder="e.g., mortgage rates"
-                      {...form.register("test_keyword")}
-                      className="flex-1"
-                    />
-                    <Button 
-                      type="button" 
-                      onClick={handleTestPrompt}
-                      disabled={isTesting}
-                    >
-                      {isTesting ? "Testing..." : "Test Prompt"}
-                    </Button>
-                  </div>
-                  
                   <div className="space-y-2 mt-4">
                     <h4 className="text-sm font-medium">Prompt Preview</h4>
+                    <Alert variant="default" className="bg-blue-50">
+                      <Info className="h-4 w-4" />
+                      <AlertTitle>Preview Mode</AlertTitle>
+                      <AlertDescription>
+                        This is a preview of how your prompt will appear. It combines your selected settings, sources, and clusters.
+                      </AlertDescription>
+                    </Alert>
                     <NewsSearchPromptTemplate 
                       value={form.watch("prompt_text")}
                       onChange={(value) => form.setValue("prompt_text", value)}
@@ -627,15 +574,6 @@ export default function VisualPromptBuilder({
                       readOnly={false}
                     />
                   </div>
-                  
-                  {testResult && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-medium">Test Result</h4>
-                      <div className="bg-muted p-4 rounded-md overflow-auto max-h-[400px]">
-                        <pre className="whitespace-pre-wrap text-sm">{testResult}</pre>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </TabsContent>
             </Tabs>
