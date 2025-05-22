@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Import, Loader2 } from "lucide-react";
 
 interface NewsPromptPreviewDialogProps {
   open: boolean;
@@ -175,7 +175,7 @@ export default function NewsPromptPreviewDialog({
                 </>
               ) : (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <Import className="mr-2 h-4 w-4" />
                   Import Now
                 </>
               )}

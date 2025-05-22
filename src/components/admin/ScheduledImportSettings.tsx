@@ -5,12 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { CheckIcon, EyeIcon, FileEdit, Info } from "lucide-react";
+import { CheckIcon, EyeIcon, FileEdit, Import, Info, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Sheet,
@@ -23,42 +21,37 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import NewsPromptPreviewDialog from "../keywords/NewsPromptPreviewDialog";
+import { extractPromptMetadata } from "@/utils/llmPromptsUtils";
 
 // Type guard function to check if parameters have expected properties
 const hasJobParameters = (params: any): params is { 
   minScore: number, 
   limit: number, 
-  keywords: string[],
   promptId?: string
 } => {
   return params && 
     typeof params === 'object' && 
-    ('minScore' in params || 'limit' in params || 'keywords' in params);
+    ('minScore' in params || 'limit' in params || 'promptId' in params);
 };
-
-// Default keywords to use if none are provided
-const DEFAULT_KEYWORDS = [
-  "mortgage rates", 
-  "housing market", 
-  "federal reserve", 
-  "interest rates", 
-  "home equity", 
-  "foreclosure"
-];
 
 export default function ScheduledImportSettings() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [formData, setFormData] = useState({
     schedule: "0 */12 * * *", // Default: every 12 hours
     isEnabled: true,
     minScore: "0.6",
     limit: "10",
-    keywords: DEFAULT_KEYWORDS.join("\n"),
   });
-  const [useEnhancedPrompt, setUseEnhancedPrompt] = useState(false);
   const [selectedPromptId, setSelectedPromptId] = useState("");
   const [showPreview, setShowPreview] = useState(false);
   const [previewPrompt, setPreviewPrompt] = useState("");
+  const [confirmImportOpen, setConfirmImportOpen] = useState(false);
+  const [selectedPromptForPreview, setSelectedPromptForPreview] = useState<LlmPrompt | null>(null);
+  const [previewMetadata, setPreviewMetadata] = useState<any>(null);
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false);
 
   const { data: job, isLoading: isLoadingJob } = useQuery({
     queryKey: ["scheduled-job-news-import"],
@@ -106,22 +99,15 @@ export default function ScheduledImportSettings() {
   useEffect(() => {
     if (job) {
       const params = job.parameters;
-      const jobParams = hasJobParameters(params) ? params : { minScore: 0.6, limit: 10, keywords: DEFAULT_KEYWORDS };
-      
-      // If keywords array is empty, use the defaults
-      const keywordsArray = Array.isArray(jobParams.keywords) && jobParams.keywords.length > 0 
-        ? jobParams.keywords 
-        : DEFAULT_KEYWORDS;
+      const jobParams = hasJobParameters(params) ? params : { minScore: 0.6, limit: 10 };
       
       setFormData({
         schedule: job.schedule || "0 */12 * * *",
         isEnabled: job.is_enabled,
         minScore: jobParams.minScore?.toString() || "0.6",
         limit: jobParams.limit?.toString() || "10",
-        keywords: keywordsArray.join("\n"),
       });
 
-      setUseEnhancedPrompt(!!jobParams.promptId);
       setSelectedPromptId(jobParams.promptId || "");
     }
   }, [job]);
@@ -131,14 +117,6 @@ export default function ScheduledImportSettings() {
     mutationFn: async (formData: any) => {
       setIsLoading(true);
 
-      const keywordsArray = formData.keywords
-        .split("\n")
-        .map((k: string) => k.trim())
-        .filter((k: string) => k);
-
-      // If keywords array is empty after filtering, use defaults
-      const finalKeywords = keywordsArray.length > 0 ? keywordsArray : DEFAULT_KEYWORDS;
-
       const jobData = {
         job_name: "news_import",
         schedule: formData.schedule,
@@ -146,17 +124,9 @@ export default function ScheduledImportSettings() {
         parameters: {
           minScore: parseFloat(formData.minScore),
           limit: parseInt(formData.limit),
-          keywords: finalKeywords,
-        } as Record<string, any>, // Use type assertion to allow adding promptId
+          promptId: selectedPromptId || null,
+        } as Record<string, any>,
       };
-
-      // Add promptId if selected
-      if (useEnhancedPrompt && selectedPromptId) {
-        jobData.parameters.promptId = selectedPromptId;
-      } else {
-        // Remove promptId if not using enhanced prompt
-        delete jobData.parameters.promptId;
-      }
 
       if (job?.id) {
         // Update existing job
@@ -262,27 +232,64 @@ export default function ScheduledImportSettings() {
     // Remove metadata from prompt text
     let previewText = selectedPrompt.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
     
-    // Insert first keyword for preview
-    const firstKeyword = formData.keywords
-      .split("\n")
-      .map(k => k.trim())
-      .filter(k => k)[0] || "mortgage rates";
-      
-    if (previewText.includes("[QUERY]")) {
-      previewText = previewText.replace("[QUERY]", firstKeyword);
-    } else {
-      previewText += `\n\nTOPIC: ${firstKeyword}`;
-    }
-    
     return previewText;
   };
   
-  // Update preview when prompt or keywords change
+  // Update preview when prompt changes
   useEffect(() => {
     if (selectedPromptId) {
       setPreviewPrompt(generatePreviewPrompt());
     }
-  }, [selectedPromptId, formData.keywords]);
+  }, [selectedPromptId]);
+  
+  const handleImportNow = async () => {
+    if (!selectedPromptId) {
+      toast.error("Please select a search prompt first");
+      return;
+    }
+    
+    setIsImporting(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('run-news-import', {
+        body: { 
+          manual: true,
+          promptId: selectedPromptId
+        }
+      });
+      
+      if (error) {
+        throw new Error(`Function error: ${error.message}`);
+      }
+      
+      if (data.success) {
+        toast.success(`News import completed: ${data.details?.articles_inserted || 0} new articles added`);
+      } else {
+        toast.error(`Import failed: ${data.message || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error("Error running news import:", err);
+      toast.error(`Import failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setIsImporting(false);
+      setConfirmImportOpen(false);
+    }
+  };
+  
+  const handleShowPreview = () => {
+    if (!selectedPromptId) {
+      toast.error("Please select a search prompt first");
+      return;
+    }
+    
+    const selectedPrompt = getSelectedPrompt();
+    if (selectedPrompt) {
+      const metadata = extractPromptMetadata(selectedPrompt);
+      setSelectedPromptForPreview(selectedPrompt);
+      setPreviewMetadata(metadata);
+      setIsPreviewDialogOpen(true);
+    }
+  };
 
   return (
     <Card className="w-full">
@@ -331,11 +338,12 @@ export default function ScheduledImportSettings() {
             
             {getCurrentFrequency() === "custom" && (
               <div className="pt-2">
-                <Input
+                <input
                   name="schedule"
                   value={formData.schedule}
                   onChange={handleInputChange}
                   placeholder="Cron expression (e.g., 0 */12 * * *)"
+                  className="w-full p-2 border rounded"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
                   Use cron syntax: minute hour day-of-month month day-of-week
@@ -344,45 +352,10 @@ export default function ScheduledImportSettings() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="minScore">Minimum Relevance Score</Label>
-              <Input
-                id="minScore"
-                name="minScore"
-                type="number"
-                min="0"
-                max="1"
-                step="0.1"
-                value={formData.minScore}
-                onChange={handleInputChange}
-              />
-              <p className="text-xs text-muted-foreground">
-                Minimum score (0-1) for articles to be imported
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="limit">Article Limit</Label>
-              <Input
-                id="limit"
-                name="limit"
-                type="number"
-                min="1"
-                max="50"
-                value={formData.limit}
-                onChange={handleInputChange}
-              />
-              <p className="text-xs text-muted-foreground">
-                Maximum number of articles to import per run
-              </p>
-            </div>
-          </div>
-          
-          <div className="space-y-2">
+          <div className="space-y-4 border-l-4 border-primary/20 pl-4 py-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="useEnhancedPrompt" className="text-base">
-                Use Enhanced Search Prompt
+              <Label className="text-base">
+                Search Prompt
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -390,37 +363,26 @@ export default function ScheduledImportSettings() {
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        Enhanced prompts provide better context and filtering options for more targeted news results.
+                        Select a search prompt to use for importing news. Each prompt contains its own set of keywords and search parameters.
                       </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </Label>
-              <Switch
-                id="useEnhancedPrompt"
-                checked={useEnhancedPrompt}
-                onCheckedChange={(checked) => setUseEnhancedPrompt(checked)}
-              />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Use customized search prompts from the Keyword Management section
-            </p>
-          </div>
-          
-          {useEnhancedPrompt && (
-            <div className="space-y-2 border-l-4 border-primary/20 pl-4 py-2">
-              <Label>Select Search Prompt</Label>
-              {isLoadingPrompts ? (
-                <p className="text-sm text-muted-foreground">Loading prompts...</p>
-              ) : prompts && prompts.length > 0 ? (
-                <>
+            
+            {isLoadingPrompts ? (
+              <p className="text-sm text-muted-foreground">Loading prompts...</p>
+            ) : prompts && prompts.length > 0 ? (
+              <>
+                <div className="flex flex-col space-y-4">
                   <Select
                     value={selectedPromptId}
                     onValueChange={(value) => {
                       setSelectedPromptId(value);
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select a search prompt" />
                     </SelectTrigger>
                     <SelectContent>
@@ -432,103 +394,90 @@ export default function ScheduledImportSettings() {
                     </SelectContent>
                   </Select>
                   
-                  {selectedPromptId && (
-                    <div className="mt-3">
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-primary/10 text-primary hover:bg-primary/20">
-                          {getSelectedPrompt()?.model.includes('llama') ? 'Llama' : getSelectedPrompt()?.model}
-                        </Badge>
-                        
-                        {getSelectedPrompt()?.include_clusters && (
-                          <Badge variant="outline">Uses clusters</Badge>
-                        )}
-                        
-                        {(() => {
-                          const metadata = extractMetadata(getSelectedPrompt());
-                          if (metadata?.search_settings?.recency_filter) {
-                            return (
-                              <Badge variant="outline">
-                                {metadata.search_settings.recency_filter === 'day' ? '24h' : metadata.search_settings.recency_filter}
-                              </Badge>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleShowPreview}
+                      disabled={!selectedPromptId}
+                    >
+                      <EyeIcon className="mr-2 h-4 w-4" />
+                      Preview Prompt
+                    </Button>
+                    
+                    <Button
+                      type="button"
+                      variant="default"
+                      onClick={() => setConfirmImportOpen(true)}
+                      disabled={!selectedPromptId || isImporting}
+                    >
+                      {isImporting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Importing...
+                        </>
+                      ) : (
+                        <>
+                          <Import className="mr-2 h-4 w-4" />
+                          Import Now
+                        </>
+                      )}
+                    </Button>
+                    
+                    <a href="/keyword-management?tab=maintenance" className="text-xs text-blue-500 hover:text-blue-700 flex items-center self-center">
+                      <FileEdit className="h-4 w-4 mr-1" />
+                      Manage Prompts
+                    </a>
+                  </div>
+                </div>
+                
+                {selectedPromptId && (
+                  <div className="mt-3">
+                    <div className="flex items-center gap-2">
+                      <Badge className="bg-primary/10 text-primary hover:bg-primary/20">
+                        {getSelectedPrompt()?.model.includes('llama') ? 'Llama' : getSelectedPrompt()?.model}
+                      </Badge>
                       
-                      <div className="mt-2 flex gap-2">
-                        <Sheet>
-                          <SheetTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="gap-2"
-                            >
-                              <EyeIcon className="h-4 w-4" />
-                              Preview Prompt
-                            </Button>
-                          </SheetTrigger>
-                          <SheetContent side="right" className="w-full sm:max-w-lg">
-                            <SheetHeader>
-                              <SheetTitle>Prompt Preview</SheetTitle>
-                              <SheetDescription>
-                                This is how the prompt will be used to search for news
-                              </SheetDescription>
-                            </SheetHeader>
-                            <ScrollArea className="h-[80vh] mt-4">
-                              <pre className="whitespace-pre-wrap text-sm font-mono p-4 rounded bg-muted">
-                                {previewPrompt}
-                              </pre>
-                            </ScrollArea>
-                          </SheetContent>
-                        </Sheet>
-                        
-                        <a href="/keyword-management?tab=maintenance" className="text-xs text-blue-500 hover:text-blue-700 flex items-center">
-                          <FileEdit className="h-4 w-4 mr-1" />
-                          Manage Prompts
-                        </a>
-                      </div>
+                      {getSelectedPrompt()?.include_clusters && (
+                        <Badge variant="outline">Uses clusters</Badge>
+                      )}
+                      
+                      {(() => {
+                        const metadata = extractMetadata(getSelectedPrompt());
+                        if (metadata?.search_settings?.recency_filter) {
+                          return (
+                            <Badge variant="outline">
+                              {metadata.search_settings.recency_filter === 'day' ? '24h' : metadata.search_settings.recency_filter}
+                            </Badge>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
-                  )}
-                </>
-              ) : (
-                <Alert variant="destructive" className="mt-2">
-                  <AlertTitle>No search prompts found</AlertTitle>
-                  <AlertDescription>
-                    Create search prompts in the{" "}
-                    <a href="/keyword-management?tab=maintenance" className="underline">
-                      Keyword Management
-                    </a>{" "}
-                    section.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="keywords">Search Keywords</Label>
-            <Textarea
-              id="keywords"
-              name="keywords"
-              value={formData.keywords}
-              onChange={handleInputChange}
-              placeholder="Enter one keyword or phrase per line"
-              rows={6}
-            />
-            <p className="text-sm text-muted-foreground">
-              Enter one search phrase per line (e.g., mortgage rates)
-            </p>
-            
-            <Alert className="mt-2 bg-blue-50 text-blue-800 border border-blue-200">
-              <Info className="h-4 w-4" />
-              <AlertTitle>Default Keywords</AlertTitle>
-              <AlertDescription>
-                If no keywords are provided, the system will use these defaults: mortgage rates, housing market, federal reserve, interest rates, home equity, foreclosure
-              </AlertDescription>
-            </Alert>
+                  </div>
+                )}
+              </>
+            ) : (
+              <Alert variant="destructive" className="mt-2">
+                <AlertTitle>No search prompts found</AlertTitle>
+                <AlertDescription>
+                  Create search prompts in the{" "}
+                  <a href="/keyword-management?tab=maintenance" className="underline">
+                    Keyword Management
+                  </a>{" "}
+                  section.
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
+
+          <Alert className="mt-2 bg-blue-50 text-blue-800 border border-blue-200">
+            <Info className="h-4 w-4" />
+            <AlertTitle>How Import Works</AlertTitle>
+            <AlertDescription>
+              News imports use the keywords and settings defined in the selected prompt. You can view these settings by clicking "Preview Prompt".
+            </AlertDescription>
+          </Alert>
         </CardContent>
 
         <CardFooter className="flex justify-between">
@@ -548,6 +497,42 @@ export default function ScheduledImportSettings() {
           </Button>
         </CardFooter>
       </form>
+      
+      {/* Confirmation dialog */}
+      <AlertDialog open={confirmImportOpen} onOpenChange={setConfirmImportOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Run news import?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will run a manual news import using the "{getSelectedPrompt()?.function_name || 'selected'}" prompt.
+              New articles will be added to Today's Briefing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleImportNow}>
+              {isImporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                'Run Import'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Prompt preview dialog */}
+      {selectedPromptForPreview && (
+        <NewsPromptPreviewDialog
+          open={isPreviewDialogOpen}
+          onOpenChange={setIsPreviewDialogOpen}
+          prompt={selectedPromptForPreview}
+          metadata={previewMetadata}
+        />
+      )}
     </Card>
   );
 }

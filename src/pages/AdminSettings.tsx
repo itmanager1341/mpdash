@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -5,7 +6,6 @@ import ApiKeysManager from "@/components/admin/ApiKeysManager";
 import UserManagement from "@/components/admin/UserManagement";
 import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
 import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
-import ManualNewsImport from "@/components/admin/ManualNewsImport";
 
 const AdminSettings = () => {
   const [activeTab, setActiveTab] = useState("api-keys");
@@ -32,14 +32,7 @@ const AdminSettings = () => {
         </TabsContent>
         
         <TabsContent value="scheduled-tasks" className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2">
-              <ScheduledImportSettings />
-            </div>
-            <div>
-              <ManualNewsImport />
-            </div>
-          </div>
+          <ScheduledImportSettings />
         </TabsContent>
         
         <TabsContent value="users" className="space-y-8">
