@@ -244,6 +244,47 @@ Please return information in the following format for each article:
     console.log("Using model:", model);
     console.log("Search settings:", JSON.stringify(searchSettings));
     
+    // Fix search settings keys for Perplexity API
+    const apiPayload: any = {
+      model: model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a research assistant that helps find relevant news articles.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: searchSettings.temperature || 0.2,
+      top_p: 0.9,
+      max_tokens: searchSettings.max_tokens || 1000,
+      frequency_penalty: 1,
+      presence_penalty: 0
+    };
+    
+    // Handle recency filter standardization
+    if (searchSettings.recency_filter) {
+      // Convert "48h" to "day" since Perplexity only accepts standard values
+      const recencyValue = searchSettings.recency_filter === "48h" ? "day" : 
+                           searchSettings.recency_filter === "24h" ? "day" : 
+                           searchSettings.recency_filter;
+      // Use only supported values: hour, day, week, month, year
+      apiPayload.search_recency_filter = 
+        ["hour", "day", "week", "month", "year"].includes(recencyValue) ? 
+        recencyValue : "day";
+    } else {
+      apiPayload.search_recency_filter = "day";
+    }
+    
+    // Handle domain filter
+    if (searchSettings.domain_filter && searchSettings.domain_filter !== "auto") {
+      // If it's a custom domain list, pass it as is
+      apiPayload.search_domain_filter = searchSettings.domain_filter;
+    }
+    // If auto or not specified, omit the parameter to use Perplexity default
+    
     // Call Perplexity API
     try {
       const response = await fetch('https://api.perplexity.ai/chat/completions', {
@@ -252,28 +293,7 @@ Please return information in the following format for each article:
           'Authorization': `Bearer ${perplexityApiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a research assistant that helps find relevant news articles.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: searchSettings.temperature || 0.2,
-          top_p: 0.9,
-          max_tokens: searchSettings.max_tokens || 1000,
-          search_domain_filter: searchSettings.domain_filter || "auto",
-          search_recency_filter: searchSettings.recency_filter || "day",
-          return_images: false,
-          return_related_questions: false,
-          frequency_penalty: 1,
-          presence_penalty: 0
-        }),
+        body: JSON.stringify(apiPayload),
       });
 
       if (!response.ok) {
