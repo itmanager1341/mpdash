@@ -58,8 +58,11 @@ serve(async (req) => {
       contextData = {
         ...contextData,
         clusters: [
-          { theme: "Mortgage Rates", keywords: ["interest rates", "APR", "fixed rate"] },
-          { theme: "Housing Market", keywords: ["home prices", "inventory", "sales"] }
+          { theme: "Core Mortgage Industry", keywords: ["mortgage rates", "refinance", "HELOC", "non-QM", "underwriting"] },
+          { theme: "Mortgage Servicing & Loss Mitigation", keywords: ["MSRs", "servicing transfers", "forbearance", "REO", "loss mitigation"] },
+          { theme: "Policy & Regulation", keywords: ["CFPB", "HUD", "TRID", "Dodd-Frank", "fair lending"] },
+          { theme: "Market & Risk Indicators", keywords: ["affordability", "home prices", "delinquency", "housing supply", "foreclosure"] },
+          { theme: "Macro & Fed Policy", keywords: ["Fed", "bond yields", "inflation", "MBS", "securitization"] }
         ]
       };
     }
@@ -80,9 +83,9 @@ serve(async (req) => {
       contextData = {
         ...contextData,
         sources: {
-          tier1: ["Wall Street Journal", "Bloomberg", "CNBC"],
-          tier2: ["HousingWire", "Mortgage News Daily"],
-          tier3: ["Local news outlets", "Blogs"]
+          tier1: ["FHFA", "HUD", "Fannie Mae", "Freddie Mac"],
+          tier2: ["MBA", "NAR", "Urban Institute"],
+          tier3: ["WSJ", "Bloomberg", "CNBC"]
         }
       };
     }
@@ -103,6 +106,7 @@ serve(async (req) => {
     // Special case for news search prompts
     const isNewsSearchPrompt = model.includes('sonar') || 
                               model.includes('perplexity') || 
+                              model.includes('online') || 
                               processedPrompt.includes('Search & Filter Rules') ||
                               processedPrompt.includes('search for news');
                               
@@ -136,7 +140,10 @@ serve(async (req) => {
     
     // Format as a news search response if it's a news search prompt
     const newsSearchResponse = {
-      articles: sampleNewsArticles
+      articles: sampleNewsArticles,
+      search_query: testData.search_query,
+      date_range: testData.date_range,
+      explanation: "This is a test response showing how your prompt would return structured news articles. In production, the LLM would search the latest news sources based on your configured parameters."
     };
 
     let result = "";
@@ -191,7 +198,7 @@ For other prompt types, you would get the model's response to your instructions.
         test_details: {
           is_news_search: isNewsSearchPrompt,
           test_query: testData.search_query || "No query provided",
-          simulation_note: "This is a simulated test response. In production, real API calls would be made."
+          simulation_note: "This is a simulated test response showing how your prompt would behave in production. The sample articles match your configured cluster keywords and source priorities."
         }
       }),
       { 

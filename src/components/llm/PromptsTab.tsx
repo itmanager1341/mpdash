@@ -5,15 +5,12 @@ import { PlusCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import PromptsList from "@/components/llm/PromptsList";
-import PromptForm from "@/components/llm/PromptForm";
-import { fetchPrompts } from "@/utils/llmPromptsUtils";
 import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { fetchPrompts } from "@/utils/llmPromptsUtils";
 import { toast } from "sonner";
 
 export default function PromptsTab() {
   const [isAddingPrompt, setIsAddingPrompt] = useState(false);
-  const [editorType, setEditorType] = useState<"visual" | "advanced">("visual");
   const [editingPrompt, setEditingPrompt] = useState<LlmPrompt | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   
@@ -78,33 +75,12 @@ export default function PromptsTab() {
       />
       
       {isAddingPrompt && (
-        <>
-          <div className="mb-4 mt-6 flex justify-center">
-            <Tabs value={editorType} onValueChange={(v) => setEditorType(v as "visual" | "advanced")}>
-              <TabsList>
-                <TabsTrigger value="visual">Visual Builder</TabsTrigger>
-                <TabsTrigger value="advanced">Advanced Editor</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-          
-          {editorType === "visual" ? (
-            <VisualPromptBuilder
-              initialPrompt={editingPrompt}
-              onSave={handleSuccess}
-              onCancel={handleFormClose}
-              onSwitchToAdvanced={() => setEditorType("advanced")}
-            />
-          ) : (
-            <PromptForm
-              prompt={editingPrompt}
-              open={isAddingPrompt}
-              onOpenChange={setIsAddingPrompt}
-              onSuccess={handleSuccess}
-              onSwitchToVisual={() => setEditorType("visual")}
-            />
-          )}
-        </>
+        <VisualPromptBuilder
+          initialPrompt={editingPrompt}
+          onSave={handleSuccess}
+          onCancel={handleFormClose}
+          onSwitchToAdvanced={() => {}} // Empty function since we're removing advanced editor
+        />
       )}
     </div>
   );

@@ -213,13 +213,15 @@ export default function VisualPromptBuilder({
       }
       
       // Example implementation of testing a prompt with a keyword
-      // This would call your Supabase Edge Function to test the prompt
       const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
         body: {
           prompt_text: form.getValues("prompt_text"),
           model: form.getValues("model"),
           input_data: {
-            search_query: testKeyword
+            search_query: testKeyword,
+            date_range: searchSettings.recency_filter === 'day' ? 'last 24 hours' : 
+                       searchSettings.recency_filter === 'week' ? 'last 7 days' : 
+                       searchSettings.recency_filter === 'month' ? 'last 30 days' : 'recent'
           },
           include_clusters: form.getValues("include_clusters"),
           include_tracking_summary: form.getValues("include_tracking_summary"),
@@ -291,11 +293,10 @@ export default function VisualPromptBuilder({
         <CardContent>
           <form onSubmit={form.handleSubmit(handleSubmit)}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="basic">Basic Settings</TabsTrigger>
                 <TabsTrigger value="search">Search Parameters</TabsTrigger>
-                <TabsTrigger value="template">Prompt Template</TabsTrigger>
-                <TabsTrigger value="test">Test</TabsTrigger>
+                <TabsTrigger value="test">Test & Preview</TabsTrigger>
               </TabsList>
               
               <TabsContent value="basic" className="space-y-4 pt-4">
@@ -567,60 +568,6 @@ export default function VisualPromptBuilder({
                 </div>
               </TabsContent>
               
-              <TabsContent value="template" className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="prompt_text">Prompt Template</Label>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <HelpCircle className="h-4 w-4" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p className="max-w-xs">
-                            This template is automatically generated based on your selections from the Search Parameters tab.
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  
-                  {/* Pass additional props to the template component */}
-                  <NewsSearchPromptTemplate 
-                    value={form.watch("prompt_text")}
-                    onChange={(value) => form.setValue("prompt_text", value)}
-                    clusters={clusters || []}
-                    sources={sources || []}
-                    searchSettings={searchSettings}
-                    selectedThemes={selectedPrimaryThemes}
-                  />
-                  
-                  {form.formState.errors.prompt_text && (
-                    <p className="text-sm text-red-500">{form.formState.errors.prompt_text.message}</p>
-                  )}
-                </div>
-                
-                <div className="bg-muted p-4 rounded-md">
-                  <h4 className="text-sm font-medium mb-2">Available Variables</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Badge variant="secondary" className="justify-start">{"{search_query}"}</Badge>
-                    <Badge variant="secondary" className="justify-start">{"{date_range}"}</Badge>
-                    <Badge variant="secondary" className="justify-start">{"{clusters_data}"}</Badge>
-                    <Badge variant="secondary" className="justify-start">{"{tracking_summary}"}</Badge>
-                  </div>
-                </div>
-                
-                <div className="flex justify-end">
-                  {onSwitchToAdvanced && (
-                    <Button type="button" variant="secondary" onClick={onSwitchToAdvanced}>
-                      Switch to Advanced Editor
-                    </Button>
-                  )}
-                </div>
-              </TabsContent>
-              
               <TabsContent value="test" className="space-y-4 pt-4">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
@@ -634,7 +581,8 @@ export default function VisualPromptBuilder({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            Enter a keyword to test how this prompt will search for real news articles about that topic. This simulates what would happen when this prompt runs in production.
+                            Testing helps verify if your prompt will find relevant articles about a specific topic.
+                            Enter a keyword to see a simulation of actual search results.
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -643,11 +591,11 @@ export default function VisualPromptBuilder({
                   
                   <Alert>
                     <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>About testing prompts</AlertTitle>
+                    <AlertTitle>About Testing News Search Prompts</AlertTitle>
                     <AlertDescription>
-                      Testing a prompt helps verify that it will correctly find and format news articles. 
-                      Enter a relevant keyword (like "mortgage rates" or "housing policy") to see a sample of 
-                      articles the prompt would return when run with the real news API.
+                      Enter a relevant keyword (like "mortgage rates" or "housing policy") to test how this prompt 
+                      will search for news. This simulates what would happen when used in production, 
+                      returning sample articles that match your criteria.
                     </AlertDescription>
                   </Alert>
                   
@@ -667,9 +615,22 @@ export default function VisualPromptBuilder({
                     </Button>
                   </div>
                   
+                  <div className="space-y-2 mt-4">
+                    <h4 className="text-sm font-medium">Prompt Preview</h4>
+                    <NewsSearchPromptTemplate 
+                      value={form.watch("prompt_text")}
+                      onChange={(value) => form.setValue("prompt_text", value)}
+                      clusters={clusters || []}
+                      sources={sources || []}
+                      searchSettings={searchSettings}
+                      selectedThemes={selectedPrimaryThemes}
+                      readOnly={false}
+                    />
+                  </div>
+                  
                   {testResult && (
                     <div className="mt-4">
-                      <h4 className="text-sm font-medium mb-2">Test Result</h4>
+                      <h4 className="text-sm font-medium">Test Result</h4>
                       <div className="bg-muted p-4 rounded-md overflow-auto max-h-[400px]">
                         <pre className="whitespace-pre-wrap text-sm">{testResult}</pre>
                       </div>

@@ -17,6 +17,7 @@ interface NewsSearchPromptTemplateProps {
   sources: any[];
   searchSettings?: any;
   selectedThemes?: string[];
+  readOnly?: boolean;
 }
 
 const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
@@ -24,8 +25,9 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   onChange,
   clusters,
   sources,
-  searchSettings,
-  selectedThemes = []
+  searchSettings = { recency_filter: 'day', domain_filter: 'auto' },
+  selectedThemes = [],
+  readOnly = false
 }) => {
   const [isCustomizing, setIsCustomizing] = useState(false);
   
@@ -35,7 +37,7 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
     if (!value || value.trim() === "") {
       handleGenerateTemplate();
     }
-  }, [sources, clusters, searchSettings, selectedThemes]);
+  }, []);
   
   // Generate template prompt based on clusters and sources
   const handleGenerateTemplate = () => {
@@ -53,14 +55,14 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       case 'week': return "7 days";
       case 'month': return "30 days";
       case 'year': return "365 days";
-      default: return "48 hours"; // Default value
+      default: return "24 hours"; // Default value
     }
   };
   
   // Generate template prompt based on clusters and sources
   const generateTemplate = () => {
     // Group sources by tier
-    const sourcesByTier = sources.reduce((acc, source) => {
+    const sourcesByTier = sources.reduce((acc: any, source: any) => {
       const tier = source.priority_tier || 4;
       if (!acc[tier]) acc[tier] = [];
       acc[tier].push(source);
@@ -72,18 +74,10 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       ? clusters.filter(cluster => selectedThemes.includes(cluster.primary_theme))
       : clusters;
     
-    // Group clusters by primary theme
-    const clustersByTheme = filteredClusters.reduce((acc, cluster) => {
-      const theme = cluster.primary_theme;
-      if (!acc[theme]) acc[theme] = [];
-      acc[theme].push(cluster);
-      return acc;
-    }, {});
-    
     // Get time range from search settings or use default
     const timeRange = searchSettings?.recency_filter
       ? getHoursFromRecency(searchSettings.recency_filter)
-      : "48 hours";
+      : "24 hours";
     
     // Build prompt template
     let template = `You are a senior editorial assistant for MortgagePoint, a leading news outlet covering mortgage lending, servicing, housing policy, regulation, and macroeconomic trends. Your task is to surface the most relevant and timely articles for our daily email briefing. Prioritize regulatory signals, data-driven insights, and impactful policy or market movements.
@@ -96,16 +90,21 @@ Only include articles published within the last ${timeRange}.
 `;
 
     // Add source tiers
-    Object.keys(sourcesByTier).sort().forEach((tier, index) => {
-      const tierName = index === 0 ? "Tier 1: Government & GSEs" :
-                      index === 1 ? "Tier 2: Economic Organizations" :
-                      index === 2 ? "Tier 3: National Media" :
-                      "Tier 4: Trade Media";
+    const tierNames = {
+      1: "Tier 1: Government & GSEs",
+      2: "Tier 2: Economic Organizations",
+      3: "Tier 3: National Media",
+      4: "Tier 4: Trade Media"
+    };
+    
+    Object.keys(sourcesByTier).sort().forEach((tier) => {
+      const tierIndex = parseInt(tier);
+      const tierName = tierNames[tierIndex as keyof typeof tierNames] || `Tier ${tier}`;
                       
       const tierSources = sourcesByTier[tier];
       if (tierSources && tierSources.length > 0) {
         template += `\n${tierName}\n`;
-        const siteQuery = tierSources.map(s => {
+        const siteQuery = tierSources.map((s: any) => {
           try {
             return `site:${new URL(s.source_url).hostname.replace('www.', '')}`;
           } catch (e) {
@@ -118,15 +117,43 @@ Only include articles published within the last ${timeRange}.
 
     template += `\n3. Topical Relevance (Must Match at Least One Cluster Below):\n\nCluster Keywords\n`;
     
-    // Add clusters
-    Object.keys(clustersByTheme).forEach(theme => {
-      const themeClusters = clustersByTheme[theme];
+    // Group clusters by primary theme for better organization
+    const clustersByTheme: Record<string, any[]> = {};
+    
+    filteredClusters.forEach(cluster => {
+      const theme = cluster.primary_theme || "General";
+      if (!clustersByTheme[theme]) {
+        clustersByTheme[theme] = [];
+      }
+      clustersByTheme[theme].push(cluster);
+    });
+    
+    // If we have no clusters from the selected themes, use all clusters
+    const themeKeys = Object.keys(clustersByTheme);
+    const clustersToUse = themeKeys.length > 0 ? clustersByTheme : 
+      clusters.reduce((acc: Record<string, any[]>, cluster) => {
+        const theme = cluster.primary_theme || "General";
+        if (!acc[theme]) acc[theme] = [];
+        acc[theme].push(cluster);
+        return acc;
+      }, {});
+    
+    // Add clusters with keywords
+    Object.keys(clustersToUse).forEach(theme => {
+      const themeClusters = clustersToUse[theme];
       if (themeClusters && themeClusters.length > 0) {
-        // Get keywords from all clusters with this theme
-        const allKeywords = themeClusters.flatMap(c => c.keywords || []);
-        const uniqueKeywords = Array.from(new Set(allKeywords));
-        if (uniqueKeywords.length > 0) {
-          template += `${theme} ${uniqueKeywords.slice(0, 5).join(', ')}\n`;
+        // Collect all keywords from clusters with this theme
+        let allKeywords: string[] = [];
+        themeClusters.forEach(cluster => {
+          if (cluster.keywords && Array.isArray(cluster.keywords) && cluster.keywords.length > 0) {
+            allKeywords = [...allKeywords, ...cluster.keywords];
+          }
+        });
+        
+        // Add theme and its keywords if any exist
+        if (allKeywords.length > 0) {
+          const uniqueKeywords = Array.from(new Set(allKeywords));
+          template += `${theme} ${uniqueKeywords.join(', ')}\n`;
         }
       }
     });
@@ -177,9 +204,10 @@ Use natural, non-jargony language in summaries suitable for C-suite and mid-leve
           
           <Alert className="bg-blue-50">
             <Info className="h-4 w-4" />
-            <AlertTitle>Auto-generated structured prompt</AlertTitle>
+            <AlertTitle>Structured News Search Prompt</AlertTitle>
             <AlertDescription>
-              This template incorporates your selected sources, clusters, and settings. You can edit it directly below.
+              This template incorporates your selected sources, clusters, and settings. 
+              {!readOnly && " You can edit it directly below or regenerate it from your selections."}
             </AlertDescription>
           </Alert>
           
@@ -189,6 +217,7 @@ Use natural, non-jargony language in summaries suitable for C-suite and mid-leve
               value={value}
               onChange={(e) => onChange(e.target.value)}
               className="min-h-[400px] font-mono text-sm border-0"
+              readOnly={readOnly}
             />
           </ScrollArea>
         </div>
