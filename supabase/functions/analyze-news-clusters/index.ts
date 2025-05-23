@@ -94,13 +94,13 @@ serve(async (req) => {
       const batchPromises = batch.map(async (item) => {
         try {
           // Create a prompt for the Perplexity API
-          const content = `${item.headline}\n\n${item.summary || ''}`;
+          const newsContent = `${item.headline}\n\n${item.summary || ''}`;
           
           const prompt = `Analyze this mortgage industry news content and match it to the most relevant keyword clusters. 
           Only assign clusters that are truly relevant.
 
           NEWS CONTENT:
-          ${content}
+          ${newsContent}
           
           AVAILABLE CLUSTERS:
           ${clusterFormatted}
@@ -151,12 +151,17 @@ serve(async (req) => {
               model: "llama-3.1-sonar-small-128k-online",
               messages: [
                 {
+                  role: "system",
+                  content: "You are a specialized AI that analyzes mortgage industry news and categorizes content into predefined clusters. Respond only with valid JSON. No markdown formatting, explanations, or additional text."
+                },
+                {
                   role: "user",
                   content: prompt
                 }
               ],
               temperature: 0.1,
-              max_tokens: 500
+              max_tokens: 500,
+              response_format: { type: "json_object" }
             }),
           });
           
@@ -165,22 +170,41 @@ serve(async (req) => {
           }
           
           const result = await response.json();
-          const content = result.choices?.[0]?.message?.content;
+          const responseContent = result.choices?.[0]?.message?.content;
           
-          // Extract JSON from the response
-          const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*?\}/);
+          if (!responseContent) {
+            throw new Error("Empty response from Perplexity API");
+          }
+          
+          // Parse JSON from the response
           let clusterData;
-          
-          if (jsonMatch) {
-            const jsonString = jsonMatch[1] || jsonMatch[0];
-            clusterData = JSON.parse(jsonString);
-          } else {
-            console.warn(`Couldn't parse JSON from response for item ${item.id}`);
-            clusterData = {
-              matched_clusters: [],
-              confidence_score: 0,
-              rationale: "Failed to analyze"
-            };
+          try {
+            // First attempt: direct JSON parsing
+            clusterData = JSON.parse(responseContent);
+          } catch (parseError) {
+            console.warn(`Initial JSON parsing failed for item ${item.id}, trying to extract JSON from text`);
+            
+            // Second attempt: try to find JSON in the text
+            const jsonMatch = responseContent.match(/\{[\s\S]*?\}/);
+            if (jsonMatch) {
+              try {
+                clusterData = JSON.parse(jsonMatch[0]);
+              } catch (extractError) {
+                console.error(`Failed to extract JSON from response for item ${item.id}`);
+                clusterData = {
+                  matched_clusters: [],
+                  confidence_score: 0,
+                  rationale: "Failed to analyze - parsing error"
+                };
+              }
+            } else {
+              console.error(`Couldn't find JSON pattern in response for item ${item.id}`);
+              clusterData = {
+                matched_clusters: [],
+                confidence_score: 0,
+                rationale: "Failed to analyze - no JSON found"
+              };
+            }
           }
           
           // Update the news item with the analysis results
