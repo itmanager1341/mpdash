@@ -19,10 +19,10 @@ const Admin = () => {
       </div>
 
       <Tabs defaultValue="news-import" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="news-import">News Import</TabsTrigger>
           <TabsTrigger value="scheduled-tasks">Scheduled Tasks</TabsTrigger>
-          <TabsTrigger value="cron-status">Cron Status</TabsTrigger>
+          <TabsTrigger value="jobs-monitor">Jobs Monitor</TabsTrigger>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
         </TabsList>
@@ -33,10 +33,9 @@ const Admin = () => {
 
         <TabsContent value="scheduled-tasks" className="space-y-6">
           <ScheduledImportSettings />
-          <JobExecutionHistory />
         </TabsContent>
 
-        <TabsContent value="cron-status" className="space-y-6">
+        <TabsContent value="jobs-monitor" className="space-y-6">
           <CronStatusChecker />
           <JobExecutionHistory />
         </TabsContent>
