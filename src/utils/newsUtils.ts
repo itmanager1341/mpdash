@@ -46,9 +46,8 @@ export const checkForDuplicateNews = async (newsItem: PerplexityNewsItem): Promi
     // Get headline from either property
     const headline = newsItem.headline || newsItem.title || "";
     
-    // Check for very similar headline (might be same news from different source)
-    // This is a simple implementation - in production you might use more sophisticated text matching
-    if (headline && headline.length > 15) {
+    // Skip headline similarity check for very short headlines or system messages
+    if (headline && headline.length > 15 && !headline.includes("News Import Information")) {
       const { data: headlineMatches, error: headlineError } = await supabase
         .from('news')
         .select('id, headline')
@@ -94,6 +93,12 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
     if (!headline || !newsItem.url) {
       return { success: false, error: "Missing required headline or URL" };
     }
+
+    // For system messages or temp data, don't insert
+    if (headline.includes("News Import Information") || newsItem.url === "#") {
+      console.log("Skipping system message or placeholder data:", headline);
+      return { success: false, error: "System message or placeholder data" };
+    }
     
     const cleanedItem = {
       headline: headline.trim(),
@@ -108,6 +113,9 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
       destinations: [] // Empty destinations array
     };
     
+    // Log what we're trying to insert
+    console.log("Attempting to insert news item:", JSON.stringify(cleanedItem));
+    
     // Insert the news item into the database
     const { error } = await supabase
       .from('news')
@@ -118,6 +126,7 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
       return { success: false, error: error.message };
     }
     
+    console.log("Successfully inserted news item:", cleanedItem.headline);
     return { success: true };
   } catch (err) {
     console.error("Error inserting news item:", err);
@@ -149,6 +158,8 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
       };
     }
 
+    console.log(`Processing ${newsItems.length} news items with options:`, options);
+
     // Process each item individually to apply validation and filtering
     for (const item of newsItems) {
       // Basic data validation
@@ -161,6 +172,13 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
       // Skip items without URL or headline/title
       if (!item.url || (!item.headline && !item.title)) {
         console.warn("Skipping invalid item missing URL or headline:", item);
+        results.invalidData++;
+        continue;
+      }
+
+      // Skip system messages or placeholders
+      if ((item.headline?.includes("News Import Information") || item.title?.includes("News Import Information")) && item.url === "#") {
+        console.log("Skipping system message:", item.headline || item.title);
         results.invalidData++;
         continue;
       }
@@ -196,7 +214,7 @@ export const batchInsertPerplexityNews = async (newsItems: PerplexityNewsItem[],
     }
     
     return { 
-      success: results.errors === 0 && results.invalidData === 0, 
+      success: results.inserted > 0, 
       results 
     };
   } catch (err) {

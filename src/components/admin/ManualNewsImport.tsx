@@ -241,26 +241,28 @@ export default function ManualNewsImport() {
             
             <TabsContent value="articles" className="flex-1">
               <ScrollArea className="h-full rounded-md border p-4">
-                {debugData?.details?.articles && (
+                {debugData?.details?.articles ? (
                   <div className="space-y-4">
-                    {debugData.articles.map((article: any, index: number) => (
+                    {debugData.details.articles.map((article: any, index: number) => (
                       <div key={index} className="border p-3 rounded-md">
                         <h4 className="font-medium">{article.headline || article.title}</h4>
-                        <div className="text-xs text-muted-foreground mt-1">{article.url}</div>
-                        <p className="text-xs mt-2">{article.summary || article.description}</p>
-                        {article.matched_clusters?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {article.matched_clusters.map((cluster: string, i: number) => (
-                              <Badge key={i} variant="outline" className="text-xs">
-                                {cluster}
-                              </Badge>
-                            ))}
+                        <div className="text-xs text-muted-foreground mt-1">
+                          <a href={article.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                            {article.url}
+                          </a>
+                        </div>
+                        <p className="text-sm mt-2">{article.summary || article.description}</p>
+                        <div className="flex justify-between items-center mt-2">
+                          <div className="text-xs text-muted-foreground">
+                            Source: {article.source}
                           </div>
-                        )}
+                        </div>
                       </div>
                     ))}
                   </div>
-                ) || <p className="text-muted-foreground">No article data available</p>}
+                ) : (
+                  <p className="text-muted-foreground">No article data available</p>
+                )}
               </ScrollArea>
             </TabsContent>
             
@@ -271,17 +273,21 @@ export default function ManualNewsImport() {
                     <div>
                       <h4 className="font-medium">Raw Response Snippet</h4>
                       <pre className="text-xs whitespace-pre-wrap p-2 bg-muted rounded-md mt-1">
-                        {debugData.details.debug.rawResponseSnippet}
+                        {debugData.details.debug.rawResponseSnippet || 'No raw response available'}
                       </pre>
                     </div>
-                    <div>
-                      <h4 className="font-medium">Response Length</h4>
-                      <p className="text-sm">{debugData.details.debug.rawResponseLength} characters</p>
-                    </div>
-                    <div>
-                      <h4 className="font-medium">Parsing Method</h4>
-                      <p className="text-sm">{debugData.details.debug.parsingMethod}</p>
-                    </div>
+                    {debugData.details.debug.rawResponseLength && (
+                      <div>
+                        <h4 className="font-medium">Response Length</h4>
+                        <p className="text-sm">{debugData.details.debug.rawResponseLength} characters</p>
+                      </div>
+                    )}
+                    {debugData.details.debug.parsingMethod && (
+                      <div>
+                        <h4 className="font-medium">Parsing Method</h4>
+                        <p className="text-sm">{debugData.details.debug.parsingMethod}</p>
+                      </div>
+                    )}
                   </div>
                 </ScrollArea>
               </TabsContent>

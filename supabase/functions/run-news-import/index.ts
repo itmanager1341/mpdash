@@ -142,7 +142,21 @@ serve(async (req) => {
         console.warn("Skipping invalid article missing headline or URL:", article);
         return false;
       }
-      return true;
+      
+      // Skip system messages or placeholders
+      if (article.headline.includes("News Import Information") && article.url === "#") {
+        console.log("Skipping system message:", article.headline);
+        return false;
+      }
+      
+      // Skip if URL doesn't look like a valid URL
+      try {
+        new URL(article.url);
+        return true;
+      } catch (e) {
+        console.warn("Skipping article with invalid URL format:", article.url);
+        return false;
+      }
     });
     
     if (validArticles.length === 0) {
@@ -162,6 +176,8 @@ serve(async (req) => {
     let skippedCount = 0;
     let errorCount = 0;
     
+    console.log(`Attempting to insert ${validArticles.length} valid articles`);
+    
     for (const article of validArticles) {
       try {
         // Check if article URL already exists
@@ -172,17 +188,22 @@ serve(async (req) => {
           .maybeSingle();
         
         if (!existing) {
+          // For debugging: log the article we're about to insert
+          console.log(`Inserting article: "${article.headline}" from ${article.source}`);
+          
           const { error: insertError } = await supabase
             .from('news')
             .insert([article]);
             
           if (!insertError) {
             insertedCount++;
+            console.log(`Successfully inserted article: ${article.headline}`);
           } else {
             console.error(`Failed to insert article: ${insertError.message}`, article);
             errorCount++;
           }
         } else {
+          console.log(`Skipping duplicate article with URL: ${article.url}`);
           skippedCount++;
         }
       } catch (insertErr) {
@@ -192,7 +213,7 @@ serve(async (req) => {
     }
     
     if (insertedCount === 0 && validArticles.length > 0) {
-      console.warn("No articles were inserted despite having valid articles to insert. Check for schema issues or duplicates.");
+      console.error("No articles were inserted despite having valid articles to insert. Check for schema issues or duplicates.");
     }
     
     // Log the job execution
@@ -212,7 +233,13 @@ serve(async (req) => {
             articles_inserted: insertedCount,
             articles_skipped: skippedCount,
             articles_error: errorCount,
-            prompt_used: promptToUse || 'default'
+            prompt_used: promptToUse || 'default',
+            validation_results: validArticles.map(a => ({
+              headline: a.headline,
+              url: a.url,
+              source: a.source,
+              valid: true
+            }))
           }
         }]);
     } catch (logError) {
@@ -254,7 +281,12 @@ serve(async (req) => {
           articles_error: errorCount,
           execution_time: new Date().toISOString(),
           prompt_used: promptToUse || 'default',
-          debug: newsData.debug || {}
+          debug: newsData.debug || {},
+          articles: validArticles.map(a => ({
+            headline: a.headline,
+            url: a.url,
+            source: a.source
+          }))
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
