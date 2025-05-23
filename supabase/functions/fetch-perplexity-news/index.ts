@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.1';
@@ -89,6 +88,7 @@ serve(async (req) => {
     const promptId = requestData.promptId;
     const minScore = requestData.minScore || 0.6;
     const limit = requestData.limit || 10;
+    const modelOverride = requestData.modelOverride;
     
     // Validate keywords - ensure we have at least one
     if (!Array.isArray(keywords) || keywords.length === 0) {
@@ -103,7 +103,7 @@ serve(async (req) => {
     
     let prompt: string;
     // Always use a supported model - llama-3.1 models are currently supported by Perplexity
-    let model = "llama-3.1-sonar-small-128k-online";
+    let model = modelOverride || "llama-3.1-sonar-small-128k-online";
     let searchSettings: any = {
       search_domain_filter: "auto",
       search_recency_filter: "day",
@@ -154,9 +154,11 @@ serve(async (req) => {
         // Check if the model specified is a Perplexity model and convert to the right format
         if (promptData.model) {
           // Handle different model formats
-          if (promptData.model === "perplexity/sonar-medium-online") {
+          if (promptData.model === "perplexity/sonar-medium-online" || 
+              promptData.model === "sonar-medium-online") {
             model = "llama-3.1-sonar-small-128k-online"; // Use a supported model
-          } else if (promptData.model === "perplexity/sonar-small-online") {
+          } else if (promptData.model === "perplexity/sonar-small-online" || 
+                    promptData.model === "sonar-small-online") {
             model = "llama-3.1-sonar-small-128k-online";
           } else if (promptData.model.startsWith("llama-3.1")) {
             model = promptData.model; // Already using the correct format

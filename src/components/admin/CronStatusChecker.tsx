@@ -58,7 +58,11 @@ const CronStatusChecker = () => {
       toast.info("Triggering manual news import...");
       
       const { data, error } = await supabase.functions.invoke('run-news-import', {
-        body: { manual: true }
+        body: { 
+          manual: true,
+          // Use the new model naming convention for Perplexity API
+          modelOverride: "llama-3.1-sonar-small-128k-online"
+        }
       });
       
       if (error) throw error;
@@ -164,6 +168,18 @@ const CronStatusChecker = () => {
                       <div>Schedule: <code>{status.job_settings.schedule}</code></div>
                       <div>Enabled: {status.job_settings.is_enabled ? "Yes" : "No"}</div>
                       <div>Last Updated: {new Date(status.job_settings.updated_at).toLocaleString()}</div>
+                      
+                      {status.job_settings.parameters && (
+                        <div className="mt-2">
+                          <div className="font-medium">API Configuration:</div>
+                          <div className="text-xs bg-slate-100 p-2 rounded mt-1">
+                            <div>Model: {status.job_settings.parameters.model || "llama-3.1-sonar-small-128k-online"}</div>
+                            <div>Keywords: {Array.isArray(status.job_settings.parameters.keywords) 
+                              ? status.job_settings.parameters.keywords.join(", ") 
+                              : "Default keywords"}</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

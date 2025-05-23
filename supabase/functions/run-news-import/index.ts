@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1";
@@ -27,9 +26,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Parse request body
-    const { manual = false, promptId = null } = await req.json().catch(() => ({}));
+    const { manual = false, promptId = null, modelOverride = null } = await req.json().catch(() => ({}));
     
-    console.log(`Running news import. Manual: ${manual}, PromptId: ${promptId || 'default'}`);
+    console.log(`Running news import. Manual: ${manual}, PromptId: ${promptId || 'default'}, ModelOverride: ${modelOverride || 'none'}`);
     
     // If promptId is provided, use that specific prompt
     let keywords = [];
@@ -91,7 +90,9 @@ serve(async (req) => {
           keywords,
           promptId: promptToUse,
           minScore,
-          limit
+          limit,
+          // Pass model override if provided
+          ...(modelOverride ? { modelOverride } : {})
         }
       }
     );
@@ -239,7 +240,8 @@ serve(async (req) => {
               url: a.url,
               source: a.source,
               valid: true
-            }))
+            })),
+            model_used: modelOverride || 'default from configuration'
           }
         }]);
     } catch (logError) {
@@ -286,7 +288,8 @@ serve(async (req) => {
             headline: a.headline,
             url: a.url,
             source: a.source
-          }))
+          })),
+          model_used: modelOverride || 'default from configuration'
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
