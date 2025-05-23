@@ -37,7 +37,6 @@ site_url = "http://localhost:3000"
 
 [auth.email]
 enabled = true
-# No double quotes for env variables
 template_dir = env(SUPABASE_AUTH_EMAIL_TEMPLATE_DIR)
 default_email_from = ""
 default_email_name = ""
@@ -50,7 +49,6 @@ enabled = false
 serve_port = 54328
 functions_port = 54327
 
-# Configure function information
 [functions.magazine-research]
 verify_jwt = true
 
@@ -67,4 +65,16 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.analyze-news-clusters]
+verify_jwt = true
+
+[functions.run-news-import]
+verify_jwt = true
+
+[functions.fetch-perplexity-news]
+verify_jwt = true
+
+[functions.update-scheduled-job]
+verify_jwt = true
+
+[functions.check-cron-status]
 verify_jwt = true
