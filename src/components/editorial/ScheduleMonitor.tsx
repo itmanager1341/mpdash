@@ -6,9 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { 
   Clock, 
@@ -23,7 +20,6 @@ import {
 } from "lucide-react";
 
 export default function ScheduleMonitor() {
-  const [testMode, setTestMode] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch job settings
@@ -41,15 +37,14 @@ export default function ScheduleMonitor() {
     }
   });
 
-  // Fetch recent job logs
-  const { data: recentLogs } = useQuery({
-    queryKey: ['job-logs'],
+  // Fetch recent news import activity (since job_logs table doesn't exist)
+  const { data: recentActivity } = useQuery({
+    queryKey: ['recent-import-activity'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('job_logs')
-        .select('*')
-        .eq('job_name', 'news_import')
-        .order('execution_time', { ascending: false })
+        .from('news')
+        .select('timestamp, source, status')
+        .order('timestamp', { ascending: false })
         .limit(10);
         
       if (error) throw error;
@@ -103,7 +98,7 @@ export default function ScheduleMonitor() {
       } else {
         toast.error(`Import failed: ${data.message}`);
       }
-      queryClient.invalidateQueries({ queryKey: ['job-logs'] });
+      queryClient.invalidateQueries({ queryKey: ['recent-import-activity'] });
       refetchCronStatus();
     },
     onError: (error) => {
@@ -139,6 +134,23 @@ export default function ScheduleMonitor() {
     return "Paused";
   };
 
+  const getLastRunInfo = () => {
+    if (recentActivity && recentActivity.length > 0) {
+      const lastImport = recentActivity[0];
+      const timeDiff = new Date().getTime() - new Date(lastImport.timestamp).getTime();
+      const hoursAgo = Math.floor(timeDiff / (1000 * 60 * 60));
+      return {
+        time: hoursAgo < 24 ? `${hoursAgo}h ago` : new Date(lastImport.timestamp).toLocaleDateString(),
+        count: recentActivity.filter(item => 
+          new Date(item.timestamp).toDateString() === new Date(lastImport.timestamp).toDateString()
+        ).length
+      };
+    }
+    return { time: "Never", count: 0 };
+  };
+
+  const lastRunInfo = getLastRunInfo();
+
   return (
     <div className="space-y-6">
       {/* Job Status Overview */}
@@ -162,14 +174,9 @@ export default function ScheduleMonitor() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {cronStatus?.recommendations?.last_run 
-                ? new Date(cronStatus.recommendations.last_run).toLocaleDateString()
-                : "Never"
-              }
-            </div>
+            <div className="text-2xl font-bold">{lastRunInfo.time}</div>
             <p className="text-xs text-muted-foreground">
-              {recentLogs?.[0]?.message || "No recent activity"}
+              {lastRunInfo.count} articles imported
             </p>
           </CardContent>
         </Card>
@@ -180,9 +187,7 @@ export default function ScheduleMonitor() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {recentLogs?.[0]?.details?.articles_inserted || 0}
-            </div>
+            <div className="text-2xl font-bold">{lastRunInfo.count}</div>
             <p className="text-xs text-muted-foreground">
               Last import
             </p>
@@ -204,7 +209,7 @@ export default function ScheduleMonitor() {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <Label>Automated Import</Label>
+              <span className="font-medium">Automated Import</span>
               <p className="text-sm text-muted-foreground">
                 Run news import automatically on schedule
               </p>
@@ -257,32 +262,30 @@ export default function ScheduleMonitor() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {recentLogs && recentLogs.length > 0 ? recentLogs.map((log, index) => (
+            {recentActivity && recentActivity.length > 0 ? recentActivity.map((item, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    {log.status === 'success' ? (
+                    {item.status === 'approved' ? (
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    ) : log.status === 'error' ? (
+                    ) : item.status === 'dismissed' ? (
                       <AlertCircle className="h-4 w-4 text-red-500" />
                     ) : (
                       <Clock className="h-4 w-4 text-amber-500" />
                     )}
-                    <span className="font-medium">{log.message}</span>
+                    <span className="font-medium">Article from {item.source}</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(log.execution_time).toLocaleString()}
+                    {new Date(item.timestamp).toLocaleString()}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Badge variant={log.status === 'success' ? 'default' : log.status === 'error' ? 'destructive' : 'secondary'}>
-                    {log.status}
+                  <Badge variant={
+                    item.status === 'approved' ? 'default' : 
+                    item.status === 'dismissed' ? 'destructive' : 'secondary'
+                  }>
+                    {item.status || 'pending'}
                   </Badge>
-                  {log.details?.articles_inserted && (
-                    <Badge variant="outline">
-                      {log.details.articles_inserted} articles
-                    </Badge>
-                  )}
                 </div>
               </div>
             )) : (

@@ -45,8 +45,7 @@ export default function ContentIntelligence() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sources')
-        .select('*')
-        .eq('is_active', true);
+        .select('*');
         
       if (error) throw error;
       return data || [];
@@ -60,13 +59,14 @@ export default function ContentIntelligence() {
     dismissedArticles: recentNews?.filter(n => n.status === 'dismissed').length || 0,
     pendingArticles: recentNews?.filter(n => n.status === 'pending').length || 0,
     averageScore: recentNews?.length ? 
-      (recentNews.reduce((sum, n) => sum + (n.perplexity_score || 0), 0) / recentNews.length).toFixed(2) : 0,
+      (recentNews.reduce((sum, n) => sum + (n.perplexity_score || 0), 0) / recentNews.length) : 0,
     topSources: sources?.slice(0, 5) || [],
-    competitorSources: sources?.filter(s => s.relationship_type === 'competitor').length || 0
+    // Use source_type to identify competitors since relationship_type doesn't exist
+    competitorSources: sources?.filter(s => s.source_type === 'competitor').length || 0
   };
 
   const approvalRate = contentMetrics.totalArticles > 0 ? 
-    (contentMetrics.approvedArticles / contentMetrics.totalArticles * 100).toFixed(1) : 0;
+    (contentMetrics.approvedArticles / contentMetrics.totalArticles * 100) : 0;
 
   // Analyze content themes from recent articles
   const getContentThemes = () => {
@@ -112,8 +112,8 @@ export default function ContentIntelligence() {
             <CheckCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{approvalRate}%</div>
-            <Progress value={parseFloat(approvalRate)} className="mt-2" />
+            <div className="text-2xl font-bold">{approvalRate.toFixed(1)}%</div>
+            <Progress value={approvalRate} className="mt-2" />
           </CardContent>
         </Card>
 
@@ -123,7 +123,7 @@ export default function ContentIntelligence() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{contentMetrics.averageScore}</div>
+            <div className="text-2xl font-bold">{contentMetrics.averageScore.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">
               Out of 1.0
             </p>
@@ -164,7 +164,7 @@ export default function ContentIntelligence() {
                       <div 
                         className="bg-primary h-2 rounded-full" 
                         style={{ 
-                          width: `${(count / contentThemes[0]?.count || 1) * 100}%` 
+                          width: `${(count / (contentThemes[0]?.count || 1)) * 100}%` 
                         }}
                       />
                     </div>
@@ -196,7 +196,7 @@ export default function ContentIntelligence() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{contentMetrics.approvedArticles}</span>
-                  <Badge variant="default">{approvalRate}%</Badge>
+                  <Badge variant="default">{approvalRate.toFixed(1)}%</Badge>
                 </div>
               </div>
 
@@ -209,7 +209,7 @@ export default function ContentIntelligence() {
                   <span className="font-medium">{contentMetrics.pendingArticles}</span>
                   <Badge variant="secondary">
                     {contentMetrics.totalArticles > 0 ? 
-                      (contentMetrics.pendingArticles / contentMetrics.totalArticles * 100).toFixed(1) : 0}%
+                      ((contentMetrics.pendingArticles / contentMetrics.totalArticles) * 100).toFixed(1) : '0'}%
                   </Badge>
                 </div>
               </div>
@@ -223,7 +223,7 @@ export default function ContentIntelligence() {
                   <span className="font-medium">{contentMetrics.dismissedArticles}</span>
                   <Badge variant="destructive">
                     {contentMetrics.totalArticles > 0 ? 
-                      (contentMetrics.dismissedArticles / contentMetrics.totalArticles * 100).toFixed(1) : 0}%
+                      ((contentMetrics.dismissedArticles / contentMetrics.totalArticles) * 100).toFixed(1) : '0'}%
                   </Badge>
                 </div>
               </div>
@@ -242,13 +242,13 @@ export default function ContentIntelligence() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {parseFloat(approvalRate) < 50 && (
+            {approvalRate < 50 && (
               <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg">
                 <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="font-medium text-amber-900">Low Approval Rate</h4>
                   <p className="text-sm text-amber-700">
-                    Your approval rate is {approvalRate}%. Consider refining your prompts to focus on more specific business-relevant criteria.
+                    Your approval rate is {approvalRate.toFixed(1)}%. Consider refining your prompts to focus on more specific business-relevant criteria.
                   </p>
                 </div>
               </div>
@@ -266,25 +266,25 @@ export default function ContentIntelligence() {
               </div>
             )}
 
-            {parseFloat(contentMetrics.averageScore) < 0.6 && (
+            {contentMetrics.averageScore < 0.6 && (
               <div className="flex items-start gap-3 p-3 bg-red-50 rounded-lg">
                 <TrendingDown className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="font-medium text-red-900">Low Relevance Scores</h4>
                   <p className="text-sm text-red-700">
-                    Average relevance score is {contentMetrics.averageScore}. Consider updating your keyword clusters and source priorities.
+                    Average relevance score is {contentMetrics.averageScore.toFixed(2)}. Consider updating your keyword clusters and source priorities.
                   </p>
                 </div>
               </div>
             )}
 
-            {parseFloat(approvalRate) >= 70 && parseFloat(contentMetrics.averageScore) >= 0.7 && (
+            {approvalRate >= 70 && contentMetrics.averageScore >= 0.7 && (
               <div className="flex items-start gap-3 p-3 bg-green-50 rounded-lg">
                 <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="font-medium text-green-900">Excellent Performance</h4>
                   <p className="text-sm text-green-700">
-                    Your content quality is excellent with {approvalRate}% approval rate and {contentMetrics.averageScore} average relevance.
+                    Your content quality is excellent with {approvalRate.toFixed(1)}% approval rate and {contentMetrics.averageScore.toFixed(2)} average relevance.
                   </p>
                 </div>
               </div>
