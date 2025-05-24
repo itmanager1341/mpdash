@@ -137,7 +137,7 @@ export default function SourceManagement() {
       source_name: source.source_name,
       source_url: source.source_url,
       priority_tier: source.priority_tier,
-      source_type: source.source_type,
+      source_type: source.source_type || "source", // Ensure we map the source_type properly
       cluster_alignment: source.cluster_alignment
     });
     setShowAddForm(true);
