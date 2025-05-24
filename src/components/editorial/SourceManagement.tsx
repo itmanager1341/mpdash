@@ -140,7 +140,7 @@ export default function SourceManagement() {
   ) || [];
 
   const handleEdit = (source: Source) => {
-    console.log('Editing source:', source);
+    console.log('Editing source with source_type:', source.source_type);
     setEditingSource(source);
     setNewSource({
       source_name: source.source_name,
@@ -158,19 +158,29 @@ export default function SourceManagement() {
       return;
     }
 
-    console.log('Saving source:', newSource);
+    console.log('Saving source with source_type:', newSource.source_type);
     saveSourceMutation.mutate(newSource);
   };
 
   const getRelationshipBadge = (type: string) => {
-    console.log('Getting relationship badge for type:', type);
-    switch (type) {
+    console.log('Getting badge for source_type:', type, 'Type of value:', typeof type);
+    
+    // Handle null, undefined, or empty string
+    if (!type) {
+      return <Badge variant="default">Source</Badge>;
+    }
+    
+    // Convert to lowercase for comparison to handle case sensitivity
+    const normalizedType = type.toLowerCase().trim();
+    
+    switch (normalizedType) {
       case 'competitor':
         return <Badge variant="destructive">Competitor</Badge>;
       case 'partner':
         return <Badge variant="secondary">Partner</Badge>;
       case 'government':
         return <Badge variant="outline" className="border-blue-500 text-blue-700">Government</Badge>;
+      case 'source':
       default:
         return <Badge variant="default">Source</Badge>;
     }
@@ -262,7 +272,10 @@ export default function SourceManagement() {
                 <Label htmlFor="source-type">Source Type</Label>
                 <Select 
                   value={newSource.source_type} 
-                  onValueChange={(value) => setNewSource({ ...newSource, source_type: value })}
+                  onValueChange={(value) => {
+                    console.log('Form source_type changed to:', value);
+                    setNewSource({ ...newSource, source_type: value });
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -314,7 +327,7 @@ export default function SourceManagement() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {tierSources.map((source) => {
-                  console.log('Rendering source:', source);
+                  console.log('Rendering source card for:', source.source_name, 'with source_type:', source.source_type);
                   return (
                     <div key={source.id} className="border rounded-lg p-4 space-y-3">
                       <div className="flex items-start justify-between">
