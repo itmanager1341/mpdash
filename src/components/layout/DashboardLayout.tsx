@@ -26,7 +26,8 @@ import {
   Sparkles, 
   LogOut,
   User,
-  Search
+  Search,
+  Command
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -89,6 +90,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Editorial Dashboard">
+                    <a href="/editorial-dashboard">
+                      <Command />
+                      <span>Editorial Dashboard</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="MPDaily Planner">
                     <a href="/mpdaily-planner">
                       <Mail />
@@ -120,6 +129,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroup>
+            
+            <SidebarGroup>
+              <SidebarGroupLabel>Legacy Management</SidebarGroupLabel>
+              <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="LLM Management">
                     <a href="/llm-management">
@@ -159,7 +174,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </SidebarContent>
           <SidebarFooter className="p-4">
             <div className="text-xs text-sidebar-foreground/50">
-              MP Editorial Dashboard v1.0
+              MP Editorial Dashboard v2.0
             </div>
           </SidebarFooter>
         </Sidebar>

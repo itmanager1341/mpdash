@@ -13,6 +13,7 @@ import AdminSettings from "@/pages/AdminSettings";
 import Documentation from "@/pages/Documentation";
 import LlmManagement from "@/pages/LlmManagement";
 import KeywordManagement from "@/pages/KeywordManagement";
+import EditorialDashboard from "@/pages/EditorialDashboard";
 import NotFound from "@/pages/NotFound";
 import Auth from "@/pages/Auth";
 import Profile from "@/pages/Profile";
@@ -73,6 +74,7 @@ function App() {
             <Route path="/documentation" element={<Documentation />} />
             <Route path="/llm-management" element={<LlmManagement />} />
             <Route path="/keyword-management" element={<KeywordManagement />} />
+            <Route path="/editorial-dashboard" element={<EditorialDashboard />} />
           </Route>
           
           <Route element={<ProtectedRoute requiredRole="admin" />}>
