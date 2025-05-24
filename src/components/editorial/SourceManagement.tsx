@@ -50,12 +50,18 @@ export default function SourceManagement() {
   const { data: sources, isLoading } = useQuery({
     queryKey: ['sources'],
     queryFn: async () => {
+      console.log('Fetching sources...');
       const { data, error } = await supabase
         .from('sources')
         .select('id, source_name, source_url, priority_tier, source_type, cluster_alignment, created_at')
         .order('priority_tier');
         
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching sources:', error);
+        throw error;
+      }
+      
+      console.log('Fetched sources:', data);
       return data || [];
     }
   });
@@ -77,6 +83,7 @@ export default function SourceManagement() {
   // Add/Update source mutation
   const saveSourceMutation = useMutation({
     mutationFn: async (sourceData: any) => {
+      console.log('Saving source data:', sourceData);
       if (editingSource) {
         const { error } = await supabase
           .from('sources')
@@ -104,6 +111,7 @@ export default function SourceManagement() {
       });
     },
     onError: (error) => {
+      console.error('Error saving source:', error);
       toast.error('Failed to save source: ' + error.message);
     }
   });
@@ -132,12 +140,13 @@ export default function SourceManagement() {
   ) || [];
 
   const handleEdit = (source: Source) => {
+    console.log('Editing source:', source);
     setEditingSource(source);
     setNewSource({
       source_name: source.source_name,
       source_url: source.source_url,
       priority_tier: source.priority_tier,
-      source_type: source.source_type || "source", // Ensure we map the source_type properly
+      source_type: source.source_type || "source",
       cluster_alignment: source.cluster_alignment
     });
     setShowAddForm(true);
@@ -149,10 +158,12 @@ export default function SourceManagement() {
       return;
     }
 
+    console.log('Saving source:', newSource);
     saveSourceMutation.mutate(newSource);
   };
 
   const getRelationshipBadge = (type: string) => {
+    console.log('Getting relationship badge for type:', type);
     switch (type) {
       case 'competitor':
         return <Badge variant="destructive">Competitor</Badge>;
@@ -302,67 +313,70 @@ export default function SourceManagement() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {tierSources.map((source) => (
-                  <div key={source.id} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <h4 className="font-medium">{source.source_name}</h4>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <ExternalLink className="h-3 w-3" />
-                          <a 
-                            href={source.source_url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="hover:underline truncate max-w-[200px]"
-                          >
-                            {new URL(source.source_url).hostname}
-                          </a>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        {getRelationshipBadge(source.source_type)}
-                      </div>
-                      
-                      {/* Display cluster alignment if present */}
-                      {source.cluster_alignment && source.cluster_alignment.length > 0 && (
+                {tierSources.map((source) => {
+                  console.log('Rendering source:', source);
+                  return (
+                    <div key={source.id} className="border rounded-lg p-4 space-y-3">
+                      <div className="flex items-start justify-between">
                         <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground">Cluster Alignment:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {source.cluster_alignment.map((clusterId, index) => {
-                              const cluster = clusters?.find(c => c.id === clusterId);
-                              return (
-                                <Badge key={index} variant="outline" className="text-xs">
-                                  {cluster ? cluster.primary_theme : clusterId}
-                                </Badge>
-                              );
-                            })}
+                          <h4 className="font-medium">{source.source_name}</h4>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <ExternalLink className="h-3 w-3" />
+                            <a 
+                              href={source.source_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="hover:underline truncate max-w-[200px]"
+                            >
+                              {new URL(source.source_url).hostname}
+                            </a>
                           </div>
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    <div className="flex justify-end gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleEdit(source)}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => deleteSourceMutation.mutate(source.id)}
-                        disabled={deleteSourceMutation.isPending}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          {getRelationshipBadge(source.source_type)}
+                        </div>
+                        
+                        {/* Display cluster alignment if present */}
+                        {source.cluster_alignment && source.cluster_alignment.length > 0 && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Cluster Alignment:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {source.cluster_alignment.map((clusterId, index) => {
+                                const cluster = clusters?.find(c => c.id === clusterId);
+                                return (
+                                  <Badge key={index} variant="outline" className="text-xs">
+                                    {cluster ? cluster.primary_theme : clusterId}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleEdit(source)}
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => deleteSourceMutation.mutate(source.id)}
+                          disabled={deleteSourceMutation.isPending}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
