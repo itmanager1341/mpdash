@@ -41,19 +41,33 @@ export default function SourceManagement() {
     source_url: "",
     priority_tier: 3,
     source_type: "source",
-    cluster_alignment: null
+    cluster_alignment: null as string[] | null
   });
 
   const queryClient = useQueryClient();
 
-  // Fetch sources
+  // Fetch sources with all fields including source_type and cluster_alignment
   const { data: sources, isLoading } = useQuery({
     queryKey: ['sources'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sources')
-        .select('*')
+        .select('id, source_name, source_url, priority_tier, source_type, cluster_alignment, created_at')
         .order('priority_tier');
+        
+      if (error) throw error;
+      return data || [];
+    }
+  });
+
+  // Fetch keyword clusters for the cluster alignment dropdown
+  const { data: clusters } = useQuery({
+    queryKey: ['keyword-clusters'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('keyword_clusters')
+        .select('id, primary_theme, sub_theme')
+        .order('primary_theme');
         
       if (error) throw error;
       return data || [];
@@ -307,8 +321,27 @@ export default function SourceManagement() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {getRelationshipBadge(source.source_type)}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        {getRelationshipBadge(source.source_type)}
+                      </div>
+                      
+                      {/* Display cluster alignment if present */}
+                      {source.cluster_alignment && source.cluster_alignment.length > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Cluster Alignment:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {source.cluster_alignment.map((clusterId, index) => {
+                              const cluster = clusters?.find(c => c.id === clusterId);
+                              return (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {cluster ? cluster.primary_theme : clusterId}
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex justify-end gap-2">

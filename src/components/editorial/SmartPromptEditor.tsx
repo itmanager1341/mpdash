@@ -78,7 +78,7 @@ export default function SmartPromptEditor() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sources')
-        .select('*')
+        .select('id, source_name, source_url, priority_tier, source_type, cluster_alignment, created_at')
         .order('priority_tier');
         
       if (error) throw error;
