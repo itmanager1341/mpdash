@@ -24,12 +24,11 @@ import {
 
 interface Source {
   id: string;
-  name: string;
-  url: string;
+  source_name: string;
+  source_url: string;
   priority_tier: number;
-  relationship_type: string;
-  domain_authority: number | null;
-  is_active: boolean;
+  source_type: string;
+  cluster_alignment: string[] | null;
   created_at: string;
 }
 
@@ -38,12 +37,11 @@ export default function SourceManagement() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [newSource, setNewSource] = useState({
-    name: "",
-    url: "",
+    source_name: "",
+    source_url: "",
     priority_tier: 3,
-    relationship_type: "source",
-    domain_authority: null,
-    is_active: true
+    source_type: "source",
+    cluster_alignment: null
   });
 
   const queryClient = useQueryClient();
@@ -84,12 +82,11 @@ export default function SourceManagement() {
       setShowAddForm(false);
       setEditingSource(null);
       setNewSource({
-        name: "",
-        url: "",
+        source_name: "",
+        source_url: "",
         priority_tier: 3,
-        relationship_type: "source",
-        domain_authority: null,
-        is_active: true
+        source_type: "source",
+        cluster_alignment: null
       });
     },
     onError: (error) => {
@@ -115,43 +112,25 @@ export default function SourceManagement() {
     }
   });
 
-  // Toggle source active status
-  const toggleSourceMutation = useMutation({
-    mutationFn: async ({ id, is_active }: { id: string, is_active: boolean }) => {
-      const { error } = await supabase
-        .from('sources')
-        .update({ is_active })
-        .eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sources'] });
-    },
-    onError: (error) => {
-      toast.error('Failed to update source: ' + error.message);
-    }
-  });
-
   const filteredSources = sources?.filter(source => 
-    source.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    source.url.toLowerCase().includes(searchTerm.toLowerCase())
+    source.source_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    source.source_url.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
   const handleEdit = (source: Source) => {
     setEditingSource(source);
     setNewSource({
-      name: source.name,
-      url: source.url,
+      source_name: source.source_name,
+      source_url: source.source_url,
       priority_tier: source.priority_tier,
-      relationship_type: source.relationship_type,
-      domain_authority: source.domain_authority,
-      is_active: source.is_active
+      source_type: source.source_type,
+      cluster_alignment: source.cluster_alignment
     });
     setShowAddForm(true);
   };
 
   const handleSave = () => {
-    if (!newSource.name.trim() || !newSource.url.trim()) {
+    if (!newSource.source_name.trim() || !newSource.source_url.trim()) {
       toast.error('Please provide both name and URL');
       return;
     }
@@ -219,8 +198,8 @@ export default function SourceManagement() {
                 <Label htmlFor="source-name">Source Name</Label>
                 <Input
                   id="source-name"
-                  value={newSource.name}
-                  onChange={(e) => setNewSource({ ...newSource, name: e.target.value })}
+                  value={newSource.source_name}
+                  onChange={(e) => setNewSource({ ...newSource, source_name: e.target.value })}
                   placeholder="e.g., Federal Reserve"
                 />
               </div>
@@ -228,14 +207,14 @@ export default function SourceManagement() {
                 <Label htmlFor="source-url">URL</Label>
                 <Input
                   id="source-url"
-                  value={newSource.url}
-                  onChange={(e) => setNewSource({ ...newSource, url: e.target.value })}
+                  value={newSource.source_url}
+                  onChange={(e) => setNewSource({ ...newSource, source_url: e.target.value })}
                   placeholder="https://example.com"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="priority-tier">Priority Tier</Label>
                 <Select 
@@ -255,10 +234,10 @@ export default function SourceManagement() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="relationship-type">Relationship</Label>
+                <Label htmlFor="source-type">Source Type</Label>
                 <Select 
-                  value={newSource.relationship_type} 
-                  onValueChange={(value) => setNewSource({ ...newSource, relationship_type: value })}
+                  value={newSource.source_type} 
+                  onValueChange={(value) => setNewSource({ ...newSource, source_type: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -271,22 +250,6 @@ export default function SourceManagement() {
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="domain-authority">Domain Authority</Label>
-                <Input
-                  id="domain-authority"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={newSource.domain_authority || ""}
-                  onChange={(e) => setNewSource({ 
-                    ...newSource, 
-                    domain_authority: e.target.value ? parseInt(e.target.value) : null 
-                  })}
-                  placeholder="0-100"
-                />
-              </div>
             </div>
 
             <div className="flex justify-between">
@@ -294,12 +257,11 @@ export default function SourceManagement() {
                 setShowAddForm(false);
                 setEditingSource(null);
                 setNewSource({
-                  name: "",
-                  url: "",
+                  source_name: "",
+                  source_url: "",
                   priority_tier: 3,
-                  relationship_type: "source",
-                  domain_authority: null,
-                  is_active: true
+                  source_type: "source",
+                  cluster_alignment: null
                 });
               }}>
                 Cancel
@@ -330,32 +292,23 @@ export default function SourceManagement() {
                   <div key={source.id} className="border rounded-lg p-4 space-y-3">
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <h4 className="font-medium">{source.name}</h4>
+                        <h4 className="font-medium">{source.source_name}</h4>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <ExternalLink className="h-3 w-3" />
                           <a 
-                            href={source.url} 
+                            href={source.source_url} 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="hover:underline truncate max-w-[200px]"
                           >
-                            {new URL(source.url).hostname}
+                            {new URL(source.source_url).hostname}
                           </a>
                         </div>
                       </div>
-                      <Switch 
-                        checked={source.is_active}
-                        onCheckedChange={(checked) => 
-                          toggleSourceMutation.mutate({ id: source.id, is_active: checked })
-                        }
-                      />
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {getRelationshipBadge(source.relationship_type)}
-                      {source.domain_authority && (
-                        <Badge variant="outline">DA: {source.domain_authority}</Badge>
-                      )}
+                      {getRelationshipBadge(source.source_type)}
                     </div>
 
                     <div className="flex justify-end gap-2">

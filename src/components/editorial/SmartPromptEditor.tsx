@@ -22,6 +22,32 @@ import {
   CheckCircle
 } from "lucide-react";
 
+interface Source {
+  id: string;
+  source_name: string;
+  source_url: string;
+  priority_tier: number;
+  source_type: string;
+  cluster_alignment: string[] | null;
+  created_at: string;
+}
+
+interface Prompt {
+  id: string;
+  function_name: string;
+  prompt_text: string;
+  model: string;
+  is_active: boolean;
+}
+
+interface Cluster {
+  id: string;
+  primary_theme: string;
+  sub_theme: string;
+  description?: string;
+  keywords?: string[];
+}
+
 export default function SmartPromptEditor() {
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
   const [promptContent, setPromptContent] = useState("");
@@ -53,7 +79,6 @@ export default function SmartPromptEditor() {
       const { data, error } = await supabase
         .from('sources')
         .select('*')
-        .eq('is_active', true)
         .order('priority_tier');
         
       if (error) throw error;
@@ -112,7 +137,7 @@ export default function SmartPromptEditor() {
   // Generate optimized prompt based on current data
   const generateOptimizedPrompt = () => {
     const prioritySources = sources?.filter(s => s.priority_tier <= 2) || [];
-    const competitorSources = sources?.filter(s => s.relationship_type === 'competitor') || [];
+    const competitorSources = sources?.filter(s => s.source_type === 'competitor') || [];
     const primaryThemes = clusters?.map(c => c.primary_theme).slice(0, 5) || [];
 
     const optimizedPrompt = `You are an expert mortgage industry analyst. Search for the most relevant and actionable news for mortgage professionals.
@@ -127,10 +152,10 @@ SEARCH REQUIREMENTS:
 4. Look for competitive intelligence and market opportunities
 
 PREFERRED SOURCES (search these first):
-${prioritySources.map(s => `• ${s.name} (${s.url})`).join('\n')}
+${prioritySources.map(s => `• ${s.source_name} (${s.source_url})`).join('\n')}
 
 EXCLUDE COMPETITOR COVERAGE:
-${competitorSources.map(s => `• Avoid ${s.name}`).join('\n')}
+${competitorSources.map(s => `• Avoid ${s.source_name}`).join('\n')}
 
 SCORING CRITERIA:
 - Direct impact on mortgage business operations (30%)
@@ -311,7 +336,7 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
                 </div>
                 <div className="flex justify-between text-xs">
                   <span>Competitors (Excluded)</span>
-                  <Badge variant="destructive">{sources?.filter(s => s.relationship_type === 'competitor').length || 0}</Badge>
+                  <Badge variant="destructive">{sources?.filter(s => s.source_type === 'competitor').length || 0}</Badge>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span>Active Clusters</span>
