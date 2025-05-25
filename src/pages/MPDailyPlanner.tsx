@@ -7,7 +7,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import DraftEditor from "@/components/editor/DraftEditor";
+import EnhancedDraftEditor from "@/components/editor/EnhancedDraftEditor";
 import { UnifiedNewsCard } from "@/components/news/UnifiedNewsCard";
 import { NewsItem } from "@/types/news";
 import {
@@ -49,28 +49,6 @@ const MPDailyPlanner = () => {
     }
   });
 
-  const handlePublish = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('news')
-        .update({ 
-          content_variants: {
-            ...selectedItem?.content_variants,
-            published: true
-          }
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-      
-      toast.success("Item published successfully");
-      refetch();
-    } catch (err) {
-      console.error("Error publishing item:", err);
-      toast.error("Failed to publish item");
-    }
-  };
-
   const openDraftEditor = (item: NewsItem) => {
     setSelectedItem(item);
     setIsDraftEditorOpen(true);
@@ -87,14 +65,16 @@ const MPDailyPlanner = () => {
     try {
       const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
         body: {
-          prompt_text: `Create a concise email newsletter item about: ${aiPrompt}
-          
-Format your response with:
-1. An engaging headline (maximum 10 words)
-2. A brief summary (3-4 sentences maximum)
-3. A bulleted list of 2-3 key points
-4. A short call-to-action`,
-          model: 'gpt-4o-mini',
+          prompt_text: `Create a comprehensive newsletter article about: ${aiPrompt}
+
+Structure your response as a complete article with:
+1. A compelling, marketing-optimized headline (8-12 words)
+2. A concise editorial summary (2-3 sentences for reference/SEO)
+3. A compelling call-to-action teaser (1-2 sentences that create curiosity)
+4. Full article content (400-600 words, formatted with proper paragraphs)
+
+Focus on relevance to mortgage industry professionals and include actionable insights.`,
+          model: 'gpt-4o',
           input_data: {
             topic: aiPrompt
           }
@@ -103,18 +83,37 @@ Format your response with:
       
       if (error) throw error;
       
+      // Create a new news item with the AI-generated content
+      const generatedContent = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
+      
+      // Parse the content and create proper structure
+      const lines = generatedContent.split('\n').filter(line => line.trim());
+      const headline = lines[0] || `AI-Generated: ${aiPrompt.slice(0, 30)}...`;
+      
       setSelectedItem({
         id: 'temp-' + Date.now(),
-        headline: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
-        summary: typeof data.output === 'string' 
-          ? data.output.slice(0, 150) 
-          : JSON.stringify(data.output).slice(0, 150),
+        headline: headline,
+        summary: `AI-generated content about ${aiPrompt}`,
         status: 'draft',
         content_variants: {
-          title: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
-          summary: typeof data.output === 'string' 
-            ? data.output 
-            : JSON.stringify(data.output)
+          source_content: {
+            original_title: headline,
+            original_summary: `AI-generated content about ${aiPrompt}`,
+            author: 'AI Assistant',
+            publication_date: new Date().toISOString()
+          },
+          editorial_content: {
+            headline: headline,
+            summary: `AI-generated content about ${aiPrompt}`,
+            cta: "Discover what this means for your business...",
+            full_content: generatedContent
+          },
+          metadata: {
+            seo_title: headline,
+            seo_description: `AI-generated content about ${aiPrompt}`.slice(0, 160),
+            tags: ['ai-generated']
+          },
+          status: 'draft'
         },
         timestamp: new Date().toISOString(),
         source: 'AI Generated',
@@ -136,6 +135,18 @@ Format your response with:
     refetch();
   };
 
+  // Helper function to get editorial status
+  const getEditorialStatus = (item: NewsItem) => {
+    const editorialContent = item.content_variants?.editorial_content;
+    const status = item.content_variants?.status;
+    
+    if (status === 'published') return 'Published';
+    if (status === 'ready') return 'Ready to Publish';
+    if (editorialContent?.headline && editorialContent?.full_content) return 'Draft Ready';
+    if (editorialContent?.headline) return 'In Progress';
+    return 'Needs Editing';
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8">
@@ -143,7 +154,7 @@ Format your response with:
           <div>
             <h1 className="text-3xl font-bold mb-2">MPDaily Planner</h1>
             <p className="text-muted-foreground">
-              Plan and organize content for the daily email newsletter
+              Create and manage content for the daily email newsletter
             </p>
           </div>
           <div className="flex gap-2">
@@ -186,16 +197,38 @@ Format your response with:
               <div className="space-y-4">
                 {newsItems && newsItems.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {newsItems.map((item) => (
-                      <UnifiedNewsCard
-                        key={item.id}
-                        newsItem={item}
-                        onDetailsClick={(item) => openDraftEditor(item)}
-                        onStatusChange={handleStatusChange}
-                        showActions={true}
-                        className="h-full"
-                      />
-                    ))}
+                    {newsItems.map((item) => {
+                      const editorialStatus = getEditorialStatus(item);
+                      
+                      return (
+                        <div key={item.id} className="relative">
+                          <UnifiedNewsCard
+                            newsItem={{
+                              ...item,
+                              // Show editorial headline if available, otherwise original
+                              headline: item.content_variants?.editorial_content?.headline || item.headline,
+                              // Show editorial summary if available
+                              summary: item.content_variants?.editorial_content?.summary || item.summary
+                            }}
+                            onDetailsClick={() => openDraftEditor(item)}
+                            onStatusChange={handleStatusChange}
+                            showActions={true}
+                            className="h-full"
+                          />
+                          <div className="absolute top-2 right-2">
+                            <div className={`text-xs px-2 py-1 rounded ${
+                              editorialStatus === 'Published' ? 'bg-green-100 text-green-800' :
+                              editorialStatus === 'Ready to Publish' ? 'bg-blue-100 text-blue-800' :
+                              editorialStatus === 'Draft Ready' ? 'bg-yellow-100 text-yellow-800' :
+                              editorialStatus === 'In Progress' ? 'bg-orange-100 text-orange-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {editorialStatus}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="bg-muted/50 rounded-md p-8 text-center">
@@ -229,9 +262,9 @@ Format your response with:
         )}
       </Tabs>
 
-      {/* Draft Editor */}
+      {/* Enhanced Draft Editor */}
       {selectedItem && (
-        <DraftEditor
+        <EnhancedDraftEditor
           newsItem={selectedItem}
           open={isDraftEditorOpen}
           onOpenChange={setIsDraftEditorOpen}
@@ -245,19 +278,19 @@ Format your response with:
           <DialogHeader>
             <DialogTitle>AI Content Assistant</DialogTitle>
             <DialogDescription>
-              Generate newsletter content using AI
+              Generate complete newsletter content using AI
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
             <div>
               <label htmlFor="ai-prompt" className="text-sm font-medium mb-2 block">
-                What would you like to create content about?
+                What topic would you like to create content about?
               </label>
               <Textarea 
                 id="ai-prompt" 
                 className="min-h-24"
-                placeholder="e.g., 'Create a newsletter item about recent changes to mortgage interest rates'"
+                placeholder="e.g., 'Recent changes to mortgage interest rates and their impact on borrowers'"
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
               />

@@ -5,8 +5,26 @@ export interface NewsItem {
   summary: string;
   status: string;
   content_variants?: {
+    source_content?: {
+      original_title?: string;
+      original_summary?: string;
+      author?: string;
+      publication_date?: string;
+    };
+    editorial_content?: {
+      headline?: string;
+      summary?: string;
+      cta?: string;
+      full_content?: string;
+    };
+    metadata?: {
+      seo_title?: string;
+      seo_description?: string;
+      tags?: string[];
+    };
+    status?: 'draft' | 'ready' | 'published';
+    // Legacy fields for backward compatibility
     title?: string;
-    summary?: string;
     cta?: string;
     full_content?: string;
     magazine_content?: string;
