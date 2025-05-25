@@ -79,71 +79,74 @@ export default function DraftsList({
 
   return (
     <div className="p-2 space-y-2">
-      {drafts.map((draft) => (
-        <Card
-          key={draft.id}
-          className={`p-3 cursor-pointer transition-colors hover:bg-accent ${
-            selectedDraft?.id === draft.id ? 'ring-2 ring-primary bg-accent' : ''
-          }`}
-          onClick={() => onDraftSelect(draft)}
-        >
-          <div className="flex items-start justify-between mb-2">
-            <h4 className="font-medium text-sm line-clamp-2">
-              {draft.content_variants?.editorial_content?.headline || draft.title || 'Untitled Draft'}
-            </h4>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                  <MoreVertical className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem>
-                  <Edit className="h-3 w-3 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Copy className="h-3 w-3 mr-2" />
-                  Duplicate
-                </DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive">
-                  <Trash2 className="h-3 w-3 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              {new Date(draft.updated_at).toLocaleDateString()}
+      {drafts.map((draft) => {
+        const contentVariants = draft.content_variants as any;
+        return (
+          <Card
+            key={draft.id}
+            className={`p-3 cursor-pointer transition-colors hover:bg-accent ${
+              selectedDraft?.id === draft.id ? 'ring-2 ring-primary bg-accent' : ''
+            }`}
+            onClick={() => onDraftSelect(draft)}
+          >
+            <div className="flex items-start justify-between mb-2">
+              <h4 className="font-medium text-sm line-clamp-2">
+                {contentVariants?.editorial_content?.headline || draft.title || 'Untitled Draft'}
+              </h4>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <MoreVertical className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem>
+                    <Edit className="h-3 w-3 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Copy className="h-3 w-3 mr-2" />
+                    Duplicate
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive">
+                    <Trash2 className="h-3 w-3 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <Badge variant="outline" className={getStatusColor(draft.status)}>
-              {getStatusLabel(draft.status)}
-            </Badge>
-          </div>
 
-          <p className="text-xs text-muted-foreground line-clamp-2">
-            {draft.content_variants?.editorial_content?.summary || 'No summary available'}
-          </p>
-
-          {draft.matched_clusters && draft.matched_clusters.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {draft.matched_clusters.slice(0, 2).map((cluster: string, index: number) => (
-                <Badge key={index} variant="secondary" className="text-xs">
-                  {cluster}
-                </Badge>
-              ))}
-              {draft.matched_clusters.length > 2 && (
-                <Badge variant="secondary" className="text-xs">
-                  +{draft.matched_clusters.length - 2} more
-                </Badge>
-              )}
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                {new Date(draft.updated_at).toLocaleDateString()}
+              </div>
+              <Badge variant="outline" className={getStatusColor(draft.status)}>
+                {getStatusLabel(draft.status)}
+              </Badge>
             </div>
-          )}
-        </Card>
-      ))}
+
+            <p className="text-xs text-muted-foreground line-clamp-2">
+              {contentVariants?.editorial_content?.summary || 'No summary available'}
+            </p>
+
+            {draft.matched_clusters && draft.matched_clusters.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {draft.matched_clusters.slice(0, 2).map((cluster: string, index: number) => (
+                  <Badge key={index} variant="secondary" className="text-xs">
+                    {cluster}
+                  </Badge>
+                ))}
+                {draft.matched_clusters.length > 2 && (
+                  <Badge variant="secondary" className="text-xs">
+                    +{draft.matched_clusters.length - 2} more
+                  </Badge>
+                )}
+              </div>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }

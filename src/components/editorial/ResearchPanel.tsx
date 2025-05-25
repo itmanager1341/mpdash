@@ -110,24 +110,27 @@ export default function ResearchPanel({ draft, researchContext, onContextUpdate 
             <div className="space-y-2">
               <h4 className="text-sm font-medium">Related Articles</h4>
               {relatedArticles && relatedArticles.length > 0 ? (
-                relatedArticles.map((article) => (
-                  <Card key={article.id} className="p-3">
-                    <h5 className="text-sm font-medium line-clamp-2 mb-1">
-                      {article.content_variants?.editorial_content?.headline || article.title}
-                    </h5>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                      {article.content_variants?.editorial_content?.summary}
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(article.published_at || article.updated_at).toLocaleDateString()}
-                      </span>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                        <ExternalLink className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </Card>
-                ))
+                relatedArticles.map((article) => {
+                  const contentVariants = article.content_variants as any;
+                  return (
+                    <Card key={article.id} className="p-3">
+                      <h5 className="text-sm font-medium line-clamp-2 mb-1">
+                        {contentVariants?.editorial_content?.headline || article.title}
+                      </h5>
+                      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                        {contentVariants?.editorial_content?.summary}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(article.published_at || article.updated_at).toLocaleDateString()}
+                        </span>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                          <ExternalLink className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })
               ) : (
                 <p className="text-xs text-muted-foreground">No related articles found</p>
               )}

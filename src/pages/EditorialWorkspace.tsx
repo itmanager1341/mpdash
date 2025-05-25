@@ -45,10 +45,11 @@ export default function EditorialWorkspace() {
     }
   });
 
-  const filteredDrafts = drafts?.filter(draft => 
-    draft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    draft.content_variants?.editorial_content?.headline?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDrafts = drafts?.filter(draft => {
+    const contentVariants = draft.content_variants as any;
+    return draft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contentVariants?.editorial_content?.headline?.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   const handleDraftSelect = (draft: any) => {
     setSelectedDraft(draft);
