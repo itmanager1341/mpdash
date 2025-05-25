@@ -9,9 +9,7 @@ import { toast } from "sonner";
 import { 
   Play, 
   TestTube, 
-  Calendar, 
   CheckCircle2,
-  Clock,
   Activity,
   Zap
 } from "lucide-react";
@@ -24,14 +22,12 @@ interface PromptActivationPanelProps {
     model: string;
   };
   onTest: () => void;
-  onSchedule: () => void;
   onRunManual: () => void;
 }
 
 export default function PromptActivationPanel({ 
   prompt, 
   onTest, 
-  onSchedule, 
   onRunManual 
 }: PromptActivationPanelProps) {
   const [isActivating, setIsActivating] = useState(false);
@@ -39,7 +35,7 @@ export default function PromptActivationPanel({
 
   const activatePromptMutation = useMutation({
     mutationFn: async () => {
-      // First, deactivate all other news search prompts
+      // Deactivate all other news search prompts
       const { error: deactivateError } = await supabase
         .from('llm_prompts')
         .update({ is_active: false })
@@ -47,7 +43,7 @@ export default function PromptActivationPanel({
         
       if (deactivateError) throw deactivateError;
 
-      // Then activate this prompt
+      // Activate this prompt
       const { error: activateError } = await supabase
         .from('llm_prompts')
         .update({ is_active: true })
@@ -55,7 +51,7 @@ export default function PromptActivationPanel({
         
       if (activateError) throw activateError;
 
-      // Update the scheduled job to use this prompt
+      // Update scheduled job settings
       const { error: jobError } = await supabase
         .from('scheduled_job_settings')
         .update({ 
@@ -73,10 +69,10 @@ export default function PromptActivationPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['news-search-prompts'] });
       queryClient.invalidateQueries({ queryKey: ['scheduled-job-settings'] });
-      toast.success(`"${prompt.function_name}" is now the active news search prompt`);
+      toast.success(`"${prompt.function_name}" activated successfully`);
     },
     onError: (error) => {
-      toast.error('Failed to activate prompt: ' + error.message);
+      toast.error('Activation failed: ' + error.message);
     }
   });
 
@@ -91,79 +87,61 @@ export default function PromptActivationPanel({
 
   return (
     <Card className="border-green-200 bg-green-50">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
           <CheckCircle2 className="h-5 w-5 text-green-600" />
-          Prompt Saved Successfully
+          Prompt Saved
         </CardTitle>
         <CardDescription>
-          What would you like to do with "{prompt.function_name}"?
+          Configure "{prompt.function_name}" for content discovery
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2">
           <Badge variant={prompt.is_active ? "default" : "secondary"}>
             {prompt.is_active ? "ACTIVE" : "INACTIVE"}
           </Badge>
           <Badge variant="outline">{prompt.model}</Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Button
-            onClick={onTest}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <TestTube className="h-4 w-4" />
-            Test Prompt
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Button onClick={onTest} variant="outline" size="sm">
+            <TestTube className="h-4 w-4 mr-2" />
+            Test
           </Button>
 
           <Button
             onClick={handleActivate}
             disabled={isActivating || prompt.is_active}
-            className="flex items-center gap-2"
+            size="sm"
           >
             {isActivating ? (
               <>
-                <Activity className="h-4 w-4 animate-spin" />
+                <Activity className="h-4 w-4 animate-spin mr-2" />
                 Activating...
               </>
             ) : prompt.is_active ? (
               <>
-                <CheckCircle2 className="h-4 w-4" />
-                Already Active
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Active
               </>
             ) : (
               <>
-                <Zap className="h-4 w-4" />
-                Activate & Schedule
+                <Zap className="h-4 w-4 mr-2" />
+                Activate
               </>
             )}
           </Button>
 
-          <Button
-            onClick={onRunManual}
-            variant="secondary"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            Run Import Now
-          </Button>
-
-          <Button
-            onClick={onSchedule}
-            variant="secondary"
-            className="flex items-center gap-2"
-          >
-            <Calendar className="h-4 w-4" />
-            Schedule Settings
+          <Button onClick={onRunManual} variant="secondary" size="sm">
+            <Play className="h-4 w-4 mr-2" />
+            Run Now
           </Button>
         </div>
 
         {!prompt.is_active && (
-          <div className="text-sm text-muted-foreground bg-amber-50 p-3 rounded-lg border border-amber-200">
-            <strong>Next Steps:</strong> Activate this prompt to use it for automated news imports, 
-            or test it first to see how it performs with current data.
+          <div className="text-sm bg-amber-50 p-3 rounded border border-amber-200">
+            <strong>Next:</strong> Activate to enable automated content discovery
           </div>
         )}
       </CardContent>

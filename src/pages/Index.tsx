@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Filter, Plus, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { 
@@ -18,20 +17,13 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import AddNewsDialog from "@/components/news/AddNewsDialog";
 import { Badge } from "@/components/ui/badge";
-import { EnhancedNewsCard } from "@/components/news/EnhancedNewsCard";
+import { UnifiedNewsCard } from "@/components/news/UnifiedNewsCard";
 import { NewsItem } from "@/types/news";
 
 interface FilterOptions {
-  showProcessed: boolean;
   sources: string[];
   minScore: number;
   clusters: string[];
-}
-
-interface ClusterCoverage {
-  name: string;
-  count: number;
-  totalPossible: number;
 }
 
 const Index = () => {
@@ -39,10 +31,8 @@ const Index = () => {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"pending" | "all">("pending");
   const [isAddNewsDialogOpen, setIsAddNewsDialogOpen] = useState(false);
-  const [clusterView, setClusterView] = useState<"articles" | "coverage">("articles");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
-    showProcessed: false,
     sources: [],
     minScore: 0,
     clusters: []
@@ -84,69 +74,34 @@ const Index = () => {
     }
   });
 
-  // Build query based on filter options and view mode
+  // Simplified news query
   const { data: newsItems, isLoading, error, refetch } = useQuery({
-    queryKey: ['news', viewMode, filters],
+    queryKey: ['news-unified', viewMode, filters],
     queryFn: async () => {
-      let query = supabase
-        .from('news')
-        .select('*');
+      let query = supabase.from('news').select('*');
       
-      // Apply status filter based on view mode
       if (viewMode === "pending") {
         query = query.eq('status', 'pending');
       }
       
-      // Apply source filter if any sources are selected
       if (filters.sources.length > 0) {
         query = query.in('source', filters.sources);
       }
       
-      // Apply score filter
       if (filters.minScore > 0) {
         query = query.gte('perplexity_score', filters.minScore);
       }
       
-      // Apply cluster filter if any clusters are selected
       if (filters.clusters.length > 0) {
-        // We need to use containedBy for array overlap
-        // This checks if any of the matched_clusters contain any of our selected clusters
         query = query.overlaps('matched_clusters', filters.clusters);
       }
       
-      // Always sort by priority (perplexity score) and recency
       const { data, error } = await query.order('perplexity_score', { ascending: false });
       
       if (error) throw new Error(error.message);
       return data as NewsItem[];
     }
   });
-  
-  // Generate coverage metrics for each primary theme
-  const clusterCoverage = clustersList ? 
-    computeClusterCoverage(clustersList, newsItems || []) : [];
-
-  // Function to compute coverage metrics for clusters
-  function computeClusterCoverage(
-    clusters: string[], 
-    news: NewsItem[]
-  ): ClusterCoverage[] {
-    // Extract primary themes from cluster list
-    const primaryThemes = [...new Set(clusters.map(c => c.split(':')[0].trim()))];
-    
-    return primaryThemes.map(theme => {
-      // Count news items that match this theme
-      const matchCount = news.filter(item => 
-        item.matched_clusters?.some(mc => mc.startsWith(theme))
-      ).length;
-      
-      return {
-        name: theme,
-        count: matchCount,
-        totalPossible: news.length, // This could be refined based on business logic
-      };
-    }).sort((a, b) => b.count - a.count); // Sort by descending count
-  }
 
   // Function to open the detail view for an item
   const openDetailView = (item: NewsItem) => {
@@ -154,22 +109,18 @@ const Index = () => {
     setIsSheetOpen(true);
   };
 
-  // Function to handle dismissing an article
+  // Simplified dismiss handler
   const handleDismiss = async (item: NewsItem) => {
     try {
-      // Update the news item status in Supabase
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from('news')
-        .update({ 
-          status: 'dismissed',
-          destinations: [] // Clear destinations when dismissing
-        })
+        .update({ status: 'dismissed', destinations: [] })
         .eq('id', item.id);
       
-      if (updateError) throw updateError;
+      if (error) throw error;
       
       toast.success("Article dismissed");
-      refetch(); // Refresh the data
+      refetch();
     } catch (err) {
       console.error("Error dismissing article:", err);
       toast.error("Failed to dismiss article");
@@ -234,23 +185,17 @@ const Index = () => {
   return (
     <DashboardLayout>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Today's Briefing</h1>
-        <div>
-          <p className="text-muted-foreground">
-            AI-curated article suggestions based on trending topics and keyword clusters
-          </p>
-        </div>
+        <h1 className="text-3xl font-bold mb-2">News Triage</h1>
+        <p className="text-muted-foreground">
+          Review and route content across all publication channels
+        </p>
       </div>
       
       <div className="flex justify-between items-center mb-6">
-        <Tabs 
-          value={viewMode} 
-          onValueChange={(value) => setViewMode(value as "pending" | "all")}
-          className="w-auto"
-        >
+        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "all")}>
           <TabsList>
-            <TabsTrigger value="pending">Pending</TabsTrigger>
-            <TabsTrigger value="all">All Items</TabsTrigger>
+            <TabsTrigger value="pending">Pending Review</TabsTrigger>
+            <TabsTrigger value="all">All Content</TabsTrigger>
           </TabsList>
         </Tabs>
         
@@ -343,93 +288,43 @@ const Index = () => {
         </div>
       </div>
       
-      <Tabs value={clusterView} onValueChange={(v) => setClusterView(v as "articles" | "coverage")}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="articles">Articles</TabsTrigger>
-          <TabsTrigger value="coverage">Cluster Coverage</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="articles">
-          {isLoading && (
-            <div className="flex items-center justify-center py-10">
-              <p className="text-muted-foreground">Loading suggestions...</p>
-            </div>
-          )}
-          
-          {error && (
-            <div className="bg-destructive/10 text-destructive p-4 rounded-md">
-              <p>Error loading content suggestions. Please try refreshing.</p>
-            </div>
-          )}
+      {isLoading && (
+        <div className="flex items-center justify-center py-10">
+          <p className="text-muted-foreground">Loading content...</p>
+        </div>
+      )}
+      
+      {error && (
+        <div className="bg-destructive/10 text-destructive p-4 rounded-md">
+          <p>Error loading content. Please try refreshing.</p>
+        </div>
+      )}
 
-          {newsItems?.length === 0 && !isLoading && !error && (
-            <div className="bg-muted/50 rounded-md p-8 text-center">
-              <h3 className="text-xl font-semibold mb-2">No articles found</h3>
-              <p className="text-muted-foreground">
-                {viewMode === "pending" 
-                  ? "No pending articles to review. Try changing filters or adding news manually." 
-                  : "No articles match your current filters."}
-              </p>
-            </div>
-          )}
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {newsItems?.map((item) => (
-              <EnhancedNewsCard 
-                key={item.id}
-                newsItem={item}
-                onDismiss={handleDismiss}
-                onDetailsClick={openDetailView}
-                onStatusChange={refetch}
-              />
-            ))}
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="coverage">
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {clusterCoverage.map((cluster, idx) => {
-                const coveragePercent = (cluster.count / (cluster.totalPossible || 1)) * 100;
-                let coverageColor = "bg-green-500";
-                
-                if (coveragePercent < 30) coverageColor = "bg-red-500";
-                else if (coveragePercent < 70) coverageColor = "bg-yellow-500";
-                
-                return (
-                  <Card key={idx}>
-                    <CardContent className="pt-6">
-                      <h3 className="font-medium text-lg mb-2">{cluster.name}</h3>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm text-muted-foreground">Coverage</span>
-                        <span className="text-sm font-medium">{coveragePercent.toFixed(0)}%</span>
-                      </div>
-                      <div className="w-full bg-muted rounded-full h-2.5">
-                        <div 
-                          className={`h-2.5 rounded-full ${coverageColor}`} 
-                          style={{ width: `${coveragePercent}%` }}
-                        ></div>
-                      </div>
-                      <div className="mt-4 text-sm text-muted-foreground">
-                        {cluster.count} of {cluster.totalPossible} articles
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-            
-            {clusterCoverage.length === 0 && (
-              <div className="bg-muted/50 rounded-md p-8 text-center">
-                <h3 className="text-xl font-semibold mb-2">No coverage data</h3>
-                <p className="text-muted-foreground">
-                  No cluster coverage data is available for the current news items.
-                </p>
-              </div>
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
+      {newsItems?.length === 0 && !isLoading && !error && (
+        <div className="bg-muted/50 rounded-md p-8 text-center">
+          <h3 className="text-xl font-semibold mb-2">No content found</h3>
+          <p className="text-muted-foreground">
+            {viewMode === "pending" 
+              ? "No pending content to review. Try adjusting filters or adding content manually." 
+              : "No content matches your current filters."}
+          </p>
+        </div>
+      )}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {newsItems?.map((item) => (
+          <UnifiedNewsCard 
+            key={item.id}
+            newsItem={item}
+            onDismiss={handleDismiss}
+            onDetailsClick={(item) => {
+              setSelectedItem(item);
+              setIsSheetOpen(true);
+            }}
+            onStatusChange={refetch}
+          />
+        ))}
+      </div>
 
       {/* Detail view side sheet */}
       <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
