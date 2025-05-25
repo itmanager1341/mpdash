@@ -158,12 +158,15 @@ const MagazinePlanner = () => {
 
   const handlePublish = async (newsId: string) => {
     try {
+      const newsItem = newsItems?.find(item => item.id === newsId);
+      if (!newsItem) throw new Error("News item not found");
+
       const { error } = await supabase
         .from('news')
         .update({ 
           content_variants: {
-            ...(newsItems?.find(item => item.id === newsId)?.content_variants || {}),
-            published: true
+            ...newsItem.content_variants,
+            status: 'published'
           }
         })
         .eq('id', newsId);
@@ -513,10 +516,10 @@ const MagazinePlanner = () => {
 
   // Function to determine item workflow stage based on content_variants
   const getItemStage = (item: NewsItem): "planning" | "draft" | "published" => {
-    if (item.content_variants?.published) {
+    if (item.content_variants?.status === 'published') {
       return "published";
     }
-    if (item.content_variants?.full_content || item.content_variants?.magazine_content) {
+    if (item.content_variants?.editorial_content?.full_content) {
       return "draft";
     }
     return "planning";
