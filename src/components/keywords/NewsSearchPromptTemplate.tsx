@@ -59,27 +59,31 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   };
   
   const generateTemplate = () => {
+    // Ensure we have valid arrays to work with
+    const validSources = Array.isArray(sources) ? sources : [];
+    const validClusters = Array.isArray(clusters) ? clusters : [];
+    
     // Filter priority sources (tier 1-2 only) and exclude competitors
-    const prioritySources = sources.filter(s => 
+    const prioritySources = validSources.filter(s => 
       s.priority_tier <= 2 && 
-      !s.source_type?.toLowerCase().includes('competitor')
+      (!s.source_type || !s.source_type.toLowerCase().includes('competitor'))
     );
     
     // Get competitor sources for exclusion
-    const competitorSources = sources.filter(s => 
-      s.source_type?.toLowerCase().includes('competitor')
+    const competitorSources = validSources.filter(s => 
+      s.source_type && s.source_type.toLowerCase().includes('competitor')
     );
     
     // Filter clusters by selected themes or use top themes
     let filteredClusters = [];
     if (selectedThemes && selectedThemes.length > 0) {
-      filteredClusters = clusters.filter(cluster => 
+      filteredClusters = validClusters.filter(cluster => 
         selectedThemes.includes(cluster.primary_theme)
       );
     } else {
       // Get unique primary themes, limit to top 5
-      const uniqueThemes = Array.from(new Set(clusters.map(c => c.primary_theme))).slice(0, 5);
-      filteredClusters = clusters.filter(cluster => 
+      const uniqueThemes = Array.from(new Set(validClusters.map(c => c.primary_theme))).slice(0, 5);
+      filteredClusters = validClusters.filter(cluster => 
         uniqueThemes.includes(cluster.primary_theme)
       );
     }
@@ -129,6 +133,7 @@ SEARCH & FILTER RULES:
         if (cluster.sub_theme && !subThemes.includes(cluster.sub_theme)) {
           subThemes.push(cluster.sub_theme);
         }
+        // Safely handle keywords array
         if (cluster.keywords && Array.isArray(cluster.keywords)) {
           allKeywords.push(...cluster.keywords);
         }
