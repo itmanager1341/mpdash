@@ -122,7 +122,7 @@ SEARCH & FILTER RULES:
       return acc;
     }, {});
     
-    Object.entries(clustersByTheme).forEach(([theme, themeClusters]) => {
+    Object.entries(clustersByTheme).forEach(([theme, themeClusters]: [string, any[]]) => {
       template += `${theme}:\n`;
       
       // Collect all keywords and sub-themes for this primary theme
