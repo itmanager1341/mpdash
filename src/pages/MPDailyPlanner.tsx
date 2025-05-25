@@ -131,19 +131,6 @@ Format your response with:
     }
   };
 
-  // Create custom action handlers for the unified cards
-  const handleCreateDraft = (item: NewsItem) => {
-    openDraftEditor(item);
-  };
-
-  const handleEditDraft = (item: NewsItem) => {
-    openDraftEditor(item);
-  };
-
-  const handlePublishItem = (item: NewsItem) => {
-    handlePublish(item.id);
-  };
-
   // Enhanced status change handler
   const handleStatusChange = () => {
     refetch();
@@ -199,21 +186,16 @@ Format your response with:
               <div className="space-y-4">
                 {newsItems && newsItems.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {newsItems.map((item) => {
-                      const hasPublished = item.content_variants?.published;
-                      const hasDraft = item.content_variants?.title || item.content_variants?.summary;
-                      
-                      return (
-                        <UnifiedNewsCard
-                          key={item.id}
-                          newsItem={item}
-                          onDetailsClick={(item) => openDraftEditor(item)}
-                          onStatusChange={handleStatusChange}
-                          showActions={true}
-                          className="h-full"
-                        />
-                      );
-                    })
+                    {newsItems.map((item) => (
+                      <UnifiedNewsCard
+                        key={item.id}
+                        newsItem={item}
+                        onDetailsClick={(item) => openDraftEditor(item)}
+                        onStatusChange={handleStatusChange}
+                        showActions={true}
+                        className="h-full"
+                      />
+                    ))}
                   </div>
                 ) : (
                   <div className="bg-muted/50 rounded-md p-8 text-center">
