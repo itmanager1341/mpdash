@@ -23,12 +23,6 @@ export interface NewsItem {
       tags?: string[];
     };
     status?: 'draft' | 'ready' | 'published';
-    // Legacy fields for backward compatibility
-    title?: string;
-    cta?: string;
-    full_content?: string;
-    magazine_content?: string;
-    published?: boolean;
   };
   created_at?: string;
   timestamp: string;

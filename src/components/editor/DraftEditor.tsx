@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,10 +28,10 @@ interface DraftEditorProps {
 }
 
 const DraftEditor = ({ newsItem, open, onOpenChange, onSave }: DraftEditorProps) => {
-  const [title, setTitle] = useState(newsItem.content_variants?.title || newsItem.headline);
-  const [summary, setSummary] = useState(newsItem.content_variants?.summary || newsItem.summary);
-  const [cta, setCta] = useState(newsItem.content_variants?.cta || "Read more about this story...");
-  const [fullContent, setFullContent] = useState(newsItem.content_variants?.full_content || "");
+  const [title, setTitle] = useState(newsItem.content_variants?.editorial_content?.headline || newsItem.headline);
+  const [summary, setSummary] = useState(newsItem.content_variants?.editorial_content?.summary || newsItem.summary);
+  const [cta, setCta] = useState(newsItem.content_variants?.editorial_content?.cta || "Read more about this story...");
+  const [fullContent, setFullContent] = useState(newsItem.content_variants?.editorial_content?.full_content || "");
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSaveDraft = async () => {
@@ -43,13 +44,26 @@ const DraftEditor = ({ newsItem, open, onOpenChange, onSave }: DraftEditorProps)
       setIsSaving(true);
 
       const contentVariants = {
-        title,
-        summary,
-        cta,
-        full_content: fullContent
+        source_content: {
+          original_title: newsItem.content_variants?.source_content?.original_title || newsItem.headline,
+          original_summary: newsItem.content_variants?.source_content?.original_summary || newsItem.summary,
+          author: newsItem.content_variants?.source_content?.author,
+          publication_date: newsItem.content_variants?.source_content?.publication_date
+        },
+        editorial_content: {
+          headline: title,
+          summary,
+          cta,
+          full_content: fullContent
+        },
+        metadata: {
+          seo_title: title,
+          seo_description: summary.substring(0, 160),
+          tags: []
+        },
+        status: "draft"
       };
 
-      // Update the news item with the drafted content and change status
       const { error } = await supabase
         .from("news")
         .update({
@@ -71,7 +85,6 @@ const DraftEditor = ({ newsItem, open, onOpenChange, onSave }: DraftEditorProps)
     }
   };
 
-  // Function to format the preview HTML
   const getPreviewHtml = () => {
     const sourceText = newsItem.source ? `Source: ${newsItem.source}` : '';
     

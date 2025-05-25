@@ -133,7 +133,7 @@ export function NewsCard({
             </div>
             
             <CardTitle className="line-clamp-2 text-lg">
-              {newsItem.content_variants?.title || newsItem.headline}
+              {newsItem.content_variants?.editorial_content?.headline || newsItem.headline}
             </CardTitle>
             
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -145,7 +145,7 @@ export function NewsCard({
           
           <CardContent className="pt-0">
             <p className="text-sm line-clamp-3">
-              {newsItem.content_variants?.summary || newsItem.summary}
+              {newsItem.content_variants?.editorial_content?.summary || newsItem.summary}
             </p>
             
             {newsItem.matched_clusters && newsItem.matched_clusters.length > 0 && (
