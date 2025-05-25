@@ -7,7 +7,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import EnhancedDraftEditor from "@/components/editor/EnhancedDraftEditor";
+import ImprovedDraftEditor from "@/components/editor/ImprovedDraftEditor";
 import { UnifiedNewsCard } from "@/components/news/UnifiedNewsCard";
 import { NewsItem } from "@/types/news";
 import {
@@ -31,7 +31,6 @@ const MPDailyPlanner = () => {
     queryFn: async () => {
       console.log("Fetching MPDaily news items");
       
-      // Query news items that have been approved for MPDaily
       const { data, error } = await supabase
         .from('news')
         .select('*')
@@ -83,10 +82,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
       
       if (error) throw error;
       
-      // Create a new news item with the AI-generated content
       const generatedContent = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
-      
-      // Parse the content and create proper structure
       const lines = generatedContent.split('\n').filter(line => line.trim());
       const headline = lines[0] || `AI-Generated: ${aiPrompt.slice(0, 30)}...`;
       
@@ -115,7 +111,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
           },
           status: 'draft'
         },
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOO(),
         source: 'AI Generated',
         url: '',
         destinations: ['mpdaily']
@@ -130,12 +126,10 @@ Focus on relevance to mortgage industry professionals and include actionable ins
     }
   };
 
-  // Enhanced status change handler
   const handleStatusChange = () => {
     refetch();
   };
 
-  // Helper function to get editorial status
   const getEditorialStatus = (item: NewsItem) => {
     const editorialContent = item.content_variants?.editorial_content;
     const status = item.content_variants?.status;
@@ -145,6 +139,16 @@ Focus on relevance to mortgage industry professionals and include actionable ins
     if (editorialContent?.headline && editorialContent?.full_content) return 'Draft Ready';
     if (editorialContent?.headline) return 'In Progress';
     return 'Needs Editing';
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Published': return 'bg-green-100 text-green-800';
+      case 'Ready to Publish': return 'bg-blue-100 text-blue-800';
+      case 'Draft Ready': return 'bg-yellow-100 text-yellow-800';
+      case 'In Progress': return 'bg-orange-100 text-orange-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
   };
 
   return (
@@ -205,9 +209,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
                           <UnifiedNewsCard
                             newsItem={{
                               ...item,
-                              // Show editorial headline if available, otherwise original
                               headline: item.content_variants?.editorial_content?.headline || item.headline,
-                              // Show editorial summary if available
                               summary: item.content_variants?.editorial_content?.summary || item.summary
                             }}
                             onDetailsClick={() => openDraftEditor(item)}
@@ -216,13 +218,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
                             className="h-full"
                           />
                           <div className="absolute top-2 right-2">
-                            <div className={`text-xs px-2 py-1 rounded ${
-                              editorialStatus === 'Published' ? 'bg-green-100 text-green-800' :
-                              editorialStatus === 'Ready to Publish' ? 'bg-blue-100 text-blue-800' :
-                              editorialStatus === 'Draft Ready' ? 'bg-yellow-100 text-yellow-800' :
-                              editorialStatus === 'In Progress' ? 'bg-orange-100 text-orange-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
+                            <div className={`text-xs px-2 py-1 rounded ${getStatusColor(editorialStatus)}`}>
                               {editorialStatus}
                             </div>
                           </div>
@@ -262,9 +258,9 @@ Focus on relevance to mortgage industry professionals and include actionable ins
         )}
       </Tabs>
 
-      {/* Enhanced Draft Editor */}
+      {/* Improved Draft Editor */}
       {selectedItem && (
-        <EnhancedDraftEditor
+        <ImprovedDraftEditor
           newsItem={selectedItem}
           open={isDraftEditorOpen}
           onOpenChange={setIsDraftEditorOpen}
