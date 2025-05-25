@@ -1,7 +1,7 @@
 
 import { useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
-import { file, upload } from "lucide-react";
+import { File, Upload } from "lucide-react";
 import { processDocumentFile, ProcessedDocument } from "@/utils/documentProcessor";
 import { toast } from "sonner";
 
@@ -80,9 +80,9 @@ export default function DocumentDropZone({ onDocumentProcessed, isProcessing }: 
     >
       <div className="flex flex-col items-center gap-4">
         {isProcessing ? (
-          <upload className="h-12 w-12 text-muted-foreground animate-pulse" />
+          <Upload className="h-12 w-12 text-muted-foreground animate-pulse" />
         ) : (
-          <file className="h-12 w-12 text-muted-foreground" />
+          <File className="h-12 w-12 text-muted-foreground" />
         )}
         
         <div className="space-y-2">
