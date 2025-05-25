@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +18,9 @@ import {
   Target,
   TrendingUp,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Shield,
+  Database
 } from "lucide-react";
 
 interface Source {
@@ -136,14 +137,25 @@ export default function SmartPromptEditor() {
 
   // Generate optimized prompt based on current data
   const generateOptimizedPrompt = () => {
-    const prioritySources = sources?.filter(s => s.priority_tier <= 2) || [];
-    const competitorSources = sources?.filter(s => s.source_type === 'competitor') || [];
-    const primaryThemes = clusters?.map(c => c.primary_theme).slice(0, 5) || [];
+    const prioritySources = sources?.filter(s => s.priority_tier <= 2 && !s.source_type?.toLowerCase().includes('competitor')) || [];
+    const competitorSources = sources?.filter(s => s.source_type?.toLowerCase().includes('competitor')) || [];
+    
+    // Get unique primary themes, limit to top 5
+    const uniqueThemes = Array.from(new Set(clusters?.map(c => c.primary_theme) || [])).slice(0, 5);
+    const topClusters = clusters?.filter(c => uniqueThemes.includes(c.primary_theme)) || [];
+    
+    // Get all keywords from top clusters
+    const allKeywords = topClusters.reduce((acc: string[], cluster) => {
+      if (cluster.keywords && Array.isArray(cluster.keywords)) {
+        acc.push(...cluster.keywords);
+      }
+      return acc;
+    }, []);
 
     const optimizedPrompt = `You are an expert mortgage industry analyst. Search for the most relevant and actionable news for mortgage professionals.
 
 PRIORITY FOCUS AREAS:
-${primaryThemes.map(theme => `• ${theme}`).join('\n')}
+${uniqueThemes.map(theme => `• ${theme}`).join('\n')}
 
 SEARCH REQUIREMENTS:
 1. Focus on BUSINESS IMPACT - regulatory changes, market shifts, technology disruptions
@@ -154,8 +166,11 @@ SEARCH REQUIREMENTS:
 PREFERRED SOURCES (search these first):
 ${prioritySources.map(s => `• ${s.source_name} (${s.source_url})`).join('\n')}
 
-EXCLUDE COMPETITOR COVERAGE:
+${competitorSources.length > 0 ? `EXCLUDE COMPETITOR COVERAGE:
 ${competitorSources.map(s => `• Avoid ${s.source_name}`).join('\n')}
+
+` : ''}CONTENT KEYWORDS:
+${Array.from(new Set(allKeywords)).slice(0, 15).join(', ')}
 
 SCORING CRITERIA:
 - Direct impact on mortgage business operations (30%)
@@ -196,6 +211,14 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
       model: selectedModel
     });
   };
+
+  // Calculate data insights
+  const prioritySourceCount = sources?.filter(s => s.priority_tier <= 2 && !s.source_type?.toLowerCase().includes('competitor')).length || 0;
+  const competitorCount = sources?.filter(s => s.source_type?.toLowerCase().includes('competitor')).length || 0;
+  const uniqueThemeCount = Array.from(new Set(clusters?.map(c => c.primary_theme) || [])).length;
+  const totalKeywords = clusters?.reduce((acc, cluster) => {
+    return acc + (cluster.keywords?.length || 0);
+  }, 0) || 0;
 
   return (
     <div className="space-y-6">
@@ -322,26 +345,66 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
           </Card>
         </div>
 
-        {/* Live Data Insights */}
+        {/* Enhanced Data Insights */}
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">Source Intelligence</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                Data Quality
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="space-y-2">
-                <div className="flex justify-between text-xs">
+                <div className="flex justify-between items-center text-xs">
                   <span>Priority Sources</span>
-                  <Badge variant="secondary">{sources?.filter(s => s.priority_tier <= 2).length || 0}</Badge>
+                  <Badge variant={prioritySourceCount >= 5 ? "default" : "secondary"}>
+                    {prioritySourceCount}
+                  </Badge>
                 </div>
-                <div className="flex justify-between text-xs">
+                <div className="flex justify-between items-center text-xs">
                   <span>Competitors (Excluded)</span>
-                  <Badge variant="destructive">{sources?.filter(s => s.source_type === 'competitor').length || 0}</Badge>
+                  <Badge variant="destructive">{competitorCount}</Badge>
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span>Active Clusters</span>
-                  <Badge variant="outline">{clusters?.length || 0}</Badge>
+                <div className="flex justify-between items-center text-xs">
+                  <span>Focus Themes</span>
+                  <Badge variant="outline">{uniqueThemeCount}</Badge>
                 </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span>Total Keywords</span>
+                  <Badge variant="secondary">{totalKeywords}</Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Shield className="h-4 w-4" />
+                Prompt Quality
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex items-start gap-2 text-xs">
+                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                <span>Sources filtered by priority tiers</span>
+              </div>
+              <div className="flex items-start gap-2 text-xs">
+                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                <span>Competitors automatically excluded</span>
+              </div>
+              <div className="flex items-start gap-2 text-xs">
+                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                <span>Keywords grouped by themes</span>
+              </div>
+              <div className="flex items-start gap-2 text-xs">
+                {prioritySourceCount >= 5 ? (
+                  <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                )}
+                <span>Sufficient priority sources</span>
               </div>
             </CardContent>
           </Card>
@@ -352,21 +415,23 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="flex items-start gap-2 text-xs">
-                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                <TrendingUp className="h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
                 <span>Include specific business impact criteria</span>
               </div>
               <div className="flex items-start gap-2 text-xs">
-                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                <span>Exclude competitor coverage automatically</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                <TrendingUp className="h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
                 <span>Focus on regulatory and policy changes</span>
               </div>
               <div className="flex items-start gap-2 text-xs">
                 <TrendingUp className="h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
                 <span>Prioritize market trend analysis</span>
               </div>
+              {prioritySourceCount < 5 && (
+                <div className="flex items-start gap-2 text-xs">
+                  <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                  <span>Add more Tier 1-2 sources for better coverage</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

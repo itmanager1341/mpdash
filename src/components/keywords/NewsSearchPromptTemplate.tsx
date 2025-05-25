@@ -33,7 +33,6 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   
   // Auto-generate template when component mounts or dependencies change
   useEffect(() => {
-    // Only auto-generate if there's no existing value or if we're starting fresh
     if (!value || value.trim() === "") {
       handleGenerateTemplate();
     }
@@ -46,7 +45,6 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
     setIsCustomizing(true);
   };
   
-  // Helper function to convert recency filter to hours
   const getHoursFromRecency = (recency: string): string => {
     switch (recency) {
       case '30m': return "30 minutes";
@@ -56,135 +54,140 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       case 'week': return "7 days";
       case 'month': return "30 days";
       case 'year': return "365 days";
-      default: return "24 hours"; // Default value
+      default: return "24 hours";
     }
   };
   
-  // Generate template prompt based on clusters and sources
   const generateTemplate = () => {
-    // Group sources by tier
-    const sourcesByTier = sources.reduce((acc: any, source: any) => {
-      const tier = source.priority_tier || 4;
-      if (!acc[tier]) acc[tier] = [];
-      acc[tier].push(source);
-      return acc;
-    }, {});
+    // Filter priority sources (tier 1-2 only) and exclude competitors
+    const prioritySources = sources.filter(s => 
+      s.priority_tier <= 2 && 
+      !s.source_type?.toLowerCase().includes('competitor')
+    );
     
-    // Filter clusters by selected themes if provided
-    const filteredClusters = selectedThemes && selectedThemes.length > 0
-      ? clusters.filter(cluster => selectedThemes.includes(cluster.primary_theme))
-      : clusters;
+    // Get competitor sources for exclusion
+    const competitorSources = sources.filter(s => 
+      s.source_type?.toLowerCase().includes('competitor')
+    );
     
-    // Get time range from search settings or use default
+    // Filter clusters by selected themes or use top themes
+    let filteredClusters = [];
+    if (selectedThemes && selectedThemes.length > 0) {
+      filteredClusters = clusters.filter(cluster => 
+        selectedThemes.includes(cluster.primary_theme)
+      );
+    } else {
+      // Get unique primary themes, limit to top 5
+      const uniqueThemes = Array.from(new Set(clusters.map(c => c.primary_theme))).slice(0, 5);
+      filteredClusters = clusters.filter(cluster => 
+        uniqueThemes.includes(cluster.primary_theme)
+      );
+    }
+    
     const timeRange = searchSettings?.recency_filter
       ? getHoursFromRecency(searchSettings.recency_filter)
       : "24 hours";
     
-    // Build prompt template
-    let template = `You are a senior editorial assistant for MortgagePoint, a leading news outlet covering mortgage lending, servicing, housing policy, regulation, and macroeconomic trends. Your task is to surface the most relevant and timely articles for our daily email briefing. Prioritize regulatory signals, data-driven insights, and impactful policy or market movements.
+    let template = `You are a senior editorial assistant for MortgagePoint, a leading news outlet covering mortgage lending, servicing, housing policy, regulation, and macroeconomic trends. Your task is to surface the most relevant and timely articles for our daily email briefing.
 
 SEARCH & FILTER RULES:
-1. Time Range:
-Only include articles published within the last ${timeRange}.
+1. Time Range: Only include articles published within the last ${timeRange}.
 
-2. Source Prioritization (in strict order):
+2. Priority Sources (search these first):
 `;
 
-    // Add source tiers
-    const tierNames = {
-      1: "Tier 1: Government & GSEs",
-      2: "Tier 2: Economic Organizations",
-      3: "Tier 3: National Media",
-      4: "Tier 4: Trade Media"
-    };
-    
-    Object.keys(sourcesByTier).sort().forEach((tier) => {
-      const tierIndex = parseInt(tier);
-      const tierName = tierNames[tierIndex as keyof typeof tierNames] || `Tier ${tier}`;
-                      
-      const tierSources = sourcesByTier[tier];
-      if (tierSources && tierSources.length > 0) {
-        template += `\n${tierName}\n`;
-        const siteQuery = tierSources.map((s: any) => {
-          try {
-            return `site:${new URL(s.source_url).hostname.replace('www.', '')}`;
-          } catch (e) {
-            return `site:${s.source_url.replace('http://', '').replace('https://', '').replace('www.', '').split('/')[0]}`;
-          }
-        }).join(', ');
-        template += `${siteQuery}\n`;
-      }
-    });
-
-    template += `\n3. Topical Relevance (Must Match at Least One Cluster Below):\n\nCluster Keywords\n`;
-    
-    // Group clusters by primary theme for better organization
-    const clustersByTheme: Record<string, any[]> = {};
-    
-    filteredClusters.forEach(cluster => {
-      const theme = cluster.primary_theme || "General";
-      if (!clustersByTheme[theme]) {
-        clustersByTheme[theme] = [];
-      }
-      clustersByTheme[theme].push(cluster);
-    });
-    
-    // If we have no clusters from the selected themes, use all clusters
-    const themeKeys = Object.keys(clustersByTheme);
-    const clustersToUse = themeKeys.length > 0 ? clustersByTheme : 
-      clusters.reduce((acc: Record<string, any[]>, cluster) => {
-        const theme = cluster.primary_theme || "General";
-        if (!acc[theme]) acc[theme] = [];
-        acc[theme].push(cluster);
-        return acc;
-      }, {});
-    
-    // Add clusters with keywords
-    Object.keys(clustersToUse).forEach(theme => {
-      const themeClusters = clustersToUse[theme];
-      if (themeClusters && themeClusters.length > 0) {
-        // Collect all keywords from clusters with this theme
-        let allKeywords: string[] = [];
-        themeClusters.forEach(cluster => {
-          if (cluster.keywords && Array.isArray(cluster.keywords) && cluster.keywords.length > 0) {
-            allKeywords = [...allKeywords, ...cluster.keywords];
-          }
-        });
-        
-        // Add theme and its keywords if any exist
-        if (allKeywords.length > 0) {
-          const uniqueKeywords = Array.from(new Set(allKeywords));
-          template += `${theme}: ${uniqueKeywords.join(', ')}\n`;
-        } else {
-          // If no keywords found but the cluster exists, add the theme name as keyword
-          template += `${theme}: ${theme.toLowerCase()}\n`;
+    // Add priority sources with proper grouping
+    if (prioritySources.length > 0) {
+      const sourceQueries = prioritySources.map(s => {
+        try {
+          return `site:${new URL(s.source_url).hostname.replace('www.', '')}`;
+        } catch (e) {
+          return `site:${s.source_url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0]}`;
         }
+      });
+      template += sourceQueries.join(' OR ') + '\n\n';
+    }
+
+    template += `3. Content Focus Areas & Keywords:\n\n`;
+    
+    // Group clusters by primary theme with keywords and sub-themes
+    const clustersByTheme = filteredClusters.reduce((acc: Record<string, any[]>, cluster) => {
+      const theme = cluster.primary_theme || "General";
+      if (!acc[theme]) acc[theme] = [];
+      acc[theme].push(cluster);
+      return acc;
+    }, {});
+    
+    Object.entries(clustersByTheme).forEach(([theme, themeClusters]) => {
+      template += `${theme}:\n`;
+      
+      // Collect all keywords and sub-themes for this primary theme
+      const allKeywords: string[] = [];
+      const subThemes: string[] = [];
+      
+      themeClusters.forEach(cluster => {
+        if (cluster.sub_theme && !subThemes.includes(cluster.sub_theme)) {
+          subThemes.push(cluster.sub_theme);
+        }
+        if (cluster.keywords && Array.isArray(cluster.keywords)) {
+          allKeywords.push(...cluster.keywords);
+        }
+      });
+      
+      // Add sub-themes
+      if (subThemes.length > 0) {
+        template += `  Sub-areas: ${subThemes.join(', ')}\n`;
       }
+      
+      // Add unique keywords (limit to most relevant)
+      if (allKeywords.length > 0) {
+        const uniqueKeywords = Array.from(new Set(allKeywords)).slice(0, 8);
+        template += `  Keywords: ${uniqueKeywords.join(', ')}\n`;
+      }
+      
+      template += '\n';
     });
 
-    template += `
-OUTPUT FORMAT PER ARTICLE:
-Return at least 1 entry from each Tier with maximum of 10 entries in the following structure:
+    // Add competitor exclusion if any exist
+    if (competitorSources.length > 0) {
+      template += `4. Exclude Competitor Coverage:\n`;
+      competitorSources.forEach(s => {
+        template += `• Avoid ${s.source_name}\n`;
+      });
+      template += '\n';
+    }
+
+    template += `SEARCH REQUIREMENTS:
+• Focus on BUSINESS IMPACT - regulatory changes, market shifts, technology disruptions
+• Prioritize PRIMARY SOURCES - government agencies, Fed announcements, industry leaders  
+• Exclude consumer-focused content and basic homebuying advice
+• Look for competitive intelligence and market opportunities
+
+SCORING CRITERIA:
+- Direct impact on mortgage business operations (30%)
+- Regulatory/policy implications (25%)
+- Market trends and data (20%)
+- Technology and innovation (15%)
+- Competitive landscape changes (10%)
+
+OUTPUT FORMAT:
+Return 5-10 articles in this JSON structure:
 
 {
   "articles": [
     {
       "title": "Full headline of the article",
-      "url": "Direct link to article",
-      "cluster": "One of the predefined clusters",
-      "summary": "A 1–2 sentence, click-optimized description designed for an email newsletter. Highlight urgency, reader value, or key data point.",
-      "source": "GSE, Government, Economic Org, Media, or Competitor",
-      "published": "ISO date format or human-readable recent time"
+      "url": "Direct link to article", 
+      "focus_area": "One of the primary themes above",
+      "summary": "1-2 sentence summary highlighting business impact and urgency",
+      "source": "Source name and tier",
+      "relevance_score": 85,
+      "justification": "Brief explanation of score and business relevance"
     }
   ]
 }
 
-EDITORIAL NOTES:
-Prefer articles that provide data, regulatory direction, or industry impact. Support with key current economic indicators from FRED if applicable.
-
-Avoid opinion/editorial unless from a government or economic authority.
-
-Use natural, non-jargony language in summaries suitable for C-suite and mid-level mortgage professionals.`;
+Search for articles matching these criteria and provide relevance scores (0-100) with justification.`;
 
     return template;
   };
@@ -208,10 +211,10 @@ Use natural, non-jargony language in summaries suitable for C-suite and mid-leve
           
           <Alert className="bg-blue-50">
             <Info className="h-4 w-4" />
-            <AlertTitle>Structured News Search Prompt</AlertTitle>
+            <AlertTitle>Intelligent News Search Prompt</AlertTitle>
             <AlertDescription>
-              This template incorporates your selected sources, clusters, and settings. 
-              {!readOnly && " You can edit it directly below or regenerate it from your selections."}
+              This template uses your priority sources, keywords, and themes for targeted news discovery.
+              {!readOnly && " You can edit it directly or regenerate from your current settings."}
             </AlertDescription>
           </Alert>
           
