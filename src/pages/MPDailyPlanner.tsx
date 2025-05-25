@@ -111,7 +111,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
           },
           status: 'draft'
         },
-        timestamp: new Date().toISOO(),
+        timestamp: new Date().toISOString(),
         source: 'AI Generated',
         url: '',
         destinations: ['mpdaily']
