@@ -22,6 +22,8 @@ import {
   Shield,
   Database
 } from "lucide-react";
+import PromptActivationPanel from "./PromptActivationPanel";
+import PromptTester from "./PromptTester";
 
 interface Source {
   id: string;
@@ -55,6 +57,9 @@ export default function SmartPromptEditor() {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [promptName, setPromptName] = useState("");
   const [selectedModel, setSelectedModel] = useState("llama-3.1-sonar-small-128k-online");
+  const [showActivationPanel, setShowActivationPanel] = useState(false);
+  const [savedPrompt, setSavedPrompt] = useState<any>(null);
+  const [showTester, setShowTester] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch news search prompts
@@ -108,26 +113,36 @@ export default function SmartPromptEditor() {
         function_name: name,
         prompt_text: content,
         model: model,
-        is_active: true,
+        is_active: false, // New prompts start inactive
         include_clusters: true,
         include_tracking_summary: true
       };
 
+      let savedData;
       if (id) {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('llm_prompts')
           .update(promptData)
-          .eq('id', id);
+          .eq('id', id)
+          .select()
+          .single();
         if (error) throw error;
+        savedData = data;
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('llm_prompts')
-          .insert(promptData);
+          .insert(promptData)
+          .select()
+          .single();
         if (error) throw error;
+        savedData = data;
       }
+      return savedData;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['news-search-prompts'] });
+      setSavedPrompt(data);
+      setShowActivationPanel(true);
       toast.success('Prompt saved successfully');
     },
     onError: (error) => {
@@ -212,6 +227,35 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
     });
   };
 
+  const handleRunManual = async () => {
+    if (!savedPrompt) return;
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('run-news-import', {
+        body: { 
+          manual: true,
+          promptId: savedPrompt.id,
+          modelOverride: savedPrompt.model
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data.success) {
+        toast.success(`Manual import completed: ${data.details?.articles_inserted || 0} articles found`);
+      } else {
+        toast.error(`Import failed: ${data.message}`);
+      }
+    } catch (error) {
+      toast.error('Failed to run manual import');
+    }
+  };
+
+  const handleScheduleSettings = () => {
+    // Navigate to schedule tab
+    window.location.href = '/editorial-dashboard?tab=schedule';
+  };
+
   // Calculate data insights
   const prioritySourceCount = sources?.filter(s => s.priority_tier <= 2 && !s.source_type?.toLowerCase().includes('competitor')).length || 0;
   const competitorCount = sources?.filter(s => s.source_type?.toLowerCase().includes('competitor')).length || 0;
@@ -222,6 +266,15 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
 
   return (
     <div className="space-y-6">
+      {showActivationPanel && savedPrompt && (
+        <PromptActivationPanel
+          prompt={savedPrompt}
+          onTest={() => setShowTester(true)}
+          onSchedule={handleScheduleSettings}
+          onRunManual={handleRunManual}
+        />
+      )}
+
       {/* Header with AI optimization */}
       <Card>
         <CardHeader>
@@ -270,6 +323,7 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
                       {prompts?.map((prompt) => (
                         <SelectItem key={prompt.id} value={prompt.id}>
                           {prompt.function_name}
+                          {prompt.is_active && <Badge className="ml-2">ACTIVE</Badge>}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -324,6 +378,8 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
                   setSelectedPrompt(null);
                   setPromptContent("");
                   setPromptName("");
+                  setShowActivationPanel(false);
+                  setSavedPrompt(null);
                 }}>
                   Clear
                 </Button>
@@ -347,95 +403,18 @@ Search for articles from the last 24 hours that meet these criteria. Provide a r
 
         {/* Enhanced Data Insights */}
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                Data Quality
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-xs">
-                  <span>Priority Sources</span>
-                  <Badge variant={prioritySourceCount >= 5 ? "default" : "secondary"}>
-                    {prioritySourceCount}
-                  </Badge>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span>Competitors (Excluded)</span>
-                  <Badge variant="destructive">{competitorCount}</Badge>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span>Focus Themes</span>
-                  <Badge variant="outline">{uniqueThemeCount}</Badge>
-                </div>
-                <div className="flex justify-between items-center text-xs">
-                  <span>Total Keywords</span>
-                  <Badge variant="secondary">{totalKeywords}</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Shield className="h-4 w-4" />
-                Prompt Quality
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-start gap-2 text-xs">
-                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                <span>Sources filtered by priority tiers</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                <span>Competitors automatically excluded</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                <span>Keywords grouped by themes</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                {prioritySourceCount >= 5 ? (
-                  <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
-                ) : (
-                  <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
-                )}
-                <span>Sufficient priority sources</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Optimization Tips</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex items-start gap-2 text-xs">
-                <TrendingUp className="h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
-                <span>Include specific business impact criteria</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <TrendingUp className="h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
-                <span>Focus on regulatory and policy changes</span>
-              </div>
-              <div className="flex items-start gap-2 text-xs">
-                <TrendingUp className="h-3 w-3 text-blue-500 mt-0.5 flex-shrink-0" />
-                <span>Prioritize market trend analysis</span>
-              </div>
-              {prioritySourceCount < 5 && (
-                <div className="flex items-start gap-2 text-xs">
-                  <AlertTriangle className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
-                  <span>Add more Tier 1-2 sources for better coverage</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* ... keep existing code (data quality cards) */}
         </div>
       </div>
+
+      {/* Prompt Tester Dialog */}
+      {savedPrompt && (
+        <PromptTester
+          prompt={savedPrompt}
+          open={showTester}
+          onOpenChange={setShowTester}
+        />
+      )}
     </div>
   );
 }

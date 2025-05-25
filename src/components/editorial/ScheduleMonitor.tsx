@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   Activity,
   Settings,
-  TrendingUp
+  TrendingUp,
+  Sparkles
 } from "lucide-react";
 
 export default function ScheduleMonitor() {
@@ -30,6 +31,22 @@ export default function ScheduleMonitor() {
         .from('scheduled_job_settings')
         .select('*')
         .eq('job_name', 'news_import')
+        .maybeSingle();
+        
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch active prompt information
+  const { data: activePrompt } = useQuery({
+    queryKey: ['active-news-prompt'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('llm_prompts')
+        .select('*')
+        .eq('is_active', true)
+        .like('function_name', '%news%')
         .maybeSingle();
         
       if (error) throw error;
@@ -80,13 +97,14 @@ export default function ScheduleMonitor() {
     }
   });
 
-  // Manual run mutation
+  // Manual run mutation with active prompt
   const runManualMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await supabase.functions.invoke('run-news-import', {
         body: { 
           manual: true,
-          modelOverride: "llama-3.1-sonar-small-128k-online"
+          promptId: activePrompt?.id,
+          modelOverride: activePrompt?.model || "llama-3.1-sonar-small-128k-online"
         }
       });
       if (error) throw error;
@@ -153,6 +171,57 @@ export default function ScheduleMonitor() {
 
   return (
     <div className="space-y-6">
+      {/* Active Prompt Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            Active News Search Prompt
+          </CardTitle>
+          <CardDescription>
+            Currently configured prompt for automated news discovery
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activePrompt ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h3 className="font-medium">{activePrompt.function_name}</h3>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default">ACTIVE</Badge>
+                    <Badge variant="outline">{activePrompt.model}</Badge>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.location.href = '/editorial-dashboard?tab=prompts'}
+                >
+                  Edit Prompt
+                </Button>
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Last updated: {new Date(activePrompt.updated_at).toLocaleDateString()}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-4">
+              <AlertCircle className="h-8 w-8 text-amber-500 mx-auto mb-2" />
+              <p className="text-muted-foreground">No active news search prompt</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="mt-2"
+                onClick={() => window.location.href = '/editorial-dashboard?tab=prompts'}
+              >
+                Create & Activate Prompt
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Job Status Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -204,6 +273,11 @@ export default function ScheduleMonitor() {
           </CardTitle>
           <CardDescription>
             Manage automated news import scheduling and execution
+            {activePrompt && (
+              <span className="block mt-1 text-sm">
+                Using prompt: <strong>{activePrompt.function_name}</strong>
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -212,19 +286,24 @@ export default function ScheduleMonitor() {
               <span className="font-medium">Automated Import</span>
               <p className="text-sm text-muted-foreground">
                 Run news import automatically on schedule
+                {!activePrompt && (
+                  <span className="block text-amber-600">
+                    ⚠️ No active prompt configured
+                  </span>
+                )}
               </p>
             </div>
             <Switch 
               checked={jobSettings?.is_enabled || false}
               onCheckedChange={toggleJobEnabled}
-              disabled={updateJobMutation.isPending || settingsLoading}
+              disabled={updateJobMutation.isPending || settingsLoading || !activePrompt}
             />
           </div>
 
           <div className="flex gap-4">
             <Button 
               onClick={() => runManualMutation.mutate()}
-              disabled={runManualMutation.isPending}
+              disabled={runManualMutation.isPending || !activePrompt}
               className="flex items-center gap-2"
             >
               {runManualMutation.isPending ? (
@@ -249,6 +328,15 @@ export default function ScheduleMonitor() {
               Refresh Status
             </Button>
           </div>
+
+          {!activePrompt && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-amber-700 text-sm">
+                <strong>Action Required:</strong> Please activate a news search prompt 
+                before enabling automated imports.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
