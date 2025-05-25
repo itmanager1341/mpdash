@@ -18,8 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import DocumentDropZone from "./DocumentDropZone";
+import { ProcessedDocument } from "@/utils/documentProcessor";
 
 interface CreateDraftDialogProps {
   open: boolean;
@@ -35,7 +38,25 @@ export default function CreateDraftDialog({
   const [title, setTitle] = useState("");
   const [type, setType] = useState("article");
   const [description, setDescription] = useState("");
+  const [fullContent, setFullContent] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [activeTab, setActiveTab] = useState("manual");
+
+  const handleDocumentProcessed = (document: ProcessedDocument) => {
+    setTitle(document.title);
+    setDescription(document.content.substring(0, 200) + (document.content.length > 200 ? '...' : ''));
+    setFullContent(document.content);
+    setActiveTab("manual"); // Switch to manual tab to review/edit
+  };
+
+  const resetForm = () => {
+    setTitle("");
+    setType("article");
+    setDescription("");
+    setFullContent("");
+    setActiveTab("manual");
+  };
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -52,7 +73,7 @@ export default function CreateDraftDialog({
           editorial_content: {
             headline: title,
             summary: description,
-            full_content: "",
+            full_content: fullContent,
             cta: "Read more..."
           },
           metadata: {
@@ -80,11 +101,7 @@ export default function CreateDraftDialog({
       toast.success("Draft created successfully");
       onDraftCreated(data);
       onOpenChange(false);
-      
-      // Reset form
-      setTitle("");
-      setType("article");
-      setDescription("");
+      resetForm();
     } catch (error) {
       console.error("Error creating draft:", error);
       toast.error("Failed to create draft");
@@ -95,58 +112,92 @@ export default function CreateDraftDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Draft</DialogTitle>
           <DialogDescription>
-            Start a new editorial piece from scratch
+            Start a new editorial piece from scratch or import an existing document
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Article Title</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter article title..."
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+            <TabsTrigger value="import">Import Document</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="import" className="space-y-4">
+            <DocumentDropZone 
+              onDocumentProcessed={handleDocumentProcessed}
+              isProcessing={isProcessing}
             />
-          </div>
+          </TabsContent>
+          
+          <TabsContent value="manual" className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Article Title</Label>
+              <Input
+                id="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Enter article title..."
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="type">Article Type</Label>
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="article">News Article</SelectItem>
-                <SelectItem value="analysis">Analysis Piece</SelectItem>
-                <SelectItem value="feature">Feature Story</SelectItem>
-                <SelectItem value="opinion">Opinion/Editorial</SelectItem>
-                <SelectItem value="guide">How-to Guide</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="type">Article Type</Label>
+              <Select value={type} onValueChange={setType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="article">News Article</SelectItem>
+                  <SelectItem value="analysis">Analysis Piece</SelectItem>
+                  <SelectItem value="feature">Feature Story</SelectItem>
+                  <SelectItem value="opinion">Opinion/Editorial</SelectItem>
+                  <SelectItem value="guide">How-to Guide</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Brief Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What will this article cover?"
-              rows={3}
-            />
-          </div>
-        </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Brief Description</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="What will this article cover?"
+                rows={3}
+              />
+            </div>
 
-        <div className="flex justify-end gap-2">
+            {fullContent && (
+              <div className="space-y-2">
+                <Label htmlFor="content">Full Content</Label>
+                <Textarea
+                  id="content"
+                  value={fullContent}
+                  onChange={(e) => setFullContent(e.target.value)}
+                  placeholder="Full article content..."
+                  rows={8}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Content imported from document. You can edit it above.
+                </p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        <div className="flex justify-end gap-2 pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={isCreating}>
+          <Button 
+            onClick={handleCreate} 
+            disabled={isCreating || !title.trim()}
+          >
             {isCreating ? "Creating..." : "Create Draft"}
           </Button>
         </div>
