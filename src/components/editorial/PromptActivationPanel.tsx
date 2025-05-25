@@ -11,7 +11,8 @@ import {
   TestTube, 
   CheckCircle2,
   Activity,
-  Zap
+  Zap,
+  Settings
 } from "lucide-react";
 
 interface PromptActivationPanelProps {
@@ -23,12 +24,14 @@ interface PromptActivationPanelProps {
   };
   onTest: () => void;
   onRunManual: () => void;
+  onSchedule?: () => void;
 }
 
 export default function PromptActivationPanel({ 
   prompt, 
   onTest, 
-  onRunManual 
+  onRunManual,
+  onSchedule
 }: PromptActivationPanelProps) {
   const [isActivating, setIsActivating] = useState(false);
   const queryClient = useQueryClient();
@@ -104,7 +107,7 @@ export default function PromptActivationPanel({
           <Badge variant="outline">{prompt.model}</Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <Button onClick={onTest} variant="outline" size="sm">
             <TestTube className="h-4 w-4 mr-2" />
             Test
@@ -137,6 +140,13 @@ export default function PromptActivationPanel({
             <Play className="h-4 w-4 mr-2" />
             Run Now
           </Button>
+
+          {onSchedule && (
+            <Button onClick={onSchedule} variant="outline" size="sm">
+              <Settings className="h-4 w-4 mr-2" />
+              Schedule
+            </Button>
+          )}
         </div>
 
         {!prompt.is_active && (
