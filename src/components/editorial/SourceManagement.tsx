@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -163,27 +162,48 @@ export default function SourceManagement() {
   };
 
   const getRelationshipBadge = (type: string) => {
-    console.log('Getting badge for source_type:', type, 'Type of value:', typeof type);
-    
     // Handle null, undefined, or empty string
     if (!type) {
       return <Badge variant="default">Source</Badge>;
     }
     
-    // Convert to lowercase for comparison to handle case sensitivity
+    // Convert to lowercase for comparison
     const normalizedType = type.toLowerCase().trim();
     
-    switch (normalizedType) {
-      case 'competitor':
-        return <Badge variant="destructive">Competitor</Badge>;
-      case 'partner':
-        return <Badge variant="secondary">Partner</Badge>;
-      case 'government':
-        return <Badge variant="outline" className="border-blue-500 text-blue-700">Government</Badge>;
-      case 'source':
-      default:
-        return <Badge variant="default">Source</Badge>;
+    // Map actual database values to appropriate badges
+    if (normalizedType.includes('government') || normalizedType.includes('agency') || normalizedType.includes('committee')) {
+      return <Badge variant="outline" className="border-blue-500 text-blue-700">Government</Badge>;
     }
+    if (normalizedType.includes('gse')) {
+      return <Badge variant="outline" className="border-green-500 text-green-700">GSE</Badge>;
+    }
+    if (normalizedType.includes('media')) {
+      return <Badge variant="outline" className="border-purple-500 text-purple-700">Media</Badge>;
+    }
+    if (normalizedType.includes('competitor')) {
+      return <Badge variant="destructive">Competitor</Badge>;
+    }
+    if (normalizedType.includes('partner')) {
+      return <Badge variant="secondary">Partner</Badge>;
+    }
+    if (normalizedType.includes('think tank')) {
+      return <Badge variant="outline" className="border-orange-500 text-orange-700">Think Tank</Badge>;
+    }
+    if (normalizedType.includes('trade association') || normalizedType.includes('economic organization')) {
+      return <Badge variant="outline" className="border-teal-500 text-teal-700">Association</Badge>;
+    }
+    if (normalizedType.includes('legislator')) {
+      return <Badge variant="outline" className="border-indigo-500 text-indigo-700">Legislator</Badge>;
+    }
+    if (normalizedType.includes('press release') || normalizedType.includes('service')) {
+      return <Badge variant="outline" className="border-gray-500 text-gray-700">Press Service</Badge>;
+    }
+    if (normalizedType.includes('data provider') || normalizedType.includes('platform')) {
+      return <Badge variant="outline" className="border-cyan-500 text-cyan-700">Data/Platform</Badge>;
+    }
+    
+    // Default fallback - show the actual type from database
+    return <Badge variant="default">{type}</Badge>;
   };
 
   const getPriorityIcon = (tier: number) => {
@@ -198,6 +218,25 @@ export default function SourceManagement() {
     acc[tier].push(source);
     return acc;
   }, {} as Record<number, Source[]>);
+
+  // Get all unique source types from the database for the dropdown
+  const sourceTypeOptions = [
+    "source",
+    "competitor", 
+    "partner",
+    "government",
+    "Government Agency",
+    "Government Committee", 
+    "GSE",
+    "Media",
+    "Think Tank",
+    "Trade Association",
+    "Economic Organization",
+    "Legislator",
+    "Press Release Service",
+    "Data Provider",
+    "Real Estate Platform"
+  ];
 
   return (
     <div className="space-y-6">
@@ -273,18 +312,18 @@ export default function SourceManagement() {
                 <Select 
                   value={newSource.source_type} 
                   onValueChange={(value) => {
-                    console.log('Form source_type changed to:', value);
                     setNewSource({ ...newSource, source_type: value });
                   }}
                 >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select source type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="source">Source</SelectItem>
-                    <SelectItem value="competitor">Competitor</SelectItem>
-                    <SelectItem value="partner">Partner</SelectItem>
-                    <SelectItem value="government">Government</SelectItem>
+                    {sourceTypeOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
