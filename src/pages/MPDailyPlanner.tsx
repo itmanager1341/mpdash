@@ -1,14 +1,14 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, Edit, List, Lightbulb } from "lucide-react";
+import { Calendar, List, Lightbulb, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import DraftEditor from "@/components/editor/DraftEditor";
+import { UnifiedNewsCard } from "@/components/news/UnifiedNewsCard";
 import { NewsItem } from "@/types/news";
 import {
   Dialog,
@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 const MPDailyPlanner = () => {
   const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
@@ -50,7 +51,6 @@ const MPDailyPlanner = () => {
 
   const handlePublish = async (id: string) => {
     try {
-      // With our simplified schema, we just update the content_variants
       const { error } = await supabase
         .from('news')
         .update({ 
@@ -85,7 +85,6 @@ const MPDailyPlanner = () => {
     toast.info("Generating content...", { duration: 2000 });
     
     try {
-      // Call the Supabase edge function to generate content
       const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
         body: {
           prompt_text: `Create a concise email newsletter item about: ${aiPrompt}
@@ -104,14 +103,13 @@ Format your response with:
       
       if (error) throw error;
       
-      // Create a dummy news item with the generated content
       setSelectedItem({
         id: 'temp-' + Date.now(),
         headline: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
         summary: typeof data.output === 'string' 
           ? data.output.slice(0, 150) 
           : JSON.stringify(data.output).slice(0, 150),
-        status: 'draft', // Added status property to fix the type error
+        status: 'draft',
         content_variants: {
           title: `AI-Generated: ${aiPrompt.slice(0, 30)}${aiPrompt.length > 30 ? '...' : ''}`,
           summary: typeof data.output === 'string' 
@@ -133,6 +131,24 @@ Format your response with:
     }
   };
 
+  // Create custom action handlers for the unified cards
+  const handleCreateDraft = (item: NewsItem) => {
+    openDraftEditor(item);
+  };
+
+  const handleEditDraft = (item: NewsItem) => {
+    openDraftEditor(item);
+  };
+
+  const handlePublishItem = (item: NewsItem) => {
+    handlePublish(item.id);
+  };
+
+  // Enhanced status change handler
+  const handleStatusChange = () => {
+    refetch();
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8">
@@ -148,7 +164,7 @@ Format your response with:
               <TabsList>
                 <TabsTrigger value="list">
                   <List className="h-4 w-4 mr-2" />
-                  List View
+                  Content Queue
                 </TabsTrigger>
                 <TabsTrigger value="schedule">
                   <Calendar className="h-4 w-4 mr-2" />
@@ -159,10 +175,9 @@ Format your response with:
             
             <Button 
               variant="outline" 
-              className="ml-2 flex items-center gap-2"
               onClick={() => setShowAiAssistant(true)}
             >
-              <Lightbulb className="h-4 w-4" />
+              <Lightbulb className="h-4 w-4 mr-2" />
               AI Assistant
             </Button>
           </div>
@@ -181,100 +196,52 @@ Format your response with:
         ) : (
           <>
             <TabsContent value="list">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-4">
                 {newsItems && newsItems.length > 0 ? (
-                  newsItems.map((item) => {
-                    const hasPublished = item.content_variants?.published;
-                    const hasDraft = item.content_variants?.title || item.content_variants?.summary;
-                    
-                    return (
-                      <Card key={item.id} variant="elevated" className="overflow-hidden h-[280px] flex flex-col">
-                        <CardHeader className="pb-0">
-                          <CardTitle className="text-lg mb-2 line-clamp-2">
-                            {item.content_variants?.title || item.headline}
-                          </CardTitle>
-                        </CardHeader>
-                        
-                        <CardContent className="flex flex-col flex-grow justify-between pt-4">
-                          <div>
-                            <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
-                              {item.content_variants?.summary || item.summary || 'No summary available'}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Source: {item.source} | Date: {new Date(item.timestamp).toLocaleDateString()}
-                            </p>
-                          </div>
-                          
-                          <div className="mt-4 flex justify-end space-x-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => window.open(item.url, '_blank')}
-                            >
-                              View Source
-                            </Button>
-                            
-                            {!hasDraft && (
-                              <Button 
-                                variant="default" 
-                                size="sm"
-                                onClick={() => openDraftEditor(item)}
-                              >
-                                <Edit className="h-4 w-4 mr-2" />
-                                Write Draft
-                              </Button>
-                            )}
-                            
-                            {(hasDraft && !hasPublished) && (
-                              <>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm"
-                                  onClick={() => openDraftEditor(item)}
-                                >
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit Draft
-                                </Button>
-                                
-                                <Button 
-                                  variant="default" 
-                                  size="sm"
-                                  onClick={() => handlePublish(item.id)}
-                                >
-                                  Publish
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {newsItems.map((item) => {
+                      const hasPublished = item.content_variants?.published;
+                      const hasDraft = item.content_variants?.title || item.content_variants?.summary;
+                      
+                      return (
+                        <UnifiedNewsCard
+                          key={item.id}
+                          newsItem={item}
+                          onDetailsClick={(item) => openDraftEditor(item)}
+                          onStatusChange={handleStatusChange}
+                          showActions={true}
+                          className="h-full"
+                        />
+                      );
+                    })
+                  </div>
                 ) : (
-                  <div className="col-span-3 bg-muted/50 rounded-md p-8 text-center">
+                  <div className="bg-muted/50 rounded-md p-8 text-center">
                     <h3 className="text-xl font-semibold mb-2">No content for MPDaily</h3>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground mb-4">
                       There are no items currently approved for MPDaily. 
-                      Approve some items from Today's Briefing.
+                      Approve some items from News Triage to get started.
                     </p>
+                    <Button 
+                      variant="outline"
+                      onClick={() => window.location.href = '/'}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Go to News Triage
+                    </Button>
                   </div>
                 )}
               </div>
             </TabsContent>
 
             <TabsContent value="schedule">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Publication Schedule</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="p-8 text-center">
-                    <p className="text-muted-foreground">
-                      Calendar scheduling view will be implemented in a future update.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="bg-muted/50 rounded-md p-8 text-center">
+                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-xl font-semibold mb-2">Publication Schedule</h3>
+                <p className="text-muted-foreground">
+                  Calendar scheduling view will be implemented in a future update.
+                </p>
+              </div>
             </TabsContent>
           </>
         )}
@@ -305,9 +272,9 @@ Format your response with:
               <label htmlFor="ai-prompt" className="text-sm font-medium mb-2 block">
                 What would you like to create content about?
               </label>
-              <textarea 
+              <Textarea 
                 id="ai-prompt" 
-                className="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm"
+                className="min-h-24"
                 placeholder="e.g., 'Create a newsletter item about recent changes to mortgage interest rates'"
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
