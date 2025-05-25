@@ -14,6 +14,7 @@ import Documentation from "@/pages/Documentation";
 import LlmManagement from "@/pages/LlmManagement";
 import KeywordManagement from "@/pages/KeywordManagement";
 import EditorialDashboard from "@/pages/EditorialDashboard";
+import EditorialWorkspace from "@/pages/EditorialWorkspace";
 import NotFound from "@/pages/NotFound";
 import Auth from "@/pages/Auth";
 import Profile from "@/pages/Profile";
@@ -75,6 +76,7 @@ function App() {
             <Route path="/llm-management" element={<LlmManagement />} />
             <Route path="/keyword-management" element={<KeywordManagement />} />
             <Route path="/editorial-dashboard" element={<EditorialDashboard />} />
+            <Route path="/editorial-workspace" element={<EditorialWorkspace />} />
           </Route>
           
           <Route element={<ProtectedRoute requiredRole="admin" />}>

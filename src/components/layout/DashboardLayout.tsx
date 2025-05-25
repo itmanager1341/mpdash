@@ -27,7 +27,8 @@ import {
   LogOut,
   User,
   Search,
-  Command
+  Command,
+  Edit3
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -86,6 +87,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     <a href="/">
                       <LayoutDashboard />
                       <span>Today's Briefing</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Editorial Workspace">
+                    <a href="/editorial-workspace">
+                      <Edit3 />
+                      <span>Editorial Workspace</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
