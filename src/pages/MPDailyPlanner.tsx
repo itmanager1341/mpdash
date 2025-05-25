@@ -7,7 +7,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import ImprovedDraftEditor from "@/components/editor/ImprovedDraftEditor";
+import StreamlinedDraftEditor from "@/components/editor/StreamlinedDraftEditor";
 import { UnifiedNewsCard } from "@/components/news/UnifiedNewsCard";
 import { NewsItem } from "@/types/news";
 import {
@@ -49,7 +49,22 @@ const MPDailyPlanner = () => {
   });
 
   const openDraftEditor = (item: NewsItem) => {
-    setSelectedItem(item);
+    // Ensure we have complete source content
+    const enhancedItem = {
+      ...item,
+      content_variants: {
+        ...item.content_variants,
+        source_content: {
+          original_title: item.headline,
+          original_summary: item.summary,
+          author: item.source,
+          publication_date: item.timestamp,
+          ...item.content_variants?.source_content
+        }
+      }
+    };
+    
+    setSelectedItem(enhancedItem);
     setIsDraftEditorOpen(true);
   };
 
@@ -86,7 +101,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
       const lines = generatedContent.split('\n').filter(line => line.trim());
       const headline = lines[0] || `AI-Generated: ${aiPrompt.slice(0, 30)}...`;
       
-      setSelectedItem({
+      const enhancedItem: NewsItem = {
         id: 'temp-' + Date.now(),
         headline: headline,
         summary: `AI-generated content about ${aiPrompt}`,
@@ -115,8 +130,9 @@ Focus on relevance to mortgage industry professionals and include actionable ins
         source: 'AI Generated',
         url: '',
         destinations: ['mpdaily']
-      });
+      };
       
+      setSelectedItem(enhancedItem);
       setIsDraftEditorOpen(true);
       setShowAiAssistant(false);
       setAiPrompt("");
@@ -258,9 +274,9 @@ Focus on relevance to mortgage industry professionals and include actionable ins
         )}
       </Tabs>
 
-      {/* Improved Draft Editor */}
+      {/* Streamlined Draft Editor */}
       {selectedItem && (
-        <ImprovedDraftEditor
+        <StreamlinedDraftEditor
           newsItem={selectedItem}
           open={isDraftEditorOpen}
           onOpenChange={setIsDraftEditorOpen}
