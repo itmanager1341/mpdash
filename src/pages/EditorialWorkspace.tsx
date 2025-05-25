@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,7 +10,8 @@ import {
   Search, 
   FileText, 
   Clock, 
-  BookOpen
+  BookOpen,
+  Upload
 } from "lucide-react";
 import { toast } from "sonner";
 import DraftsList from "@/components/editorial/DraftsList";
@@ -21,6 +21,8 @@ import CreateDraftDialog from "@/components/editorial/CreateDraftDialog";
 import DragDropProvider from "@/components/editorial/DragDropProvider";
 import ViewToggle from "@/components/editorial/ViewToggle";
 import StatusColumn from "@/components/editorial/StatusColumn";
+import WorkspaceDropZone from "@/components/editorial/WorkspaceDropZone";
+import { ProcessedDocument } from "@/utils/documentProcessor";
 
 export default function EditorialWorkspace() {
   const [selectedDraft, setSelectedDraft] = useState<any>(null);
@@ -29,6 +31,8 @@ export default function EditorialWorkspace() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [researchContext, setResearchContext] = useState<any>(null);
   const [layoutView, setLayoutView] = useState<'list' | 'kanban'>('list');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [pendingDocument, setPendingDocument] = useState<ProcessedDocument | null>(null);
 
   const { data: drafts, isLoading, refetch } = useQuery({
     queryKey: ['editorial-drafts'],
@@ -128,117 +132,152 @@ export default function EditorialWorkspace() {
     </div>
   );
 
+  const handleWorkspaceDocumentDrop = (document: ProcessedDocument) => {
+    setPendingDocument(document);
+    setShowCreateDialog(true);
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setShowCreateDialog(open);
+    if (!open) {
+      setPendingDocument(null);
+    }
+  };
+
+  const renderEmptyState = () => (
+    <div className="flex-1 flex items-center justify-center bg-muted/10">
+      <div className="text-center space-y-6 max-w-md">
+        <div className="flex justify-center">
+          <div className="relative">
+            <FileText className="h-20 w-20 text-muted-foreground" />
+            <Upload className="h-8 w-8 text-primary absolute -top-2 -right-2 bg-background rounded-full p-1" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold">Start creating content</h3>
+          <p className="text-muted-foreground">
+            Choose a draft from the sidebar, create a new one, or drag files here to import
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <PlusCircle className="h-4 w-4 mr-2" />
+            Create New Draft
+          </Button>
+        </div>
+        <div className="text-xs text-muted-foreground border-t pt-4">
+          <p className="font-medium mb-1">💡 Quick tip:</p>
+          <p>Drag and drop TXT, Markdown, HTML, Word, or PDF files anywhere on this page to quickly import them as drafts</p>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <DragDropProvider>
       <DashboardLayout>
-        <div className="h-full flex flex-col">
-          {/* Header */}
-          <div className="border-b bg-background p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h1 className="text-3xl font-bold">Editorial Workspace</h1>
-                <p className="text-muted-foreground">
-                  Create, edit, and manage editorial content with AI assistance
-                </p>
+        <WorkspaceDropZone 
+          onDocumentProcessed={handleWorkspaceDocumentDrop}
+          isProcessing={isProcessing}
+        >
+          <div className="h-full flex flex-col">
+            {/* Header */}
+            <div className="border-b bg-background p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h1 className="text-3xl font-bold">Editorial Workspace</h1>
+                  <p className="text-muted-foreground">
+                    Create, edit, and manage editorial content with AI assistance
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <ViewToggle view={layoutView} onViewChange={setLayoutView} />
+                  <Button onClick={() => setShowCreateDialog(true)}>
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    New Draft
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <ViewToggle view={layoutView} onViewChange={setLayoutView} />
-                <Button onClick={() => setShowCreateDialog(true)}>
-                  <PlusCircle className="h-4 w-4 mr-2" />
-                  New Draft
-                </Button>
-              </div>
+
+              <Tabs value={activeView} onValueChange={setActiveView}>
+                <TabsList>
+                  <TabsTrigger value="drafts">
+                    <FileText className="h-4 w-4 mr-2" />
+                    My Drafts
+                  </TabsTrigger>
+                  <TabsTrigger value="review">
+                    <Clock className="h-4 w-4 mr-2" />
+                    In Review
+                  </TabsTrigger>
+                  <TabsTrigger value="published">
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    Published
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
 
-            <Tabs value={activeView} onValueChange={setActiveView}>
-              <TabsList>
-                <TabsTrigger value="drafts">
-                  <FileText className="h-4 w-4 mr-2" />
-                  My Drafts
-                </TabsTrigger>
-                <TabsTrigger value="review">
-                  <Clock className="h-4 w-4 mr-2" />
-                  In Review
-                </TabsTrigger>
-                <TabsTrigger value="published">
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  Published
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {/* Main Content Area */}
-          <div className="flex-1 flex overflow-hidden">
-            {layoutView === 'list' ? (
-              <>
-                {renderListView()}
-                
-                {/* Center Panel - Editor */}
-                <div className="flex-1 flex flex-col">
-                  {selectedDraft ? (
-                    <DraftEditor
-                      draft={selectedDraft}
-                      onSave={handleDraftSave}
-                      researchContext={researchContext}
-                    />
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center bg-muted/10">
-                      <div className="text-center space-y-4">
-                        <FileText className="h-16 w-16 mx-auto text-muted-foreground" />
-                        <h3 className="text-xl font-semibold">Select a draft to edit</h3>
-                        <p className="text-muted-foreground max-w-md">
-                          Choose a draft from the sidebar or create a new one to start editing
-                        </p>
-                        <Button onClick={() => setShowCreateDialog(true)}>
-                          <PlusCircle className="h-4 w-4 mr-2" />
-                          Create New Draft
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Right Panel - Research & Context */}
-                {selectedDraft && (
-                  <div className="w-80 border-l bg-muted/20">
-                    <ResearchPanel
-                      draft={selectedDraft}
-                      researchContext={researchContext}
-                      onContextUpdate={setResearchContext}
-                    />
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                {renderKanbanView()}
-                
-                {/* Right Panel - Editor & Research */}
-                {selectedDraft && (
-                  <div className="w-96 border-l flex flex-col">
-                    <div className="flex-1">
+            {/* Main Content Area */}
+            <div className="flex-1 flex overflow-hidden">
+              {layoutView === 'list' ? (
+                <>
+                  {renderListView()}
+                  
+                  {/* Center Panel - Editor */}
+                  <div className="flex-1 flex flex-col">
+                    {selectedDraft ? (
                       <DraftEditor
                         draft={selectedDraft}
                         onSave={handleDraftSave}
                         researchContext={researchContext}
                       />
-                    </div>
+                    ) : (
+                      renderEmptyState()
+                    )}
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
 
-        <CreateDraftDialog
-          open={showCreateDialog}
-          onOpenChange={setShowCreateDialog}
-          onDraftCreated={(draft) => {
-            setSelectedDraft(draft);
-            refetch();
-          }}
-        />
+                  {/* Right Panel - Research & Context */}
+                  {selectedDraft && (
+                    <div className="w-80 border-l bg-muted/20">
+                      <ResearchPanel
+                        draft={selectedDraft}
+                        researchContext={researchContext}
+                        onContextUpdate={setResearchContext}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {renderKanbanView()}
+                  
+                  {/* Right Panel - Editor & Research */}
+                  {selectedDraft && (
+                    <div className="w-96 border-l flex flex-col">
+                      <div className="flex-1">
+                        <DraftEditor
+                          draft={selectedDraft}
+                          onSave={handleDraftSave}
+                          researchContext={researchContext}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <CreateDraftDialog
+            open={showCreateDialog}
+            onOpenChange={handleDialogOpenChange}
+            onDraftCreated={(draft) => {
+              setSelectedDraft(draft);
+              refetch();
+            }}
+            initialDocument={pendingDocument}
+          />
+        </WorkspaceDropZone>
       </DashboardLayout>
     </DragDropProvider>
   );

@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,12 +28,14 @@ interface CreateDraftDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDraftCreated: (draft: any) => void;
+  initialDocument?: ProcessedDocument | null;
 }
 
 export default function CreateDraftDialog({ 
   open, 
   onOpenChange, 
-  onDraftCreated 
+  onDraftCreated,
+  initialDocument 
 }: CreateDraftDialogProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState("article");
@@ -42,6 +44,16 @@ export default function CreateDraftDialog({
   const [isCreating, setIsCreating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("manual");
+
+  // Pre-populate form when initialDocument is provided
+  useEffect(() => {
+    if (initialDocument) {
+      setTitle(initialDocument.title);
+      setDescription(initialDocument.content.substring(0, 200) + (initialDocument.content.length > 200 ? '...' : ''));
+      setFullContent(initialDocument.content);
+      setActiveTab("manual"); // Switch to manual tab to review/edit
+    }
+  }, [initialDocument]);
 
   const handleDocumentProcessed = (document: ProcessedDocument) => {
     setTitle(document.title);
@@ -114,24 +126,33 @@ export default function CreateDraftDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create New Draft</DialogTitle>
+          <DialogTitle>
+            {initialDocument ? 'Review Imported Document' : 'Create New Draft'}
+          </DialogTitle>
           <DialogDescription>
-            Start a new editorial piece from scratch or import an existing document
+            {initialDocument 
+              ? 'Review and edit the imported content before creating your draft'
+              : 'Start a new editorial piece from scratch or import an existing document'
+            }
           </DialogDescription>
         </DialogHeader>
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-            <TabsTrigger value="import">Import Document</TabsTrigger>
-          </TabsList>
+          {!initialDocument && (
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+              <TabsTrigger value="import">Import Document</TabsTrigger>
+            </TabsList>
+          )}
           
-          <TabsContent value="import" className="space-y-4">
-            <DocumentDropZone 
-              onDocumentProcessed={handleDocumentProcessed}
-              isProcessing={isProcessing}
-            />
-          </TabsContent>
+          {!initialDocument && (
+            <TabsContent value="import" className="space-y-4">
+              <DocumentDropZone 
+                onDocumentProcessed={handleDocumentProcessed}
+                isProcessing={isProcessing}
+              />
+            </TabsContent>
+          )}
           
           <TabsContent value="manual" className="space-y-4 py-4">
             <div className="space-y-2">
