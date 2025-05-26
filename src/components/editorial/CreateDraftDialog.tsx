@@ -42,7 +42,6 @@ export default function CreateDraftDialog({
   const [description, setDescription] = useState("");
   const [fullContent, setFullContent] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [activeTab, setActiveTab] = useState("manual");
 
   // Pre-populate form when initialDocument is provided
@@ -96,11 +95,12 @@ export default function CreateDraftDialog({
           },
           status: 'draft'
         },
-        matched_clusters: [],
         destinations: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+
+      console.log("Creating draft with data:", newDraft);
 
       const { data, error } = await supabase
         .from('articles')
@@ -108,15 +108,19 @@ export default function CreateDraftDialog({
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase error:", error);
+        throw error;
+      }
 
+      console.log("Draft created successfully:", data);
       toast.success("Draft created successfully");
       onDraftCreated(data);
       onOpenChange(false);
       resetForm();
     } catch (error) {
       console.error("Error creating draft:", error);
-      toast.error("Failed to create draft");
+      toast.error("Failed to create draft: " + (error.message || "Unknown error"));
     } finally {
       setIsCreating(false);
     }
@@ -149,7 +153,7 @@ export default function CreateDraftDialog({
             <TabsContent value="import" className="space-y-4">
               <DocumentDropZone 
                 onDocumentProcessed={handleDocumentProcessed}
-                isProcessing={isProcessing}
+                isProcessing={false}
               />
             </TabsContent>
           )}
