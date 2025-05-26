@@ -1,19 +1,29 @@
 
 import { useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
-import { File, Upload, AlertCircle } from "lucide-react";
+import { File, Upload, AlertCircle, Trash2, X } from "lucide-react";
 import { processDocumentFile, ProcessedDocument } from "@/utils/documentProcessor";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 interface DocumentDropZoneProps {
   onDocumentProcessed: (document: ProcessedDocument) => void;
   isProcessing: boolean;
+  processedFiles?: ProcessedDocument[];
+  onFileDelete?: (index: number) => void;
 }
 
-export default function DocumentDropZone({ onDocumentProcessed, isProcessing }: DocumentDropZoneProps) {
+export default function DocumentDropZone({ 
+  onDocumentProcessed, 
+  isProcessing,
+  processedFiles = [],
+  onFileDelete 
+}: DocumentDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [processingFiles, setProcessingFiles] = useState<string[]>([]);
+  const [dragOverTrash, setDragOverTrash] = useState(false);
+  const [draggedFileIndex, setDraggedFileIndex] = useState<number | null>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -77,6 +87,41 @@ export default function DocumentDropZone({ onDocumentProcessed, isProcessing }: 
     }
   };
 
+  const handleFileDelete = (index: number) => {
+    if (onFileDelete) {
+      onFileDelete(index);
+      toast.success("File removed from workspace");
+    }
+  };
+
+  const handleFileDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedFileIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleFileDragEnd = () => {
+    setDraggedFileIndex(null);
+    setDragOverTrash(false);
+  };
+
+  const handleTrashDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTrash(true);
+  };
+
+  const handleTrashDragLeave = () => {
+    setDragOverTrash(false);
+  };
+
+  const handleTrashDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTrash(false);
+    
+    if (draggedFileIndex !== null) {
+      handleFileDelete(draggedFileIndex);
+    }
+  };
+
   const isFileProcessing = processingFiles.length > 0 || isProcessing;
 
   return (
@@ -128,6 +173,64 @@ export default function DocumentDropZone({ onDocumentProcessed, isProcessing }: 
           </div>
         </div>
       </Card>
+
+      {/* Processed Files List */}
+      {processedFiles.length > 0 && (
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium">Imported Files:</h4>
+          <div className="space-y-2">
+            {processedFiles.map((file, index) => (
+              <Card 
+                key={index} 
+                className="p-3 cursor-move hover:bg-muted/50 transition-colors"
+                draggable
+                onDragStart={(e) => handleFileDragStart(e, index)}
+                onDragEnd={handleFileDragEnd}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <File className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{file.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {file.metadata.originalFilename} • {(file.metadata.fileSize / 1024).toFixed(1)} KB
+                      </p>
+                      {file.metadata.needsManualContent && (
+                        <p className="text-xs text-orange-600">⚠️ Needs manual content entry</p>
+                      )}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleFileDelete(index)}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Drag and Drop Trash Can */}
+          <div
+            className={`border-2 border-dashed rounded-lg p-4 text-center transition-all ${
+              dragOverTrash 
+                ? 'border-red-500 bg-red-50 text-red-700' 
+                : 'border-red-300 bg-red-50/30 text-red-500 hover:border-red-400'
+            }`}
+            onDragOver={handleTrashDragOver}
+            onDragLeave={handleTrashDragLeave}
+            onDrop={handleTrashDrop}
+          >
+            <Trash2 className={`h-8 w-8 mx-auto mb-2 ${dragOverTrash ? 'animate-bounce' : ''}`} />
+            <p className="text-sm font-medium">
+              {dragOverTrash ? 'Drop to delete file' : 'Drag files here to delete'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Information about Word and PDF handling */}
       <Alert>

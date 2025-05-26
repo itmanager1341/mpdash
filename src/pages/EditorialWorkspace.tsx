@@ -33,6 +33,7 @@ export default function EditorialWorkspace() {
   const [layoutView, setLayoutView] = useState<'list' | 'kanban'>('list');
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingDocument, setPendingDocument] = useState<ProcessedDocument | null>(null);
+  const [processedFiles, setProcessedFiles] = useState<ProcessedDocument[]>([]);
 
   const { data: drafts, isLoading, refetch } = useQuery({
     queryKey: ['editorial-drafts'],
@@ -72,6 +73,41 @@ export default function EditorialWorkspace() {
 
   const getDraftsByStatus = (status: string) => {
     return filteredDrafts?.filter(draft => draft.status === status) || [];
+  };
+
+  const handleWorkspaceDocumentDrop = async (document: ProcessedDocument) => {
+    console.log("Document dropped in workspace:", document);
+    setIsProcessing(true);
+    
+    try {
+      setProcessedFiles(prev => [...prev, document]);
+      setPendingDocument(document);
+      setShowCreateDialog(true);
+      toast.success("Document processed - opening draft editor");
+    } catch (error) {
+      console.error("Error handling document drop:", error);
+      toast.error("Failed to process document");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleFileDelete = (index: number) => {
+    setProcessedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setShowCreateDialog(open);
+    if (!open) {
+      setPendingDocument(null);
+    }
+  };
+
+  const handleDraftCreated = (newDraft: any) => {
+    console.log("New draft created:", newDraft);
+    setSelectedDraft(newDraft);
+    refetch();
+    toast.success("Draft created successfully - now editing");
   };
 
   const renderListView = () => (
@@ -134,36 +170,6 @@ export default function EditorialWorkspace() {
     </div>
   );
 
-  const handleWorkspaceDocumentDrop = async (document: ProcessedDocument) => {
-    console.log("Document dropped in workspace:", document);
-    setIsProcessing(true);
-    
-    try {
-      setPendingDocument(document);
-      setShowCreateDialog(true);
-      toast.success("Document processed - opening draft editor");
-    } catch (error) {
-      console.error("Error handling document drop:", error);
-      toast.error("Failed to process document");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    setShowCreateDialog(open);
-    if (!open) {
-      setPendingDocument(null);
-    }
-  };
-
-  const handleDraftCreated = (newDraft: any) => {
-    console.log("New draft created:", newDraft);
-    setSelectedDraft(newDraft);
-    refetch();
-    toast.success("Draft created successfully - now editing");
-  };
-
   const renderEmptyState = () => (
     <div className="flex-1 flex items-center justify-center bg-muted/10">
       <div className="text-center space-y-6 max-w-md">
@@ -185,6 +191,12 @@ export default function EditorialWorkspace() {
             Create New Draft
           </Button>
         </div>
+        {processedFiles.length > 0 && (
+          <div className="text-sm text-muted-foreground border-t pt-4">
+            <p className="font-medium mb-1">📁 Files in workspace: {processedFiles.length}</p>
+            <p>Select a file above to create a draft from it</p>
+          </div>
+        )}
         <div className="text-xs text-muted-foreground border-t pt-4">
           <p className="font-medium mb-1">💡 Quick tip:</p>
           <p>Drag and drop TXT, Markdown, HTML, Word, or PDF files anywhere on this page to quickly import them as drafts</p>
@@ -199,6 +211,8 @@ export default function EditorialWorkspace() {
         <WorkspaceDropZone 
           onDocumentProcessed={handleWorkspaceDocumentDrop}
           isProcessing={isProcessing}
+          processedFiles={processedFiles}
+          onFileDelete={handleFileDelete}
         >
           <div className="h-full flex flex-col">
             {/* Header */}

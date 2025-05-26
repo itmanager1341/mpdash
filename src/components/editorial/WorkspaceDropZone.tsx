@@ -1,129 +1,110 @@
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { Upload, FileText } from "lucide-react";
-import { processDocumentFile, ProcessedDocument } from "@/utils/documentProcessor";
+import { useCallback, useState } from "react";
+import { ProcessedDocument, processDocumentFile } from "@/utils/documentProcessor";
 import { toast } from "sonner";
+import DocumentDropZone from "./DocumentDropZone";
 
 interface WorkspaceDropZoneProps {
-  onDocumentProcessed: (document: ProcessedDocument) => void;
   children: React.ReactNode;
+  onDocumentProcessed: (document: ProcessedDocument) => void;
   isProcessing: boolean;
+  processedFiles?: ProcessedDocument[];
+  onFileDelete?: (index: number) => void;
 }
 
 export default function WorkspaceDropZone({ 
-  onDocumentProcessed, 
   children, 
-  isProcessing 
+  onDocumentProcessed, 
+  isProcessing,
+  processedFiles,
+  onFileDelete
 }: WorkspaceDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [dragCounter, setDragCounter] = useState(0);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
 
-  const handleDragEnter = useCallback((e: DragEvent) => {
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
-    if (e.dataTransfer?.types.includes('Files')) {
-      setDragCounter(prev => prev + 1);
-      setIsDragOver(true);
+    // Only hide overlay if leaving the workspace entirely
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
     }
   }, []);
 
-  const handleDragLeave = useCallback((e: DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    setDragCounter(prev => {
-      const newCounter = prev - 1;
-      if (newCounter <= 0) {
-        setIsDragOver(false);
-        return 0;
-      }
-      return newCounter;
-    });
-  }, []);
-
-  const handleDragOver = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleDrop = useCallback(async (e: DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
     setIsDragOver(false);
-    setDragCounter(0);
 
-    const files = Array.from(e.dataTransfer?.files || []);
-    const supportedTypes = ['txt', 'md', 'html', 'docx', 'pdf'];
+    const files = Array.from(e.dataTransfer.files);
     
+    if (files.length === 0) return;
+
+    console.log("Files dropped in workspace:", files);
+
     for (const file of files) {
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
+      const supportedTypes = ['txt', 'md', 'html', 'docx', 'pdf'];
       
       if (!supportedTypes.includes(fileExtension || '')) {
-        toast.error(`Unsupported file type: ${file.name}`);
+        toast.error(`Unsupported file type: ${file.name}. Supported types: TXT, Markdown, HTML, Word, PDF`);
         continue;
       }
 
       try {
         const processedDoc = await processDocumentFile(file);
         onDocumentProcessed(processedDoc);
-        toast.success(`Successfully imported: ${file.name}`);
+        
+        if (fileExtension === 'docx' || fileExtension === 'pdf') {
+          toast.success(`${file.name} imported - content needs manual entry`, {
+            duration: 4000
+          });
+        } else {
+          toast.success(`Successfully imported: ${file.name}`);
+        }
       } catch (error) {
-        console.error('Error processing file:', error);
-        toast.error(error.message || `Failed to process ${file.name}`);
+        console.error("Error processing file:", error);
+        toast.error(`Failed to process ${file.name}: ${error.message || 'Unknown error'}`);
       }
     }
   }, [onDocumentProcessed]);
 
-  useEffect(() => {
-    const dropZone = dropZoneRef.current;
-    if (!dropZone) return;
-
-    dropZone.addEventListener('dragenter', handleDragEnter);
-    dropZone.addEventListener('dragleave', handleDragLeave);
-    dropZone.addEventListener('dragover', handleDragOver);
-    dropZone.addEventListener('drop', handleDrop);
-
-    return () => {
-      dropZone.removeEventListener('dragenter', handleDragEnter);
-      dropZone.removeEventListener('dragleave', handleDragLeave);
-      dropZone.removeEventListener('dragover', handleDragOver);
-      dropZone.removeEventListener('drop', handleDrop);
-    };
-  }, [handleDragEnter, handleDragLeave, handleDragOver, handleDrop]);
-
   return (
-    <div ref={dropZoneRef} className="relative h-full w-full">
+    <div 
+      className="h-full relative"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {children}
       
-      {/* Drop Overlay */}
-      {isDragOver && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="border-2 border-dashed border-primary bg-background/95 rounded-lg p-12 text-center max-w-md mx-4 shadow-lg">
-            <div className="flex flex-col items-center gap-6">
-              {isProcessing ? (
-                <Upload className="h-16 w-16 text-primary animate-pulse" />
-              ) : (
-                <FileText className="h-16 w-16 text-primary" />
-              )}
-              
-              <div className="space-y-2">
-                <h3 className="text-2xl font-semibold text-primary">
-                  {isProcessing ? 'Processing...' : 'Drop files here'}
-                </h3>
-                <p className="text-muted-foreground">
-                  {isProcessing 
-                    ? 'Please wait while we process your documents'
-                    : 'Release to create new drafts from your documents'
-                  }
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Supports: TXT, Markdown, HTML, Word, PDF
-                </p>
-              </div>
-            </div>
+      {/* File Management Overlay */}
+      {(processedFiles && processedFiles.length > 0) && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-sm">
+          <DocumentDropZone
+            onDocumentProcessed={onDocumentProcessed}
+            isProcessing={isProcessing}
+            processedFiles={processedFiles}
+            onFileDelete={onFileDelete}
+          />
+        </div>
+      )}
+      
+      {/* Drag Overlay */}
+      {isDragOver && !isProcessing && (
+        <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary z-40 flex items-center justify-center">
+          <div className="bg-background rounded-lg p-8 shadow-lg text-center">
+            <div className="text-4xl mb-4">📁</div>
+            <h3 className="text-xl font-semibold mb-2">Drop files to import</h3>
+            <p className="text-muted-foreground">
+              Supports TXT, Markdown, HTML, Word, and PDF files
+            </p>
           </div>
         </div>
       )}
