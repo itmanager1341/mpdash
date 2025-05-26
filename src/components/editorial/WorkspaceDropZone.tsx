@@ -1,23 +1,18 @@
 
 import { useCallback, useState } from "react";
-import { ProcessedDocument, processDocumentFile } from "@/utils/documentProcessor";
+import { processDocumentFile, createDraftFromDocument } from "@/utils/documentProcessor";
 import { toast } from "sonner";
-import DocumentDropZone from "./DocumentDropZone";
 
 interface WorkspaceDropZoneProps {
   children: React.ReactNode;
-  onDocumentProcessed: (document: ProcessedDocument) => void;
+  onDraftCreated: (draft: any) => void;
   isProcessing: boolean;
-  processedFiles?: ProcessedDocument[];
-  onFileDelete?: (index: number) => void;
 }
 
 export default function WorkspaceDropZone({ 
   children, 
-  onDocumentProcessed, 
-  isProcessing,
-  processedFiles,
-  onFileDelete
+  onDraftCreated, 
+  isProcessing
 }: WorkspaceDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -58,22 +53,30 @@ export default function WorkspaceDropZone({
       }
 
       try {
+        toast.loading(`Processing ${file.name}...`, { id: file.name });
+        
+        // Process the document
         const processedDoc = await processDocumentFile(file);
-        onDocumentProcessed(processedDoc);
+        
+        // Directly create a draft from the processed document
+        const newDraft = await createDraftFromDocument(processedDoc);
+        
+        // Notify parent component
+        onDraftCreated(newDraft);
+        
+        toast.success(`Draft created from ${file.name}`, { id: file.name });
         
         if (fileExtension === 'docx' || fileExtension === 'pdf') {
-          toast.success(`${file.name} imported - content needs manual entry`, {
+          toast.info(`${file.name} imported - you can now edit the content in the draft editor`, {
             duration: 4000
           });
-        } else {
-          toast.success(`Successfully imported: ${file.name}`);
         }
       } catch (error) {
         console.error("Error processing file:", error);
-        toast.error(`Failed to process ${file.name}: ${error.message || 'Unknown error'}`);
+        toast.error(`Failed to process ${file.name}: ${error.message || 'Unknown error'}`, { id: file.name });
       }
     }
-  }, [onDocumentProcessed]);
+  }, [onDraftCreated]);
 
   return (
     <div 
@@ -84,26 +87,17 @@ export default function WorkspaceDropZone({
     >
       {children}
       
-      {/* File Management Overlay */}
-      {(processedFiles && processedFiles.length > 0) && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-sm">
-          <DocumentDropZone
-            onDocumentProcessed={onDocumentProcessed}
-            isProcessing={isProcessing}
-            processedFiles={processedFiles}
-            onFileDelete={onFileDelete}
-          />
-        </div>
-      )}
-      
       {/* Drag Overlay */}
       {isDragOver && !isProcessing && (
         <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary z-40 flex items-center justify-center">
           <div className="bg-background rounded-lg p-8 shadow-lg text-center">
             <div className="text-4xl mb-4">📁</div>
-            <h3 className="text-xl font-semibold mb-2">Drop files to import</h3>
+            <h3 className="text-xl font-semibold mb-2">Drop files to create drafts</h3>
             <p className="text-muted-foreground">
               Supports TXT, Markdown, HTML, Word, and PDF files
+            </p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Files will be automatically processed and saved as drafts
             </p>
           </div>
         </div>

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,7 +23,6 @@ import DragDropProvider from "@/components/editorial/DragDropProvider";
 import ViewToggle from "@/components/editorial/ViewToggle";
 import StatusColumn from "@/components/editorial/StatusColumn";
 import WorkspaceDropZone from "@/components/editorial/WorkspaceDropZone";
-import { ProcessedDocument } from "@/utils/documentProcessor";
 
 export default function EditorialWorkspace() {
   const [selectedDraft, setSelectedDraft] = useState<any>(null);
@@ -32,10 +32,8 @@ export default function EditorialWorkspace() {
   const [researchContext, setResearchContext] = useState<any>(null);
   const [layoutView, setLayoutView] = useState<'list' | 'kanban'>('list');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [pendingDocument, setPendingDocument] = useState<ProcessedDocument | null>(null);
-  const [processedFiles, setProcessedFiles] = useState<ProcessedDocument[]>([]);
 
-  // Fetch drafts from editor_briefs table instead of articles
+  // Fetch drafts from editor_briefs table
   const { data: drafts, isLoading, refetch } = useQuery({
     queryKey: ['editorial-drafts'],
     queryFn: async () => {
@@ -79,55 +77,15 @@ export default function EditorialWorkspace() {
     return filteredDrafts?.filter(draft => draft.status === status) || [];
   };
 
-  const handleWorkspaceDocumentDrop = async (document: ProcessedDocument) => {
-    console.log("Document dropped in workspace:", document);
-    setIsProcessing(true);
-    
-    try {
-      setProcessedFiles(prev => [...prev, document]);
-      setPendingDocument(document);
-      setShowCreateDialog(true);
-      toast.success("Document processed - opening draft editor");
-    } catch (error) {
-      console.error("Error handling document drop:", error);
-      toast.error("Failed to process document");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleFileDelete = (index: number) => {
-    console.log(`Deleting file at index ${index} from workspace`);
-    
-    if (index >= 0 && index < processedFiles.length) {
-      const fileToDelete = processedFiles[index];
-      console.log(`Deleting file: ${fileToDelete.title}`);
-      
-      setProcessedFiles(prev => {
-        const newFiles = prev.filter((_, i) => i !== index);
-        return newFiles;
-      });
-      
-      if (pendingDocument && processedFiles[index] === pendingDocument) {
-        setPendingDocument(null);
-      }
-      
-      toast.success(`Removed ${fileToDelete.title} from workspace`);
-    } else {
-      console.error(`Invalid index ${index} for file deletion`);
-      toast.error('Could not delete file - invalid index');
-    }
-  };
-
-  const handleDialogOpenChange = (open: boolean) => {
-    setShowCreateDialog(open);
-    if (!open) {
-      setPendingDocument(null);
-    }
-  };
-
   const handleDraftCreated = (newDraft: any) => {
-    console.log("New draft created:", newDraft);
+    console.log("New draft created from file:", newDraft);
+    setSelectedDraft(newDraft);
+    refetch();
+    toast.success("Draft created and ready for editing");
+  };
+
+  const handleManualDraftCreated = (newDraft: any) => {
+    console.log("New draft created manually:", newDraft);
     setSelectedDraft(newDraft);
     refetch();
     toast.success("Draft created successfully - now editing");
@@ -214,15 +172,9 @@ export default function EditorialWorkspace() {
             Create New Draft
           </Button>
         </div>
-        {processedFiles.length > 0 && (
-          <div className="text-sm text-muted-foreground border-t pt-4">
-            <p className="font-medium mb-1">📁 Files in workspace: {processedFiles.length}</p>
-            <p>Select a file above to create a draft from it</p>
-          </div>
-        )}
         <div className="text-xs text-muted-foreground border-t pt-4">
           <p className="font-medium mb-1">💡 Quick tip:</p>
-          <p>Drag and drop TXT, Markdown, HTML, Word, or PDF files anywhere on this page to quickly import them as drafts</p>
+          <p>Drag and drop TXT, Markdown, HTML, Word, or PDF files anywhere on this page to instantly create drafts from them</p>
         </div>
       </div>
     </div>
@@ -232,10 +184,8 @@ export default function EditorialWorkspace() {
     <DragDropProvider>
       <DashboardLayout>
         <WorkspaceDropZone 
-          onDocumentProcessed={handleWorkspaceDocumentDrop}
+          onDraftCreated={handleDraftCreated}
           isProcessing={isProcessing}
-          processedFiles={processedFiles}
-          onFileDelete={handleFileDelete}
         >
           <div className="h-full flex flex-col">
             {/* Header */}
@@ -327,9 +277,8 @@ export default function EditorialWorkspace() {
 
           <CreateDraftDialog
             open={showCreateDialog}
-            onOpenChange={handleDialogOpenChange}
-            onDraftCreated={handleDraftCreated}
-            initialDocument={pendingDocument}
+            onOpenChange={setShowCreateDialog}
+            onDraftCreated={handleManualDraftCreated}
           />
         </WorkspaceDropZone>
       </DashboardLayout>
