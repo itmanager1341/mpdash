@@ -35,11 +35,12 @@ export default function EditorialWorkspace() {
   const [pendingDocument, setPendingDocument] = useState<ProcessedDocument | null>(null);
   const [processedFiles, setProcessedFiles] = useState<ProcessedDocument[]>([]);
 
+  // Fetch drafts from editor_briefs table instead of articles
   const { data: drafts, isLoading, refetch } = useQuery({
     queryKey: ['editorial-drafts'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('articles')
+        .from('editor_briefs')
         .select('*')
         .in('status', ['draft', 'in_review', 'revision_needed'])
         .order('updated_at', { ascending: false });
@@ -49,9 +50,11 @@ export default function EditorialWorkspace() {
     }
   });
 
+  // Filter drafts based on search term
   const filteredDrafts = drafts?.filter(draft => {
     const contentVariants = draft.content_variants as any;
     return draft.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      draft.theme?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       contentVariants?.editorial_content?.headline?.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
@@ -61,7 +64,8 @@ export default function EditorialWorkspace() {
     setResearchContext({
       keywords: draft.content_variants?.metadata?.tags || [],
       relatedArticles: [],
-      sources: []
+      sources: draft.sources || [],
+      sourceNews: draft.source_id ? [draft.source_id] : []
     });
   };
 
@@ -94,7 +98,6 @@ export default function EditorialWorkspace() {
 
   const handleFileDelete = (index: number) => {
     console.log(`Deleting file at index ${index} from workspace`);
-    console.log('Current files:', processedFiles);
     
     if (index >= 0 && index < processedFiles.length) {
       const fileToDelete = processedFiles[index];
@@ -102,19 +105,16 @@ export default function EditorialWorkspace() {
       
       setProcessedFiles(prev => {
         const newFiles = prev.filter((_, i) => i !== index);
-        console.log('Files after deletion:', newFiles);
         return newFiles;
       });
       
-      // Clear pending document if it's the one being deleted
       if (pendingDocument && processedFiles[index] === pendingDocument) {
-        console.log('Clearing pending document as it was deleted');
         setPendingDocument(null);
       }
       
-      console.log(`Successfully removed file at index ${index}`);
+      toast.success(`Removed ${fileToDelete.title} from workspace`);
     } else {
-      console.error(`Invalid index ${index} for file deletion. Array length: ${processedFiles.length}`);
+      console.error(`Invalid index ${index} for file deletion`);
       toast.error('Could not delete file - invalid index');
     }
   };

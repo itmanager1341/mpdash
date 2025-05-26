@@ -56,7 +56,17 @@ export default function DraggableDraftCard({ draft, isSelected, onSelect }: Drag
     }
   };
 
+  const getSourceBadge = (sourceType: string) => {
+    switch (sourceType) {
+      case 'news': return { label: 'News', color: 'bg-blue-50 text-blue-700' };
+      case 'document': return { label: 'Doc', color: 'bg-green-50 text-green-700' };
+      case 'manual': return { label: 'Manual', color: 'bg-gray-50 text-gray-700' };
+      default: return null;
+    }
+  };
+
   const contentVariants = draft.content_variants as any;
+  const sourceBadge = getSourceBadge(draft.source_type);
 
   return (
     <Card
@@ -72,7 +82,7 @@ export default function DraggableDraftCard({ draft, isSelected, onSelect }: Drag
         <div className="flex items-start gap-2 flex-1">
           <GripVertical className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
           <h4 className="font-medium text-sm line-clamp-2">
-            {contentVariants?.editorial_content?.headline || draft.title || 'Untitled Draft'}
+            {draft.title || draft.theme || contentVariants?.editorial_content?.headline || 'Untitled Draft'}
           </h4>
         </div>
         <DropdownMenu>
@@ -101,27 +111,34 @@ export default function DraggableDraftCard({ draft, isSelected, onSelect }: Drag
       <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
         <div className="flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          {new Date(draft.updated_at).toLocaleDateString()}
+          {new Date(draft.updated_at || draft.created_at).toLocaleDateString()}
         </div>
-        <Badge variant="outline" className={getStatusColor(draft.status)}>
-          {getStatusLabel(draft.status)}
-        </Badge>
+        <div className="flex items-center gap-1">
+          {sourceBadge && (
+            <Badge variant="outline" className={`text-xs ${sourceBadge.color}`}>
+              {sourceBadge.label}
+            </Badge>
+          )}
+          <Badge variant="outline" className={getStatusColor(draft.status)}>
+            {getStatusLabel(draft.status)}
+          </Badge>
+        </div>
       </div>
 
       <p className="text-xs text-muted-foreground line-clamp-2">
-        {contentVariants?.editorial_content?.summary || 'No summary available'}
+        {contentVariants?.editorial_content?.summary || draft.summary || 'No summary available'}
       </p>
 
-      {draft.matched_clusters && draft.matched_clusters.length > 0 && (
+      {draft.destinations && draft.destinations.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1">
-          {draft.matched_clusters.slice(0, 2).map((cluster: string, index: number) => (
+          {draft.destinations.slice(0, 2).map((dest: string, index: number) => (
             <Badge key={index} variant="secondary" className="text-xs">
-              {cluster}
+              {dest}
             </Badge>
           ))}
-          {draft.matched_clusters.length > 2 && (
+          {draft.destinations.length > 2 && (
             <Badge variant="secondary" className="text-xs">
-              +{draft.matched_clusters.length - 2} more
+              +{draft.destinations.length - 2} more
             </Badge>
           )}
         </div>

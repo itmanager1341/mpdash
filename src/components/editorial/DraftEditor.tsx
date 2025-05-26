@@ -27,10 +27,11 @@ interface DraftEditorProps {
 }
 
 export default function DraftEditor({ draft, onSave, researchContext }: DraftEditorProps) {
-  const [title, setTitle] = useState(draft?.title || '');
+  const [title, setTitle] = useState(draft?.title || draft?.theme || '');
+  const [theme, setTheme] = useState(draft?.theme || '');
   const [headline, setHeadline] = useState(draft?.content_variants?.editorial_content?.headline || '');
-  const [summary, setSummary] = useState(draft?.content_variants?.editorial_content?.summary || '');
-  const [content, setContent] = useState(draft?.content_variants?.editorial_content?.full_content || '');
+  const [summary, setSummary] = useState(draft?.content_variants?.editorial_content?.summary || draft?.summary || '');
+  const [content, setContent] = useState(draft?.content_variants?.editorial_content?.full_content || draft?.outline || '');
   const [tags, setTags] = useState<string[]>(draft?.content_variants?.metadata?.tags || []);
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -46,10 +47,11 @@ export default function DraftEditor({ draft, onSave, researchContext }: DraftEdi
   useEffect(() => {
     // Update state when draft changes
     if (draft) {
-      setTitle(draft.title || '');
+      setTitle(draft.title || draft.theme || '');
+      setTheme(draft.theme || '');
       setHeadline(draft.content_variants?.editorial_content?.headline || '');
-      setSummary(draft.content_variants?.editorial_content?.summary || '');
-      setContent(draft.content_variants?.editorial_content?.full_content || '');
+      setSummary(draft.content_variants?.editorial_content?.summary || draft.summary || '');
+      setContent(draft.content_variants?.editorial_content?.full_content || draft.outline || '');
       setTags(draft.content_variants?.metadata?.tags || []);
     }
   }, [draft]);
@@ -74,7 +76,8 @@ export default function DraftEditor({ draft, onSave, researchContext }: DraftEdi
       let prompt = "";
       
       if (type === "headline") {
-        prompt = `Create 3 compelling headlines for this article:
+        prompt = `Create 3 compelling headlines for this editorial piece:
+Theme: "${theme}"
 Content: "${content.substring(0, 500)}..."
 Current headline: "${headline}"
 
@@ -87,6 +90,7 @@ Requirements:
 Return only the 3 headlines, numbered.`;
       } else {
         prompt = `Create 3 SEO-optimized summaries:
+Theme: "${theme}"
 Headline: "${headline}"
 Content: "${content.substring(0, 500)}..."
 
@@ -103,7 +107,7 @@ Return only the 3 summaries, numbered.`;
         body: {
           prompt_text: prompt,
           model: 'gpt-4o',
-          input_data: { type, headline, summary, content }
+          input_data: { type, theme, headline, summary, content }
         }
       });
       
@@ -146,12 +150,14 @@ Return only the 3 summaries, numbered.`;
         status: content.trim() ? "ready" : "draft"
       };
 
-      console.log("Saving draft with data:", { title, contentVariants });
+      console.log("Saving editor brief with data:", { title, theme, contentVariants });
 
       const { error } = await supabase
-        .from("articles")
+        .from("editor_briefs")
         .update({
-          title,
+          title: title || theme,
+          theme,
+          summary,
           content_variants: contentVariants,
           updated_at: new Date().toISOString()
         })
@@ -192,10 +198,16 @@ Return only the 3 summaries, numbered.`;
       <div className="border-b p-4 bg-background">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold">Draft Editor</h2>
+            <h2 className="text-lg font-semibold">Editorial Draft</h2>
             <Badge variant="outline" className="capitalize">
               {draft.status?.replace('_', ' ')}
             </Badge>
+            {draft.source_type && (
+              <Badge variant="secondary">
+                {draft.source_type === 'news' ? 'From News' : 
+                 draft.source_type === 'document' ? 'From Document' : 'Manual'}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2 text-sm">
@@ -215,12 +227,21 @@ Return only the 3 summaries, numbered.`;
 
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium mb-1 block">Article Title</label>
+            <label className="text-sm font-medium mb-1 block">Title</label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Enter article title..."
               className="font-medium"
+            />
+          </div>
+          
+          <div>
+            <label className="text-sm font-medium mb-1 block">Theme</label>
+            <Input
+              value={theme}
+              onChange={(e) => setTheme(e.target.value)}
+              placeholder="Editorial theme or topic..."
             />
           </div>
         </div>

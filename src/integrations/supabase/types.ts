@@ -44,6 +44,7 @@ export type Database = {
           content_variants: Json | null
           created_at: string | null
           destinations: string[] | null
+          editor_brief_id: string | null
           embedding: string | null
           fred_data: Json | null
           id: string
@@ -52,6 +53,7 @@ export type Database = {
           published_at: string | null
           related_trends: string[] | null
           source_news_id: string | null
+          source_system: string | null
           status: string | null
           title: string
           updated_at: string | null
@@ -60,6 +62,7 @@ export type Database = {
           content_variants?: Json | null
           created_at?: string | null
           destinations?: string[] | null
+          editor_brief_id?: string | null
           embedding?: string | null
           fred_data?: Json | null
           id?: string
@@ -68,6 +71,7 @@ export type Database = {
           published_at?: string | null
           related_trends?: string[] | null
           source_news_id?: string | null
+          source_system?: string | null
           status?: string | null
           title: string
           updated_at?: string | null
@@ -76,6 +80,7 @@ export type Database = {
           content_variants?: Json | null
           created_at?: string | null
           destinations?: string[] | null
+          editor_brief_id?: string | null
           embedding?: string | null
           fred_data?: Json | null
           id?: string
@@ -84,6 +89,7 @@ export type Database = {
           published_at?: string | null
           related_trends?: string[] | null
           source_news_id?: string | null
+          source_system?: string | null
           status?: string | null
           title?: string
           updated_at?: string | null
@@ -100,34 +106,52 @@ export type Database = {
       }
       editor_briefs: {
         Row: {
+          content_variants: Json | null
           created_at: string | null
+          destinations: string[] | null
           id: string
           outline: string | null
+          source_id: string | null
+          source_type: string | null
           sources: string[] | null
           status: string | null
           suggested_articles: string[] | null
           summary: string | null
           theme: string
+          title: string | null
+          updated_at: string | null
         }
         Insert: {
+          content_variants?: Json | null
           created_at?: string | null
+          destinations?: string[] | null
           id?: string
           outline?: string | null
+          source_id?: string | null
+          source_type?: string | null
           sources?: string[] | null
           status?: string | null
           suggested_articles?: string[] | null
           summary?: string | null
           theme: string
+          title?: string | null
+          updated_at?: string | null
         }
         Update: {
+          content_variants?: Json | null
           created_at?: string | null
+          destinations?: string[] | null
           id?: string
           outline?: string | null
+          source_id?: string | null
+          source_type?: string | null
           sources?: string[] | null
           status?: string | null
           suggested_articles?: string[] | null
           summary?: string | null
           theme?: string
+          title?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }

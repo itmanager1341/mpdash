@@ -38,9 +38,10 @@ export default function CreateDraftDialog({
   initialDocument 
 }: CreateDraftDialogProps) {
   const [title, setTitle] = useState("");
-  const [type, setType] = useState("article");
+  const [theme, setTheme] = useState("");
   const [description, setDescription] = useState("");
   const [fullContent, setFullContent] = useState("");
+  const [sourceType, setSourceType] = useState("manual");
   const [isCreating, setIsCreating] = useState(false);
   const [activeTab, setActiveTab] = useState("manual");
 
@@ -48,62 +49,71 @@ export default function CreateDraftDialog({
   useEffect(() => {
     if (initialDocument) {
       setTitle(initialDocument.title);
+      setTheme(initialDocument.title);
       setDescription(initialDocument.content.substring(0, 200) + (initialDocument.content.length > 200 ? '...' : ''));
       setFullContent(initialDocument.content);
+      setSourceType("document");
       setActiveTab("manual"); // Switch to manual tab to review/edit
     }
   }, [initialDocument]);
 
   const handleDocumentProcessed = (document: ProcessedDocument) => {
     setTitle(document.title);
+    setTheme(document.title);
     setDescription(document.content.substring(0, 200) + (document.content.length > 200 ? '...' : ''));
     setFullContent(document.content);
+    setSourceType("document");
     setActiveTab("manual"); // Switch to manual tab to review/edit
   };
 
   const resetForm = () => {
     setTitle("");
-    setType("article");
+    setTheme("");
     setDescription("");
     setFullContent("");
+    setSourceType("manual");
     setActiveTab("manual");
   };
 
   const handleCreate = async () => {
-    if (!title.trim()) {
-      toast.error("Please enter a title");
+    if (!title.trim() && !theme.trim()) {
+      toast.error("Please enter a title or theme");
       return;
     }
 
     setIsCreating(true);
     try {
       const newDraft = {
-        title,
+        title: title || theme,
+        theme: theme || title,
+        summary: description,
+        outline: fullContent,
+        source_type: sourceType,
         status: 'draft',
         content_variants: {
           editorial_content: {
-            headline: title,
+            headline: title || theme,
             summary: description,
             full_content: fullContent,
             cta: "Read more..."
           },
           metadata: {
-            article_type: type,
-            seo_title: title,
+            seo_title: title || theme,
             seo_description: description.substring(0, 160),
             tags: []
           },
           status: 'draft'
         },
         destinations: [],
+        sources: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      console.log("Creating draft with data:", newDraft);
+      console.log("Creating editor brief with data:", newDraft);
 
       const { data, error } = await supabase
-        .from('articles')
+        .from('editor_briefs')
         .insert([newDraft])
         .select()
         .single();
@@ -113,7 +123,7 @@ export default function CreateDraftDialog({
         throw error;
       }
 
-      console.log("Draft created successfully:", data);
+      console.log("Editor brief created successfully:", data);
       toast.success("Draft created successfully");
       onDraftCreated(data);
       onOpenChange(false);
@@ -131,7 +141,7 @@ export default function CreateDraftDialog({
       <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {initialDocument ? 'Review Imported Document' : 'Create New Draft'}
+            {initialDocument ? 'Review Imported Document' : 'Create New Editorial Draft'}
           </DialogTitle>
           <DialogDescription>
             {initialDocument 
@@ -160,7 +170,7 @@ export default function CreateDraftDialog({
           
           <TabsContent value="manual" className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="title">Article Title</Label>
+              <Label htmlFor="title">Title</Label>
               <Input
                 id="title"
                 value={title}
@@ -170,19 +180,13 @@ export default function CreateDraftDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="type">Article Type</Label>
-              <Select value={type} onValueChange={setType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="article">News Article</SelectItem>
-                  <SelectItem value="analysis">Analysis Piece</SelectItem>
-                  <SelectItem value="feature">Feature Story</SelectItem>
-                  <SelectItem value="opinion">Opinion/Editorial</SelectItem>
-                  <SelectItem value="guide">How-to Guide</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="theme">Theme/Topic</Label>
+              <Input
+                id="theme"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                placeholder="Editorial theme or main topic..."
+              />
             </div>
 
             <div className="space-y-2">
@@ -191,7 +195,7 @@ export default function CreateDraftDialog({
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="What will this article cover?"
+                placeholder="What will this editorial piece cover?"
                 rows={3}
               />
             </div>
@@ -203,7 +207,7 @@ export default function CreateDraftDialog({
                   id="content"
                   value={fullContent}
                   onChange={(e) => setFullContent(e.target.value)}
-                  placeholder="Full article content..."
+                  placeholder="Full article content or outline..."
                   rows={8}
                   className="font-mono text-sm"
                 />
@@ -221,7 +225,7 @@ export default function CreateDraftDialog({
           </Button>
           <Button 
             onClick={handleCreate} 
-            disabled={isCreating || !title.trim()}
+            disabled={isCreating || (!title.trim() && !theme.trim())}
           >
             {isCreating ? "Creating..." : "Create Draft"}
           </Button>
