@@ -1,5 +1,10 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import mammoth from "mammoth";
+import * as pdfjs from "pdfjs-dist";
+
+// Configure PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 export interface ProcessedDocument {
   title: string;
@@ -37,23 +42,39 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
         break;
         
       case 'docx':
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          extractedContent = result.value;
+          console.log(`Extracted ${extractedContent.length} characters from DOCX file`);
+        } catch (error) {
+          console.error('Error extracting DOCX content:', error);
+          throw new Error(`Failed to extract content from DOCX file: ${error.message}`);
+        }
+        break;
+        
       case 'pdf':
-        // For Word and PDF files, we'll extract what we can
-        // In a production environment, you'd use proper libraries like:
-        // - mammoth.js for .docx files
-        // - pdf-parse or PDF.js for PDF files
-        extractedContent = `[Content from ${file.name}]
-
-Please paste the actual content from your ${fileExtension.toUpperCase()} file here.
-
-File imported: ${new Date().toLocaleString()}
-Original filename: ${file.name}
-File size: ${(file.size / 1024).toFixed(1)} KB
-
-To get the content:
-1. Open your ${fileExtension.toUpperCase()} file
-2. Select and copy all the text content
-3. Replace this placeholder with your content`;
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+          let fullText = '';
+          
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+              .filter((item: any) => 'str' in item)
+              .map((item: any) => item.str)
+              .join(' ');
+            fullText += pageText + '\n';
+          }
+          
+          extractedContent = fullText.trim();
+          console.log(`Extracted ${extractedContent.length} characters from PDF file`);
+        } catch (error) {
+          console.error('Error extracting PDF content:', error);
+          throw new Error(`Failed to extract content from PDF file: ${error.message}`);
+        }
         break;
         
       default:
@@ -61,12 +82,30 @@ To get the content:
     }
 
     // Extract title from first line if it looks like a title (for text-based files)
-    if (fileExtension !== 'docx' && fileExtension !== 'pdf') {
+    if (extractedContent && fileExtension !== 'docx' && fileExtension !== 'pdf') {
       const lines = extractedContent.split('\n').filter(line => line.trim());
       if (lines.length > 0 && lines[0].length < 100 && lines[0].length > 5) {
         title = lines[0].trim();
         extractedContent = lines.slice(1).join('\n').trim();
       }
+    }
+
+    // For DOCX and PDF, try to extract title from first line of content
+    if ((fileExtension === 'docx' || fileExtension === 'pdf') && extractedContent) {
+      const lines = extractedContent.split('\n').filter(line => line.trim());
+      if (lines.length > 0) {
+        const firstLine = lines[0].trim();
+        // Use first line as title if it's not too long and looks like a title
+        if (firstLine.length > 5 && firstLine.length < 100 && !firstLine.includes('.')) {
+          title = firstLine;
+          extractedContent = lines.slice(1).join('\n').trim();
+        }
+      }
+    }
+
+    // Ensure we have some content
+    if (!extractedContent || extractedContent.trim().length === 0) {
+      throw new Error(`No content could be extracted from ${file.name}. The file may be empty or corrupted.`);
     }
 
     // Upload file to storage (optional, for archival purposes)
