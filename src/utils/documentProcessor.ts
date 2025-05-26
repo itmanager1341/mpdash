@@ -1,10 +1,24 @@
-
 import { supabase } from "@/integrations/supabase/client";
-import mammoth from "mammoth";
-import * as pdfjs from "pdfjs-dist";
 
-// Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+// Dynamic imports for better compatibility in Vite/Lovable environment
+let mammoth: any;
+let pdfjs: any;
+
+// Initialize packages dynamically
+const initializePackages = async () => {
+  try {
+    if (!mammoth) {
+      mammoth = await import('mammoth');
+    }
+    if (!pdfjs) {
+      pdfjs = await import('pdfjs-dist');
+      // Configure PDF.js worker
+      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+    }
+  } catch (error) {
+    console.warn('Failed to load document processing packages:', error);
+  }
+};
 
 export interface ProcessedDocument {
   title: string;
@@ -21,6 +35,9 @@ export interface ProcessedDocument {
 }
 
 export async function processDocumentFile(file: File): Promise<ProcessedDocument> {
+  // Initialize packages before processing
+  await initializePackages();
+  
   const fileExtension = file.name.split('.').pop()?.toLowerCase();
   let extractedContent = '';
   let title = file.name.replace(/\.[^/.]+$/, ""); // Remove file extension
@@ -42,6 +59,9 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
         break;
         
       case 'docx':
+        if (!mammoth) {
+          throw new Error('DOCX processing is not available - mammoth package failed to load');
+        }
         try {
           const arrayBuffer = await file.arrayBuffer();
           const result = await mammoth.extractRawText({ arrayBuffer });
@@ -54,6 +74,9 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
         break;
         
       case 'pdf':
+        if (!pdfjs) {
+          throw new Error('PDF processing is not available - pdfjs-dist package failed to load');
+        }
         try {
           const arrayBuffer = await file.arrayBuffer();
           const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;

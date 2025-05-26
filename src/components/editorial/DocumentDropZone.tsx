@@ -66,7 +66,15 @@ export default function DocumentDropZone({
         onDocumentProcessed(processedDoc);
       } catch (error) {
         console.error('Error processing file:', error);
-        toast.error(`Failed to process ${file.name}: ${error.message || 'Unknown error'}`);
+        
+        // Provide more specific error messages
+        if (error.message.includes('mammoth package failed to load')) {
+          toast.error(`DOCX processing unavailable for ${file.name}. Try TXT, Markdown, or HTML files instead.`);
+        } else if (error.message.includes('pdfjs-dist package failed to load')) {
+          toast.error(`PDF processing unavailable for ${file.name}. Try TXT, Markdown, or HTML files instead.`);
+        } else {
+          toast.error(`Failed to process ${file.name}: ${error.message || 'Unknown error'}`);
+        }
       } finally {
         setProcessingFiles(prev => prev.filter(name => name !== file.name));
       }
