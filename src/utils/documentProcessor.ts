@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 // Dynamic imports for better compatibility in Vite/Lovable environment
@@ -40,7 +41,8 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
   
   const fileExtension = file.name.split('.').pop()?.toLowerCase();
   let extractedContent = '';
-  let title = file.name.replace(/\.[^/.]+$/, ""); // Remove file extension
+  // Always use filename (without extension) as title - no fancy extraction
+  const title = file.name.replace(/\.[^/.]+$/, "");
   
   console.log(`Processing file: ${file.name}, type: ${fileExtension}`);
   
@@ -102,28 +104,6 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
         
       default:
         throw new Error(`Unsupported file type: ${fileExtension}. Supported types: TXT, MD, HTML, DOCX, PDF`);
-    }
-
-    // Extract title from first line if it looks like a title (for text-based files)
-    if (extractedContent && fileExtension !== 'docx' && fileExtension !== 'pdf') {
-      const lines = extractedContent.split('\n').filter(line => line.trim());
-      if (lines.length > 0 && lines[0].length < 100 && lines[0].length > 5) {
-        title = lines[0].trim();
-        extractedContent = lines.slice(1).join('\n').trim();
-      }
-    }
-
-    // For DOCX and PDF, try to extract title from first line of content
-    if ((fileExtension === 'docx' || fileExtension === 'pdf') && extractedContent) {
-      const lines = extractedContent.split('\n').filter(line => line.trim());
-      if (lines.length > 0) {
-        const firstLine = lines[0].trim();
-        // Use first line as title if it's not too long and looks like a title
-        if (firstLine.length > 5 && firstLine.length < 100 && !firstLine.includes('.')) {
-          title = firstLine;
-          extractedContent = lines.slice(1).join('\n').trim();
-        }
-      }
     }
 
     // Ensure we have some content
@@ -189,25 +169,25 @@ export async function uploadDocumentToStorage(file: File): Promise<string> {
   return data.path;
 }
 
-// New function to directly create a draft from a processed document
+// Simplified draft creation - just use filename as title and put all content in the article
 export async function createDraftFromDocument(document: ProcessedDocument): Promise<any> {
   const newDraft = {
-    title: document.title,
-    theme: document.title,
-    summary: document.content.substring(0, 200) + (document.content.length > 200 ? '...' : ''),
-    outline: document.content,
+    title: document.title, // Use filename as-is
+    theme: document.title, // Use filename as theme too
+    summary: '', // Leave blank for user to fill
+    outline: document.content, // Put full content in outline for now
     source_type: 'document',
     status: 'draft',
     content_variants: {
       editorial_content: {
-        headline: document.title,
-        summary: document.content.substring(0, 200) + (document.content.length > 200 ? '...' : ''),
-        full_content: document.content,
-        cta: "Read more..."
+        headline: '', // Leave blank - no auto-generated marketing copy
+        summary: '', // Leave blank - no auto-generated marketing copy
+        full_content: document.content, // Full extracted content goes here
+        cta: '' // Leave blank
       },
       metadata: {
-        seo_title: document.title,
-        seo_description: document.content.substring(0, 160),
+        seo_title: document.title, // Just use filename
+        seo_description: '', // Leave blank for user to fill
         tags: [],
         original_filename: document.metadata.originalFilename,
         storage_url: document.metadata.storageUrl
@@ -220,7 +200,7 @@ export async function createDraftFromDocument(document: ProcessedDocument): Prom
     updated_at: new Date().toISOString()
   };
 
-  console.log("Creating editor brief from document:", newDraft);
+  console.log("Creating simplified editor brief from document:", newDraft);
 
   const { data, error } = await supabase
     .from('editor_briefs')
