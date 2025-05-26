@@ -22,8 +22,6 @@ export default function DocumentDropZone({
 }: DocumentDropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [processingFiles, setProcessingFiles] = useState<string[]>([]);
-  const [dragOverTrash, setDragOverTrash] = useState(false);
-  const [draggedFileIndex, setDraggedFileIndex] = useState<number | null>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -80,12 +78,12 @@ export default function DocumentDropZone({
   };
 
   const handleFileDelete = (index: number, fileName: string) => {
-    console.log(`Attempting to delete file at index ${index}: ${fileName}`);
+    console.log(`Delete button clicked for file at index ${index}: ${fileName}`);
     
     if (onFileDelete) {
       try {
         onFileDelete(index);
-        toast.success(`Removed ${fileName} from workspace`);
+        toast.success(`Removed ${fileName} from list`);
         console.log(`Successfully deleted file: ${fileName}`);
       } catch (error) {
         console.error('Error deleting file:', error);
@@ -95,52 +93,6 @@ export default function DocumentDropZone({
       console.error('onFileDelete function not provided');
       toast.error('Delete function not available');
     }
-  };
-
-  const handleFileDragStart = (e: React.DragEvent, index: number) => {
-    console.log(`Starting drag for file at index: ${index}`);
-    setDraggedFileIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', index.toString());
-  };
-
-  const handleFileDragEnd = () => {
-    console.log('Ending file drag');
-    setDraggedFileIndex(null);
-    setDragOverTrash(false);
-  };
-
-  const handleTrashDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverTrash(true);
-    console.log('Dragging over trash');
-  };
-
-  const handleTrashDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverTrash(false);
-    console.log('Left trash area');
-  };
-
-  const handleTrashDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverTrash(false);
-    
-    const draggedIndex = draggedFileIndex;
-    console.log(`Dropping file at index ${draggedIndex} on trash`);
-    
-    if (draggedIndex !== null && processedFiles[draggedIndex]) {
-      const fileName = processedFiles[draggedIndex].title;
-      handleFileDelete(draggedIndex, fileName);
-    } else {
-      console.error('No valid file index for deletion');
-      toast.error('Could not identify file to delete');
-    }
-    
-    setDraggedFileIndex(null);
   };
 
   const isFileProcessing = processingFiles.length > 0 || isProcessing;
@@ -203,10 +155,7 @@ export default function DocumentDropZone({
             {processedFiles.map((file, index) => (
               <Card 
                 key={`${file.title}-${index}`} 
-                className="p-3 cursor-move hover:bg-muted/50 transition-colors border"
-                draggable
-                onDragStart={(e) => handleFileDragStart(e, index)}
-                onDragEnd={handleFileDragEnd}
+                className="p-3 border hover:bg-muted/50 transition-colors"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3 flex-1">
@@ -228,28 +177,11 @@ export default function DocumentDropZone({
                     }}
                     className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
                   >
-                    <X className="h-4 w-4" />
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </Card>
             ))}
-          </div>
-
-          {/* Drag and Drop Trash Can */}
-          <div
-            className={`border-2 border-dashed rounded-lg p-4 text-center transition-all ${
-              dragOverTrash 
-                ? 'border-red-500 bg-red-50 text-red-700' 
-                : 'border-red-300 bg-red-50/30 text-red-500 hover:border-red-400'
-            }`}
-            onDragOver={handleTrashDragOver}
-            onDragLeave={handleTrashDragLeave}
-            onDrop={handleTrashDrop}
-          >
-            <Trash2 className={`h-8 w-8 mx-auto mb-2 ${dragOverTrash ? 'animate-bounce' : ''}`} />
-            <p className="text-sm font-medium">
-              {dragOverTrash ? 'Drop to delete file' : 'Drag files here to delete'}
-            </p>
           </div>
         </div>
       )}
