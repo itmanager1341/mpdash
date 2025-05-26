@@ -68,15 +68,7 @@ export default function DocumentDropZone({
         console.log(`Processing file: ${file.name}`);
         const processedDoc = await processDocumentFile(file);
         
-        // Special handling for Word and PDF files
-        if (fileExtension === 'docx' || fileExtension === 'pdf') {
-          toast.success(`${file.name} imported - please paste the content manually`, {
-            duration: 5000
-          });
-        } else {
-          toast.success(`Successfully imported: ${file.name}`);
-        }
-        
+        toast.success(`Successfully imported: ${file.name}`);
         onDocumentProcessed(processedDoc);
       } catch (error) {
         console.error('Error processing file:', error);
@@ -224,9 +216,6 @@ export default function DocumentDropZone({
                       <p className="text-xs text-muted-foreground">
                         {file.metadata.originalFilename} • {(file.metadata.fileSize / 1024).toFixed(1)} KB
                       </p>
-                      {file.metadata.needsManualContent && (
-                        <p className="text-xs text-orange-600">⚠️ Needs manual content entry</p>
-                      )}
                     </div>
                   </div>
                   <Button
@@ -265,12 +254,11 @@ export default function DocumentDropZone({
         </div>
       )}
 
-      {/* Information about Word and PDF handling */}
+      {/* Updated information about file handling */}
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription className="text-sm">
-          <strong>Note:</strong> Word (.docx) and PDF files will be imported with placeholder content. 
-          You'll need to manually paste or type the actual content in the editor after import.
+          <strong>Note:</strong> All supported file types (TXT, Markdown, HTML, Word, PDF) will have their content extracted automatically and saved as drafts ready for editing.
         </AlertDescription>
       </Alert>
     </div>
