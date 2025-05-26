@@ -55,15 +55,17 @@ export default function EditorialWorkspace() {
   });
 
   const handleDraftSelect = (draft: any) => {
+    console.log("Selected draft:", draft);
     setSelectedDraft(draft);
     setResearchContext({
-      keywords: draft.matched_clusters || [],
+      keywords: draft.content_variants?.metadata?.tags || [],
       relatedArticles: [],
       sources: []
     });
   };
 
   const handleDraftSave = () => {
+    console.log("Draft saved, refreshing list");
     refetch();
     toast.success("Draft saved successfully");
   };
@@ -132,9 +134,20 @@ export default function EditorialWorkspace() {
     </div>
   );
 
-  const handleWorkspaceDocumentDrop = (document: ProcessedDocument) => {
-    setPendingDocument(document);
-    setShowCreateDialog(true);
+  const handleWorkspaceDocumentDrop = async (document: ProcessedDocument) => {
+    console.log("Document dropped in workspace:", document);
+    setIsProcessing(true);
+    
+    try {
+      setPendingDocument(document);
+      setShowCreateDialog(true);
+      toast.success("Document processed - opening draft editor");
+    } catch (error) {
+      console.error("Error handling document drop:", error);
+      toast.error("Failed to process document");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -142,6 +155,13 @@ export default function EditorialWorkspace() {
     if (!open) {
       setPendingDocument(null);
     }
+  };
+
+  const handleDraftCreated = (newDraft: any) => {
+    console.log("New draft created:", newDraft);
+    setSelectedDraft(newDraft);
+    refetch();
+    toast.success("Draft created successfully - now editing");
   };
 
   const renderEmptyState = () => (
@@ -271,10 +291,7 @@ export default function EditorialWorkspace() {
           <CreateDraftDialog
             open={showCreateDialog}
             onOpenChange={handleDialogOpenChange}
-            onDraftCreated={(draft) => {
-              setSelectedDraft(draft);
-              refetch();
-            }}
+            onDraftCreated={handleDraftCreated}
             initialDocument={pendingDocument}
           />
         </WorkspaceDropZone>

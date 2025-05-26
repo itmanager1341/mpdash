@@ -18,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { InlineAISuggestions } from "@/components/editor/InlineAISuggestions";
+import DraftPreviewModal from "./DraftPreviewModal";
 
 interface DraftEditorProps {
   draft: any;
@@ -30,8 +31,9 @@ export default function DraftEditor({ draft, onSave, researchContext }: DraftEdi
   const [headline, setHeadline] = useState(draft?.content_variants?.editorial_content?.headline || '');
   const [summary, setSummary] = useState(draft?.content_variants?.editorial_content?.summary || '');
   const [content, setContent] = useState(draft?.content_variants?.editorial_content?.full_content || '');
-  const [tags, setTags] = useState<string[]>(draft?.matched_clusters || []);
+  const [tags, setTags] = useState<string[]>(draft?.content_variants?.metadata?.tags || []);
   const [isSaving, setIsSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   
   // AI suggestions state
   const [headlineSuggestions, setHeadlineSuggestions] = useState<string[]>([]);
@@ -40,6 +42,17 @@ export default function DraftEditor({ draft, onSave, researchContext }: DraftEdi
 
   // SEO scoring
   const [seoScore, setSeoScore] = useState(0);
+
+  useEffect(() => {
+    // Update state when draft changes
+    if (draft) {
+      setTitle(draft.title || '');
+      setHeadline(draft.content_variants?.editorial_content?.headline || '');
+      setSummary(draft.content_variants?.editorial_content?.summary || '');
+      setContent(draft.content_variants?.editorial_content?.full_content || '');
+      setTags(draft.content_variants?.metadata?.tags || []);
+    }
+  }, [draft]);
 
   useEffect(() => {
     // Calculate SEO score based on content
@@ -133,23 +146,27 @@ Return only the 3 summaries, numbered.`;
         status: content.trim() ? "ready" : "draft"
       };
 
+      console.log("Saving draft with data:", { title, contentVariants });
+
       const { error } = await supabase
         .from("articles")
         .update({
           title,
           content_variants: contentVariants,
-          matched_clusters: tags,
           updated_at: new Date().toISOString()
         })
         .eq("id", draft.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Save error:", error);
+        throw error;
+      }
 
       toast.success("Draft saved successfully");
       onSave();
     } catch (error) {
       console.error("Error saving draft:", error);
-      toast.error("Failed to save draft");
+      toast.error("Failed to save draft: " + (error.message || "Unknown error"));
     } finally {
       setIsSaving(false);
     }
@@ -160,6 +177,14 @@ Return only the 3 summaries, numbered.`;
     if (score >= 60) return 'text-yellow-600';
     return 'text-red-600';
   };
+
+  if (!draft) {
+    return (
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <p>Select a draft to start editing</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -177,7 +202,7 @@ Return only the 3 summaries, numbered.`;
               <Target className="h-4 w-4" />
               <span className={getSEOScoreColor(seoScore)}>SEO: {seoScore}%</span>
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => setShowPreview(true)}>
               <Eye className="h-4 w-4 mr-2" />
               Preview
             </Button>
@@ -315,6 +340,9 @@ Return only the 3 summaries, numbered.`;
                     </Badge>
                   ))}
                 </div>
+                <p className="text-sm text-muted-foreground">
+                  Tags will be automatically generated from article content
+                </p>
               </div>
             </div>
           </TabsContent>
@@ -329,6 +357,15 @@ Return only the 3 summaries, numbered.`;
           </TabsContent>
         </Tabs>
       </div>
+
+      <DraftPreviewModal
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        title={title}
+        headline={headline}
+        summary={summary}
+        content={content}
+      />
     </div>
   );
 }
