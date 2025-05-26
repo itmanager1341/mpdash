@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,6 +88,16 @@ export default function EditorialWorkspace() {
     setSelectedDraft(newDraft);
     refetch();
     toast.success("Draft created successfully - now editing");
+  };
+
+  const handleDraftDeleted = () => {
+    console.log("Draft deleted, refreshing list");
+    refetch();
+    // If the deleted draft was selected, clear the selection
+    if (selectedDraft) {
+      setSelectedDraft(null);
+    }
+    toast.success("Draft deleted successfully");
   };
 
   const renderListView = () => (
