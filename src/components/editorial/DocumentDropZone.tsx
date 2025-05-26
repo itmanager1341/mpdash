@@ -87,39 +87,68 @@ export default function DocumentDropZone({
     }
   };
 
-  const handleFileDelete = (index: number) => {
+  const handleFileDelete = (index: number, fileName: string) => {
+    console.log(`Attempting to delete file at index ${index}: ${fileName}`);
+    
     if (onFileDelete) {
-      onFileDelete(index);
-      toast.success("File removed from workspace");
+      try {
+        onFileDelete(index);
+        toast.success(`Removed ${fileName} from workspace`);
+        console.log(`Successfully deleted file: ${fileName}`);
+      } catch (error) {
+        console.error('Error deleting file:', error);
+        toast.error(`Failed to remove ${fileName}`);
+      }
+    } else {
+      console.error('onFileDelete function not provided');
+      toast.error('Delete function not available');
     }
   };
 
   const handleFileDragStart = (e: React.DragEvent, index: number) => {
+    console.log(`Starting drag for file at index: ${index}`);
     setDraggedFileIndex(index);
     e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', index.toString());
   };
 
   const handleFileDragEnd = () => {
+    console.log('Ending file drag');
     setDraggedFileIndex(null);
     setDragOverTrash(false);
   };
 
   const handleTrashDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverTrash(true);
+    console.log('Dragging over trash');
   };
 
-  const handleTrashDragLeave = () => {
+  const handleTrashDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setDragOverTrash(false);
+    console.log('Left trash area');
   };
 
   const handleTrashDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOverTrash(false);
     
-    if (draggedFileIndex !== null) {
-      handleFileDelete(draggedFileIndex);
+    const draggedIndex = draggedFileIndex;
+    console.log(`Dropping file at index ${draggedIndex} on trash`);
+    
+    if (draggedIndex !== null && processedFiles[draggedIndex]) {
+      const fileName = processedFiles[draggedIndex].title;
+      handleFileDelete(draggedIndex, fileName);
+    } else {
+      console.error('No valid file index for deletion');
+      toast.error('Could not identify file to delete');
     }
+    
+    setDraggedFileIndex(null);
   };
 
   const isFileProcessing = processingFiles.length > 0 || isProcessing;
@@ -177,21 +206,21 @@ export default function DocumentDropZone({
       {/* Processed Files List */}
       {processedFiles.length > 0 && (
         <div className="space-y-3">
-          <h4 className="text-sm font-medium">Imported Files:</h4>
+          <h4 className="text-sm font-medium">Imported Files ({processedFiles.length}):</h4>
           <div className="space-y-2">
             {processedFiles.map((file, index) => (
               <Card 
-                key={index} 
-                className="p-3 cursor-move hover:bg-muted/50 transition-colors"
+                key={`${file.title}-${index}`} 
+                className="p-3 cursor-move hover:bg-muted/50 transition-colors border"
                 draggable
                 onDragStart={(e) => handleFileDragStart(e, index)}
                 onDragEnd={handleFileDragEnd}
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <File className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{file.title}</p>
+                  <div className="flex items-center gap-3 flex-1">
+                    <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{file.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {file.metadata.originalFilename} • {(file.metadata.fileSize / 1024).toFixed(1)} KB
                       </p>
@@ -203,8 +232,12 @@ export default function DocumentDropZone({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleFileDelete(index)}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      console.log(`Delete button clicked for file: ${file.title}`);
+                      handleFileDelete(index, file.title);
+                    }}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
                   >
                     <X className="h-4 w-4" />
                   </Button>

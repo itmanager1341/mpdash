@@ -93,7 +93,30 @@ export default function EditorialWorkspace() {
   };
 
   const handleFileDelete = (index: number) => {
-    setProcessedFiles(prev => prev.filter((_, i) => i !== index));
+    console.log(`Deleting file at index ${index} from workspace`);
+    console.log('Current files:', processedFiles);
+    
+    if (index >= 0 && index < processedFiles.length) {
+      const fileToDelete = processedFiles[index];
+      console.log(`Deleting file: ${fileToDelete.title}`);
+      
+      setProcessedFiles(prev => {
+        const newFiles = prev.filter((_, i) => i !== index);
+        console.log('Files after deletion:', newFiles);
+        return newFiles;
+      });
+      
+      // Clear pending document if it's the one being deleted
+      if (pendingDocument && processedFiles[index] === pendingDocument) {
+        console.log('Clearing pending document as it was deleted');
+        setPendingDocument(null);
+      }
+      
+      console.log(`Successfully removed file at index ${index}`);
+    } else {
+      console.error(`Invalid index ${index} for file deletion. Array length: ${processedFiles.length}`);
+      toast.error('Could not delete file - invalid index');
+    }
   };
 
   const handleDialogOpenChange = (open: boolean) => {
