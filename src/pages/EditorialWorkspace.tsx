@@ -121,6 +121,7 @@ export default function EditorialWorkspace() {
           onDraftSelect={handleDraftSelect}
           isLoading={isLoading}
           activeView={activeView}
+          onDraftDeleted={handleDraftDeleted}
         />
       </div>
     </div>

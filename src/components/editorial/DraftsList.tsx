@@ -9,6 +9,7 @@ interface DraftsListProps {
   onDraftSelect: (draft: any) => void;
   isLoading: boolean;
   activeView: string;
+  onDraftDeleted?: () => void;
 }
 
 export default function DraftsList({ 
@@ -16,7 +17,8 @@ export default function DraftsList({
   selectedDraft, 
   onDraftSelect, 
   isLoading,
-  activeView 
+  activeView,
+  onDraftDeleted
 }: DraftsListProps) {
   if (isLoading) {
     return (
@@ -48,6 +50,7 @@ export default function DraftsList({
           draft={draft}
           isSelected={selectedDraft?.id === draft.id}
           onSelect={onDraftSelect}
+          onDelete={onDraftDeleted}
         />
       ))}
     </div>

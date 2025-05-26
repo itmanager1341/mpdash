@@ -1,4 +1,3 @@
-
 import { useDrag } from 'react-dnd';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,14 +17,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useState } from "react";
 
 interface DraggableDraftCardProps {
   draft: any;
   isSelected: boolean;
   onSelect: (draft: any) => void;
+  onDelete?: () => void;
 }
 
-export default function DraggableDraftCard({ draft, isSelected, onSelect }: DraggableDraftCardProps) {
+export default function DraggableDraftCard({ draft, isSelected, onSelect, onDelete }: DraggableDraftCardProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'draft',
     item: { id: draft.id, draft },
@@ -33,6 +38,42 @@ export default function DraggableDraftCard({ draft, isSelected, onSelect }: Drag
       isDragging: monitor.isDragging(),
     }),
   }));
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!confirm(`Are you sure you want to delete "${draft.title}"?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    
+    try {
+      console.log(`Deleting draft with ID: ${draft.id}`);
+      
+      const { error } = await supabase
+        .from('editor_briefs')
+        .delete()
+        .eq('id', draft.id);
+
+      if (error) {
+        console.error('Error deleting draft:', error);
+        throw error;
+      }
+
+      console.log(`Successfully deleted draft: ${draft.title}`);
+      toast.success(`Deleted "${draft.title}"`);
+      
+      if (onDelete) {
+        onDelete();
+      }
+    } catch (error) {
+      console.error('Error deleting draft:', error);
+      toast.error(`Failed to delete "${draft.title}": ${error.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -75,8 +116,8 @@ export default function DraggableDraftCard({ draft, isSelected, onSelect }: Drag
         isDragging ? 'opacity-50 rotate-3 scale-105' : ''
       } ${
         isSelected ? 'ring-2 ring-primary bg-accent' : ''
-      } hover:bg-accent hover:shadow-md`}
-      onClick={() => onSelect(draft)}
+      } hover:bg-accent hover:shadow-md ${isDeleting ? 'opacity-50' : ''}`}
+      onClick={() => !isDeleting && onSelect(draft)}
     >
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-start gap-2 flex-1">
@@ -87,21 +128,29 @@ export default function DraggableDraftCard({ draft, isSelected, onSelect }: Drag
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" disabled={isDeleting}>
               <MoreVertical className="h-3 w-3" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
               <Edit className="h-3 w-3 mr-2" />
               Edit
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
               <Copy className="h-3 w-3 mr-2" />
               Duplicate
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive">
-              <Trash2 className="h-3 w-3 mr-2" />
+            <DropdownMenuItem 
+              className="text-destructive" 
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <div className="h-3 w-3 mr-2 animate-spin rounded-full border border-red-600 border-t-transparent" />
+              ) : (
+                <Trash2 className="h-3 w-3 mr-2" />
+              )}
               Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
