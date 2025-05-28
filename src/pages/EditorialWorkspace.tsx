@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner";
 import DraftsList from "@/components/editorial/DraftsList";
 import DraftEditor from "@/components/editorial/DraftEditor";
-import ResearchPanel from "@/components/editorial/ResearchPanel";
+import ContentAssistant from "@/components/editorial/ContentAssistant";
 import CreateDraftDialog from "@/components/editorial/CreateDraftDialog";
 import DragDropProvider from "@/components/editorial/DragDropProvider";
 import ViewToggle from "@/components/editorial/ViewToggle";
@@ -28,7 +28,6 @@ export default function EditorialWorkspace() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeView, setActiveView] = useState("drafts");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [researchContext, setResearchContext] = useState<any>(null);
   const [layoutView, setLayoutView] = useState<'list' | 'kanban'>('list');
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -58,18 +57,66 @@ export default function EditorialWorkspace() {
   const handleDraftSelect = (draft: any) => {
     console.log("Selected draft:", draft);
     setSelectedDraft(draft);
-    setResearchContext({
-      keywords: draft.content_variants?.metadata?.tags || [],
-      relatedArticles: [],
-      sources: draft.sources || [],
-      sourceNews: draft.source_id ? [draft.source_id] : []
-    });
   };
 
   const handleDraftSave = () => {
     console.log("Draft saved, refreshing list");
     refetch();
     toast.success("Draft saved successfully");
+  };
+
+  const handleKeywordsSuggested = (keywords: string[]) => {
+    if (selectedDraft) {
+      const updatedContentVariants = {
+        ...selectedDraft.content_variants,
+        metadata: {
+          ...selectedDraft.content_variants?.metadata,
+          tags: keywords
+        }
+      };
+      
+      // Update the draft with new keywords
+      setSelectedDraft({
+        ...selectedDraft,
+        content_variants: updatedContentVariants
+      });
+    }
+  };
+
+  const handleContentUpdated = async (updates: any) => {
+    if (!selectedDraft) return;
+
+    try {
+      const currentContentVariants = selectedDraft.content_variants || {};
+      const updatedContentVariants = {
+        ...currentContentVariants,
+        editorial_content: {
+          ...currentContentVariants.editorial_content,
+          ...updates
+        }
+      };
+
+      const { error } = await supabase
+        .from("editor_briefs")
+        .update({
+          content_variants: updatedContentVariants,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", selectedDraft.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setSelectedDraft({
+        ...selectedDraft,
+        content_variants: updatedContentVariants
+      });
+
+      refetch();
+    } catch (error) {
+      console.error("Error updating content:", error);
+      toast.error("Failed to update content");
+    }
   };
 
   const getDraftsByStatus = (status: string) => {
@@ -246,20 +293,20 @@ export default function EditorialWorkspace() {
                       <DraftEditor
                         draft={selectedDraft}
                         onSave={handleDraftSave}
-                        researchContext={researchContext}
+                        researchContext={null}
                       />
                     ) : (
                       renderEmptyState()
                     )}
                   </div>
 
-                  {/* Right Panel - Research & Context */}
+                  {/* Right Panel - Content Assistant */}
                   {selectedDraft && (
                     <div className="w-80 border-l bg-muted/20">
-                      <ResearchPanel
+                      <ContentAssistant
                         draft={selectedDraft}
-                        researchContext={researchContext}
-                        onContextUpdate={setResearchContext}
+                        onKeywordsSuggested={handleKeywordsSuggested}
+                        onContentUpdated={handleContentUpdated}
                       />
                     </div>
                   )}
@@ -268,14 +315,14 @@ export default function EditorialWorkspace() {
                 <>
                   {renderKanbanView()}
                   
-                  {/* Right Panel - Editor & Research */}
+                  {/* Right Panel - Editor & Content Assistant */}
                   {selectedDraft && (
                     <div className="w-96 border-l flex flex-col">
                       <div className="flex-1">
                         <DraftEditor
                           draft={selectedDraft}
                           onSave={handleDraftSave}
-                          researchContext={researchContext}
+                          researchContext={null}
                         />
                       </div>
                     </div>

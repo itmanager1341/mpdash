@@ -17,16 +17,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { InlineAISuggestions } from "@/components/editor/InlineAISuggestions";
 import DraftPreviewModal from "./DraftPreviewModal";
 
 interface DraftEditorProps {
   draft: any;
   onSave: () => void;
-  researchContext: any;
+  researchContext?: any; // Made optional since we're not using it much
 }
 
-export default function DraftEditor({ draft, onSave, researchContext }: DraftEditorProps) {
+export default function DraftEditor({ draft, onSave }: DraftEditorProps) {
   const [title, setTitle] = useState(draft?.title || draft?.theme || '');
   const [theme, setTheme] = useState(draft?.theme || '');
   const [headline, setHeadline] = useState(draft?.content_variants?.editorial_content?.headline || '');
@@ -36,11 +35,6 @@ export default function DraftEditor({ draft, onSave, researchContext }: DraftEdi
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   
-  // AI suggestions state
-  const [headlineSuggestions, setHeadlineSuggestions] = useState<string[]>([]);
-  const [summarySuggestions, setSummarySuggestions] = useState<string[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-
   // SEO scoring
   const [seoScore, setSeoScore] = useState(0);
 
@@ -60,76 +54,16 @@ export default function DraftEditor({ draft, onSave, researchContext }: DraftEdi
     // Calculate SEO score based on content
     const calculateSEOScore = () => {
       let score = 0;
+      if (title.length > 0) score += 20;
       if (headline.length >= 30 && headline.length <= 60) score += 25;
       if (summary.length >= 120 && summary.length <= 160) score += 25;
-      if (content.length >= 300) score += 25;
-      if (tags.length >= 3) score += 25;
+      if (content.length >= 300) score += 20;
+      if (tags.length >= 3) score += 10;
       setSeoScore(score);
     };
     
     calculateSEOScore();
-  }, [headline, summary, content, tags]);
-
-  const generateAISuggestions = async (type: "headline" | "summary") => {
-    setIsGenerating(true);
-    try {
-      let prompt = "";
-      
-      if (type === "headline") {
-        prompt = `Create 3 compelling headlines for this editorial piece:
-Theme: "${theme}"
-Content: "${content.substring(0, 500)}..."
-Current headline: "${headline}"
-
-Requirements:
-- 30-60 characters for SEO
-- Engaging and clickable
-- Professional tone for mortgage industry
-- Include primary keyword if possible
-
-Return only the 3 headlines, numbered.`;
-      } else {
-        prompt = `Create 3 SEO-optimized summaries:
-Theme: "${theme}"
-Headline: "${headline}"
-Content: "${content.substring(0, 500)}..."
-
-Requirements:
-- 120-160 characters for meta description
-- Include primary keywords naturally
-- Clear value proposition
-- Action-oriented
-
-Return only the 3 summaries, numbered.`;
-      }
-
-      const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
-        body: {
-          prompt_text: prompt,
-          model: 'gpt-4o',
-          input_data: { type, theme, headline, summary, content }
-        }
-      });
-      
-      if (error) throw error;
-      
-      const responseContent = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
-      const suggestions = responseContent.split('\n')
-        .filter(line => line.trim())
-        .map(line => line.replace(/^\d+\.\s*/, '').trim())
-        .filter(line => line.length > 0)
-        .slice(0, 3);
-
-      if (type === "headline") setHeadlineSuggestions(suggestions);
-      else setSummarySuggestions(suggestions);
-      
-    } catch (err) {
-      console.error(`Error generating ${type} suggestions:`, err);
-      toast.error(`Failed to generate ${type} suggestions`);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  }, [title, headline, summary, content, tags]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -143,11 +77,12 @@ Return only the 3 summaries, numbered.`;
           cta: "Read more..."
         },
         metadata: {
-          seo_title: headline,
+          seo_title: headline || title,
           seo_description: summary,
-          tags
+          tags,
+          ...(draft.content_variants?.metadata || {})
         },
-        status: content.trim() ? "ready" : "draft"
+        status: content.trim() && headline.trim() ? "ready" : "draft"
       };
 
       console.log("Saving editor brief with data:", { title, theme, contentVariants });
@@ -227,21 +162,21 @@ Return only the 3 summaries, numbered.`;
 
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium mb-1 block">Title</label>
+            <label className="text-sm font-medium mb-1 block">Document Title</label>
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter article title..."
+              placeholder="Document title (from filename)..."
               className="font-medium"
             />
           </div>
           
           <div>
-            <label className="text-sm font-medium mb-1 block">Theme</label>
+            <label className="text-sm font-medium mb-1 block">Content Theme</label>
             <Input
               value={theme}
               onChange={(e) => setTheme(e.target.value)}
-              placeholder="Editorial theme or topic..."
+              placeholder="Main topic or theme..."
             />
           </div>
         </div>
@@ -252,17 +187,33 @@ Return only the 3 summaries, numbered.`;
         <Tabs defaultValue="content" className="flex flex-col h-full">
           <TabsList className="w-full justify-start rounded-none border-b bg-background">
             <TabsTrigger value="content">Content</TabsTrigger>
+            <TabsTrigger value="marketing">Marketing</TabsTrigger>
             <TabsTrigger value="seo">SEO & Keywords</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="content" className="flex-1 overflow-y-auto p-4 space-y-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Article Content</label>
+              <Textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Your article content appears here from the imported document..."
+                rows={25}
+                className="font-mono text-sm resize-none"
+              />
+              <div className="text-xs text-muted-foreground">
+                {content.length} characters ({Math.round(content.length / 5)} words)
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="marketing" className="flex-1 overflow-y-auto p-4 space-y-6">
             <div className="space-y-2">
               <label className="text-sm font-medium">Marketing Headline</label>
               <Input
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
-                placeholder="Compelling, SEO-optimized headline..."
+                placeholder="Create a compelling headline for marketing..."
                 className="text-lg font-medium"
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -271,14 +222,6 @@ Return only the 3 summaries, numbered.`;
                   <CheckCircle className="h-3 w-3 text-green-600" />
                 )}
               </div>
-              <InlineAISuggestions
-                type="headline"
-                currentValue={headline}
-                suggestions={headlineSuggestions}
-                onApply={setHeadline}
-                onGenerate={() => generateAISuggestions("headline")}
-                isGenerating={isGenerating}
-              />
             </div>
 
             <div className="space-y-2">
@@ -295,56 +238,45 @@ Return only the 3 summaries, numbered.`;
                   <CheckCircle className="h-3 w-3 text-green-600" />
                 )}
               </div>
-              <InlineAISuggestions
-                type="summary"
-                currentValue={summary}
-                suggestions={summarySuggestions}
-                onApply={setSummary}
-                onGenerate={() => generateAISuggestions("summary")}
-                isGenerating={isGenerating}
-              />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Article Content</label>
-              <Textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Write your article content here..."
-                rows={20}
-                className="font-mono text-sm resize-none"
-              />
-              <div className="text-xs text-muted-foreground">
-                {content.length} characters ({Math.round(content.length / 5)} words)
-              </div>
+            <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded">
+              <p className="font-medium mb-1">💡 Marketing Tip:</p>
+              <p>Use the Content Assistant panel on the right to automatically generate these marketing fields from your article content.</p>
             </div>
           </TabsContent>
 
           <TabsContent value="seo" className="flex-1 overflow-y-auto p-4 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-6">
               <div className="space-y-3">
-                <h3 className="font-medium">SEO Score</h3>
+                <h3 className="font-medium">SEO Checklist</h3>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span>Headline length</span>
+                    <span>Title present</span>
+                    <span className={title.length > 0 ? 'text-green-600' : 'text-red-600'}>
+                      {title.length > 0 ? '✓' : '✗'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Headline length (30-60 chars)</span>
                     <span className={headline.length >= 30 && headline.length <= 60 ? 'text-green-600' : 'text-red-600'}>
                       {headline.length >= 30 && headline.length <= 60 ? '✓' : '✗'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Meta description</span>
+                    <span>Meta description (120-160 chars)</span>
                     <span className={summary.length >= 120 && summary.length <= 160 ? 'text-green-600' : 'text-red-600'}>
                       {summary.length >= 120 && summary.length <= 160 ? '✓' : '✗'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Content length</span>
-                    <span className={content.length >= 300 ? 'text-green-600' : 'text-red-600'}>
-                      {content.length >= 300 ? '✓' : '✗'}
+                    <span>Content length (300+ words)</span>
+                    <span className={content.length >= 1500 ? 'text-green-600' : 'text-red-600'}>
+                      {content.length >= 1500 ? '✓' : '✗'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Keywords/Tags</span>
+                    <span>Keywords/Tags (3+)</span>
                     <span className={tags.length >= 3 ? 'text-green-600' : 'text-red-600'}>
                       {tags.length >= 3 ? '✓' : '✗'}
                     </span>
@@ -353,7 +285,7 @@ Return only the 3 summaries, numbered.`;
               </div>
 
               <div className="space-y-3">
-                <h3 className="font-medium">Keywords & Tags</h3>
+                <h3 className="font-medium">Keywords & Tags ({tags.length})</h3>
                 <div className="flex flex-wrap gap-2">
                   {tags.map((tag, index) => (
                     <Badge key={index} variant="secondary">
@@ -362,18 +294,9 @@ Return only the 3 summaries, numbered.`;
                   ))}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Tags will be automatically generated from article content
+                  Use the Content Assistant panel to generate relevant keywords for this article.
                 </p>
               </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="settings" className="flex-1 overflow-y-auto p-4">
-            <div className="space-y-4">
-              <h3 className="font-medium">Publication Settings</h3>
-              <p className="text-sm text-muted-foreground">
-                Publication settings and scheduling options will be available here.
-              </p>
             </div>
           </TabsContent>
         </Tabs>
