@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Edit, ExternalLink, MoreHorizontal, Trash2, CheckCircle2, Globe } from "lucide-react";
+import { Edit, ExternalLink, MoreHorizontal, Trash2, CheckCircle2, Globe, FileEdit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NewsItem } from "@/types/news";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import {
   Popover,
@@ -25,6 +24,7 @@ interface UnifiedNewsCardProps {
   newsItem: NewsItem;
   onDismiss?: (item: NewsItem) => Promise<void>;
   onDetailsClick?: (item: NewsItem) => void;
+  onEditClick?: (item: NewsItem) => void;
   onStatusChange?: () => void;
   showActions?: boolean;
   className?: string;
@@ -34,6 +34,7 @@ export function UnifiedNewsCard({
   newsItem, 
   onDismiss, 
   onDetailsClick, 
+  onEditClick,
   onStatusChange,
   showActions = true,
   className 
@@ -41,35 +42,25 @@ export function UnifiedNewsCard({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   
-  // Unified approval handler for all channels
-  const handleApproval = async (channels: string[]) => {
-    if (!channels.length) return;
-    
+  // Handle initial approval (moves to approved_for_editing status)
+  const handleApprovalForEditing = async () => {
     setIsProcessing(true);
     try {
-      // Always include website as implicit destination
-      const destinations = Array.from(new Set([...channels, "website"]));
-      
       const { error } = await supabase
         .from('news')
         .update({ 
-          status: 'approved',
-          destinations: destinations
+          status: 'approved_for_editing',
+          destinations: [] // Clear destinations until final routing
         })
         .eq('id', newsItem.id);
       
       if (error) throw error;
       
-      const channelNames = channels
-        .filter(c => c !== "website")
-        .map(c => c.charAt(0).toUpperCase() + c.slice(1))
-        .join(", ");
-      
-      toast.success(`Approved for ${channelNames || "Website"}`);
+      toast.success("Article approved for editorial enhancement");
       onStatusChange?.();
       
     } catch (err) {
-      console.error("Error approving article:", err);
+      console.error("Error approving article for editing:", err);
       toast.error("Failed to approve article");
     } finally {
       setIsProcessing(false);
@@ -94,6 +85,9 @@ export function UnifiedNewsCard({
     if (status === 'pending') {
       return { variant: "outline" as const, label: "Pending Review", color: "bg-amber-50 text-amber-700 border-amber-200" };
     }
+    if (status === 'approved_for_editing') {
+      return { variant: "default" as const, label: "Ready for Enhancement", color: "bg-blue-50 text-blue-700 border-blue-200" };
+    }
     if (status === 'approved' && destinations?.length) {
       const channelLabels = destinations
         .filter(d => d !== 'website')
@@ -112,6 +106,7 @@ export function UnifiedNewsCard({
 
   const statusDisplay = getStatusDisplay();
   const isPending = newsItem.status === 'pending';
+  const isApprovedForEditing = newsItem.status === 'approved_for_editing';
   
   return (
     <Card className={`overflow-hidden transition-all duration-200 hover:shadow-md ${className || ''}`}>
@@ -177,34 +172,28 @@ export function UnifiedNewsCard({
             </Button>
             
             {isPending && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button 
-                    variant="default" 
-                    size="sm"
-                    disabled={isProcessing}
-                    className="flex items-center gap-2"
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    {isProcessing ? "Processing..." : "Approve"}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleApproval(["mpdaily"])}>
-                    Approve for MPDaily
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleApproval(["magazine"])}>
-                    Approve for Magazine
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleApproval(["mpdaily", "magazine"])}>
-                    Approve for Both
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleApproval(["reference"])}>
-                    Save as Reference
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button 
+                variant="default" 
+                size="sm"
+                disabled={isProcessing}
+                className="flex items-center gap-2"
+                onClick={handleApprovalForEditing}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {isProcessing ? "Processing..." : "Approve for Editing"}
+              </Button>
+            )}
+
+            {isApprovedForEditing && onEditClick && (
+              <Button 
+                variant="default" 
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={() => onEditClick(newsItem)}
+              >
+                <FileEdit className="h-4 w-4" />
+                Enhance Content
+              </Button>
             )}
           </div>
         )}
@@ -227,7 +216,7 @@ export function UnifiedNewsCard({
                   <ExternalLink className="mr-2 h-4 w-4" />
                   View Source
                 </Button>
-                {isPending && onDismiss && (
+                {(isPending || isApprovedForEditing) && onDismiss && (
                   <Button
                     variant="ghost"
                     size="sm"

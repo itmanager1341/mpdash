@@ -3,24 +3,30 @@ export interface NewsItem {
   id: string;
   headline: string;
   summary: string;
-  status: string;
+  status: 'pending' | 'approved_for_editing' | 'approved' | 'dismissed' | string;
   content_variants?: {
     source_content?: {
       original_title?: string;
       original_summary?: string;
+      full_content?: string;
+      source_url?: string;
       author?: string;
       publication_date?: string;
+      fetched_at?: string;
     };
     editorial_content?: {
       headline?: string;
       summary?: string;
       cta?: string;
       full_content?: string;
+      enhanced_at?: string;
     };
     metadata?: {
       seo_title?: string;
       seo_description?: string;
       tags?: string[];
+      editorial_notes?: string;
+      workflow_stage?: 'pending' | 'enhanced' | 'ready_for_publication';
     };
     status?: 'draft' | 'ready' | 'published';
   };

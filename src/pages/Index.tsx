@@ -19,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import AddNewsDialog from "@/components/news/AddNewsDialog";
 import { Badge } from "@/components/ui/badge";
 import { UnifiedNewsCard } from "@/components/news/UnifiedNewsCard";
+import { NewsEditor } from "@/components/news/NewsEditor";
 import { NewsItem } from "@/types/news";
 
 interface FilterOptions {
@@ -29,8 +30,10 @@ interface FilterOptions {
 
 const Index = () => {
   const [selectedItem, setSelectedItem] = useState<NewsItem | null>(null);
+  const [editingItem, setEditingItem] = useState<NewsItem | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"pending" | "all">("pending");
+  const [isEditingOpen, setIsEditingOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"pending" | "approved_editing" | "all">("pending");
   const [isAddNewsDialogOpen, setIsAddNewsDialogOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
@@ -83,6 +86,8 @@ const Index = () => {
       
       if (viewMode === "pending") {
         query = query.eq('status', 'pending');
+      } else if (viewMode === "approved_editing") {
+        query = query.eq('status', 'approved_for_editing');
       }
       
       if (filters.sources.length > 0) {
@@ -183,19 +188,36 @@ const Index = () => {
     }
   };
 
+  const handleEditClick = (item: NewsItem) => {
+    setEditingItem(item);
+    setIsEditingOpen(true);
+  };
+
+  const handleEditSave = () => {
+    setIsEditingOpen(false);
+    setEditingItem(null);
+    refetch();
+  };
+
+  const handleEditCancel = () => {
+    setIsEditingOpen(false);
+    setEditingItem(null);
+  };
+
   return (
     <DashboardLayout>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">News Triage</h1>
+        <h1 className="text-3xl font-bold mb-2">News Workflow</h1>
         <p className="text-muted-foreground">
-          Review and route content across all publication channels
+          Review, enhance, and route content through the editorial workflow
         </p>
       </div>
       
       <div className="flex justify-between items-center mb-6">
-        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "all")}>
+        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "approved_editing" | "all")}>
           <TabsList>
             <TabsTrigger value="pending">Pending Review</TabsTrigger>
+            <TabsTrigger value="approved_editing">Ready for Enhancement</TabsTrigger>
             <TabsTrigger value="all">All Content</TabsTrigger>
           </TabsList>
         </Tabs>
@@ -322,6 +344,7 @@ const Index = () => {
               setSelectedItem(item);
               setIsSheetOpen(true);
             }}
+            onEditClick={handleEditClick}
             onStatusChange={refetch}
           />
         ))}
@@ -429,6 +452,19 @@ const Index = () => {
                 )}
               </div>
             </>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Editorial enhancement sheet */}
+      <Sheet open={isEditingOpen} onOpenChange={setIsEditingOpen}>
+        <SheetContent className="w-full sm:max-w-4xl">
+          {editingItem && (
+            <NewsEditor
+              newsItem={editingItem}
+              onSave={handleEditSave}
+              onCancel={handleEditCancel}
+            />
           )}
         </SheetContent>
       </Sheet>
