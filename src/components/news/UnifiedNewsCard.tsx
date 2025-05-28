@@ -108,6 +108,10 @@ export function UnifiedNewsCard({
   const isPending = newsItem.status === 'pending';
   const isApprovedForEditing = newsItem.status === 'approved_for_editing';
   
+  // Use editorial headline if available, otherwise fall back to original headline
+  const displayHeadline = newsItem.editorial_headline || newsItem.headline;
+  const displaySummary = newsItem.editorial_summary || newsItem.summary;
+  
   return (
     <Card className={`overflow-hidden transition-all duration-200 hover:shadow-md ${className || ''}`}>
       <CardHeader className="pb-3">
@@ -117,6 +121,11 @@ export function UnifiedNewsCard({
           </Badge>
           
           <div className="flex gap-1">
+            {newsItem.editorial_headline && (
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                Enhanced
+              </Badge>
+            )}
             {newsItem.perplexity_score && newsItem.perplexity_score > 7 && (
               <Badge variant="outline">
                 Score: {newsItem.perplexity_score.toFixed(1)}
@@ -129,19 +138,25 @@ export function UnifiedNewsCard({
         </div>
         
         <CardTitle className="line-clamp-2 text-lg">
-          {newsItem.content_variants?.editorial_content?.headline || newsItem.headline}
+          {displayHeadline}
         </CardTitle>
         
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{newsItem.source}</span>
           <span>•</span>
           <span>{new Date(newsItem.timestamp).toLocaleDateString()}</span>
+          {newsItem.original_author && (
+            <>
+              <span>•</span>
+              <span>by {newsItem.original_author}</span>
+            </>
+          )}
         </div>
       </CardHeader>
       
       <CardContent className="pt-0">
         <p className="text-sm line-clamp-3 mb-3">
-          {newsItem.content_variants?.editorial_content?.summary || newsItem.summary}
+          {displaySummary}
         </p>
         
         {newsItem.matched_clusters && newsItem.matched_clusters.length > 0 && (

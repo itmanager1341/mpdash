@@ -4,6 +4,19 @@ export interface NewsItem {
   headline: string;
   summary: string;
   status: 'pending' | 'approved_for_editing' | 'approved' | 'dismissed' | string;
+  
+  // Original source data fields
+  original_title?: string;
+  original_author?: string;
+  original_publication_date?: string;
+  source_content?: string;
+  last_scraped_at?: string;
+  
+  // Editorial content fields
+  editorial_headline?: string;
+  editorial_summary?: string;
+  editorial_content?: string;
+  
   content_variants?: {
     source_content?: {
       original_title?: string;

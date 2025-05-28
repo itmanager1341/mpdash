@@ -303,12 +303,20 @@ export type Database = {
         Row: {
           content_variants: Json | null
           destinations: string[] | null
+          editorial_content: string | null
+          editorial_headline: string | null
+          editorial_summary: string | null
           headline: string
           id: string
           is_competitor_covered: boolean | null
+          last_scraped_at: string | null
           matched_clusters: string[] | null
+          original_author: string | null
+          original_publication_date: string | null
+          original_title: string | null
           perplexity_score: number | null
           source: string | null
+          source_content: string | null
           status: string | null
           summary: string | null
           timestamp: string | null
@@ -317,12 +325,20 @@ export type Database = {
         Insert: {
           content_variants?: Json | null
           destinations?: string[] | null
+          editorial_content?: string | null
+          editorial_headline?: string | null
+          editorial_summary?: string | null
           headline: string
           id?: string
           is_competitor_covered?: boolean | null
+          last_scraped_at?: string | null
           matched_clusters?: string[] | null
+          original_author?: string | null
+          original_publication_date?: string | null
+          original_title?: string | null
           perplexity_score?: number | null
           source?: string | null
+          source_content?: string | null
           status?: string | null
           summary?: string | null
           timestamp?: string | null
@@ -331,12 +347,20 @@ export type Database = {
         Update: {
           content_variants?: Json | null
           destinations?: string[] | null
+          editorial_content?: string | null
+          editorial_headline?: string | null
+          editorial_summary?: string | null
           headline?: string
           id?: string
           is_competitor_covered?: boolean | null
+          last_scraped_at?: string | null
           matched_clusters?: string[] | null
+          original_author?: string | null
+          original_publication_date?: string | null
+          original_title?: string | null
           perplexity_score?: number | null
           source?: string | null
+          source_content?: string | null
           status?: string | null
           summary?: string | null
           timestamp?: string | null

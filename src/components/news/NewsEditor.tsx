@@ -13,7 +13,10 @@ import {
   CheckCircle, 
   Newspaper, 
   BookOpen, 
-  Globe 
+  Globe,
+  Download,
+  Calendar,
+  User 
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,53 +29,65 @@ interface NewsEditorProps {
 }
 
 export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
-  const [headline, setHeadline] = useState(newsItem.headline || '');
-  const [summary, setSummary] = useState(newsItem.summary || '');
-  const [editorialNotes, setEditorialNotes] = useState('');
+  // Original source data
+  const [originalTitle, setOriginalTitle] = useState('');
+  const [originalAuthor, setOriginalAuthor] = useState('');
+  const [originalPublicationDate, setOriginalPublicationDate] = useState('');
   const [sourceContent, setSourceContent] = useState('');
-  const [isFetchingContent, setIsFetchingContent] = useState(false);
+  
+  // Editorial data
+  const [editorialHeadline, setEditorialHeadline] = useState('');
+  const [editorialSummary, setEditorialSummary] = useState('');
+  const [editorialContent, setEditorialContent] = useState('');
+  const [editorialNotes, setEditorialNotes] = useState('');
+  
+  const [isScrapingContent, setIsScrapingContent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
 
   useEffect(() => {
-    // Load existing content variants if available
-    if (newsItem.content_variants?.editorial_content) {
-      setHeadline(newsItem.content_variants.editorial_content.headline || newsItem.headline);
-      setSummary(newsItem.content_variants.editorial_content.summary || newsItem.summary);
-    }
-    if (newsItem.content_variants?.source_content?.full_content) {
-      setSourceContent(newsItem.content_variants.source_content.full_content);
-    }
+    // Load existing data from database columns and content_variants
+    setOriginalTitle(newsItem.original_title || newsItem.headline || '');
+    setOriginalAuthor(newsItem.original_author || '');
+    setOriginalPublicationDate(newsItem.original_publication_date || newsItem.timestamp || '');
+    setSourceContent(newsItem.source_content || '');
+    
+    setEditorialHeadline(newsItem.editorial_headline || newsItem.headline || '');
+    setEditorialSummary(newsItem.editorial_summary || newsItem.summary || '');
+    setEditorialContent(newsItem.editorial_content || '');
+    
     if (newsItem.content_variants?.metadata?.editorial_notes) {
       setEditorialNotes(newsItem.content_variants.metadata.editorial_notes);
     }
   }, [newsItem]);
 
-  const fetchSourceContent = async () => {
-    setIsFetchingContent(true);
+  const scrapeArticleContent = async () => {
+    setIsScrapingContent(true);
     try {
-      // In a real implementation, you'd fetch the actual content from the URL
-      // For now, we'll simulate this with a placeholder
-      toast.info("Fetching source content...");
+      toast.info("Scraping article content...");
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const { data, error } = await supabase.functions.invoke('scrape-article', {
+        body: { url: newsItem.url }
+      });
       
-      const mockContent = `This is the full article content from ${newsItem.source}. 
-
-The article discusses the topics mentioned in the summary: ${newsItem.summary}
-
-In a real implementation, this would be the actual scraped content from the source URL: ${newsItem.url}
-
-This content would be processed and cleaned to remove ads, navigation, and other non-article elements.`;
-
-      setSourceContent(mockContent);
-      toast.success("Source content fetched successfully");
+      if (error) throw error;
+      
+      if (data.success) {
+        setOriginalTitle(data.data.title);
+        setOriginalAuthor(data.data.author);
+        setSourceContent(data.data.content);
+        if (data.data.publishedDate) {
+          setOriginalPublicationDate(data.data.publishedDate);
+        }
+        toast.success("Article content scraped successfully");
+      } else {
+        throw new Error(data.error || "Failed to scrape content");
+      }
     } catch (error) {
-      console.error("Error fetching source content:", error);
-      toast.error("Failed to fetch source content");
+      console.error("Error scraping content:", error);
+      toast.error("Failed to scrape content. Please copy and paste manually.");
     } finally {
-      setIsFetchingContent(false);
+      setIsScrapingContent(false);
     }
   };
 
@@ -89,15 +104,18 @@ This content would be processed and cleaned to remove ads, navigation, and other
     try {
       const contentVariants = {
         source_content: {
-          original_title: newsItem.headline,
+          original_title: originalTitle,
           original_summary: newsItem.summary,
           full_content: sourceContent,
           source_url: newsItem.url,
-          fetched_at: new Date().toISOString()
+          author: originalAuthor,
+          publication_date: originalPublicationDate,
+          fetched_at: newsItem.last_scraped_at || new Date().toISOString()
         },
         editorial_content: {
-          headline: headline,
-          summary: summary,
+          headline: editorialHeadline,
+          summary: editorialSummary,
+          full_content: editorialContent,
           enhanced_at: new Date().toISOString()
         },
         metadata: {
@@ -107,8 +125,16 @@ This content would be processed and cleaned to remove ads, navigation, and other
       };
 
       const updateData: any = {
+        original_title: originalTitle,
+        original_author: originalAuthor,
+        original_publication_date: originalPublicationDate,
+        editorial_headline: editorialHeadline,
+        editorial_summary: editorialSummary,
+        editorial_content: editorialContent,
+        source_content: sourceContent,
         content_variants: contentVariants,
-        status: selectedDestinations.length > 0 ? "approved" : "approved_for_editing"
+        status: selectedDestinations.length > 0 ? "approved" : "approved_for_editing",
+        last_scraped_at: sourceContent ? new Date().toISOString() : newsItem.last_scraped_at
       };
 
       if (selectedDestinations.length > 0) {
@@ -150,19 +176,97 @@ This content would be processed and cleaned to remove ads, navigation, and other
       </div>
 
       <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="content" className="h-full flex flex-col">
+        <Tabs defaultValue="source" className="h-full flex flex-col">
           <TabsList className="w-full justify-start rounded-none border-b bg-background">
-            <TabsTrigger value="content">Content</TabsTrigger>
-            <TabsTrigger value="source">Source Material</TabsTrigger>
+            <TabsTrigger value="source">Source Data</TabsTrigger>
+            <TabsTrigger value="editorial">Editorial Content</TabsTrigger>
             <TabsTrigger value="routing">Publication Routing</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="content" className="flex-1 overflow-y-auto p-4 space-y-4">
+          <TabsContent value="source" className="flex-1 overflow-y-auto p-4 space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm">Original Source Information</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={scrapeArticleContent}
+                    disabled={isScrapingContent}
+                  >
+                    {isScrapingContent ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Scraping...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 mr-2" />
+                        Scrape Article
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Original Title</label>
+                  <Input
+                    value={originalTitle}
+                    onChange={(e) => setOriginalTitle(e.target.value)}
+                    placeholder="Original article title"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Author
+                    </label>
+                    <Input
+                      value={originalAuthor}
+                      onChange={(e) => setOriginalAuthor(e.target.value)}
+                      placeholder="Article author"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      Publication Date
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={originalPublicationDate ? new Date(originalPublicationDate).toISOString().slice(0, 16) : ''}
+                      onChange={(e) => setOriginalPublicationDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Source Content</label>
+                  <Textarea
+                    value={sourceContent}
+                    onChange={(e) => setSourceContent(e.target.value)}
+                    placeholder="Paste or scrape the full article content here"
+                    rows={12}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This preserves the original content for reference and AI processing
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="editorial" className="flex-1 overflow-y-auto p-4 space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Editorial Headline</label>
               <Input
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
+                value={editorialHeadline}
+                onChange={(e) => setEditorialHeadline(e.target.value)}
                 placeholder="Enhanced headline for publication"
                 className="text-lg font-medium"
               />
@@ -171,11 +275,24 @@ This content would be processed and cleaned to remove ads, navigation, and other
             <div className="space-y-2">
               <label className="text-sm font-medium">Editorial Summary</label>
               <Textarea
-                value={summary}
-                onChange={(e) => setSummary(e.target.value)}
+                value={editorialSummary}
+                onChange={(e) => setEditorialSummary(e.target.value)}
                 placeholder="Enhanced summary for publication"
                 rows={4}
               />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Editorial Content</label>
+              <Textarea
+                value={editorialContent}
+                onChange={(e) => setEditorialContent(e.target.value)}
+                placeholder="Full editorial article content (if creating original content)"
+                rows={8}
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional: Use this for completely rewritten or original content
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -200,47 +317,6 @@ This content would be processed and cleaned to remove ads, navigation, and other
                 </div>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="source" className="flex-1 overflow-y-auto p-4 space-y-4">
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm">Original Source Content</CardTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={fetchSourceContent}
-                    disabled={isFetchingContent}
-                  >
-                    {isFetchingContent ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Fetching...
-                      </>
-                    ) : (
-                      "Fetch Full Article"
-                    )}
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {sourceContent ? (
-                  <Textarea
-                    value={sourceContent}
-                    onChange={(e) => setSourceContent(e.target.value)}
-                    placeholder="Full article content will appear here"
-                    rows={15}
-                    className="font-mono text-sm"
-                  />
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <p className="mb-2">No source content fetched yet</p>
-                    <p className="text-sm">Click "Fetch Full Article" to retrieve the original content</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
           </TabsContent>
 
           <TabsContent value="routing" className="flex-1 overflow-y-auto p-4 space-y-4">
