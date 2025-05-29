@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { NewsItem } from "@/types/news";
+import { ArticleMetadataForm } from "@/components/editorial/ArticleMetadataForm";
 
 interface NewsEditorProps {
   newsItem: NewsItem;
@@ -40,6 +40,15 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
   const [editorialSummary, setEditorialSummary] = useState('');
   const [editorialContent, setEditorialContent] = useState('');
   const [editorialNotes, setEditorialNotes] = useState('');
+  
+  // Article metadata
+  const [articleMetadata, setArticleMetadata] = useState({
+    authorId: newsItem.primary_author_id,
+    templateType: newsItem.template_type,
+    sourceAttribution: newsItem.source_attribution || '',
+    contentComplexityScore: 1,
+    bylineText: newsItem.byline_text || ''
+  });
   
   const [isScrapingContent, setIsScrapingContent] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -134,7 +143,13 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
         source_content: sourceContent,
         content_variants: contentVariants,
         status: selectedDestinations.length > 0 ? "approved" : "approved_for_editing",
-        last_scraped_at: sourceContent ? new Date().toISOString() : newsItem.last_scraped_at
+        last_scraped_at: sourceContent ? new Date().toISOString() : newsItem.last_scraped_at,
+        
+        // Add new metadata fields
+        primary_author_id: articleMetadata.authorId || null,
+        template_type: articleMetadata.templateType || null,
+        source_attribution: articleMetadata.sourceAttribution || null,
+        byline_text: articleMetadata.bylineText || null
       };
 
       if (selectedDestinations.length > 0) {
@@ -180,6 +195,7 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
           <TabsList className="w-full justify-start rounded-none border-b bg-background">
             <TabsTrigger value="source">Source Data</TabsTrigger>
             <TabsTrigger value="editorial">Editorial Content</TabsTrigger>
+            <TabsTrigger value="metadata">Article Metadata</TabsTrigger>
             <TabsTrigger value="routing">Publication Routing</TabsTrigger>
           </TabsList>
 
@@ -317,6 +333,17 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="metadata" className="flex-1 overflow-y-auto p-4">
+            <ArticleMetadataForm
+              authorId={articleMetadata.authorId}
+              templateType={articleMetadata.templateType}
+              sourceAttribution={articleMetadata.sourceAttribution}
+              contentComplexityScore={articleMetadata.contentComplexityScore}
+              bylineText={articleMetadata.bylineText}
+              onMetadataChange={setArticleMetadata}
+            />
           </TabsContent>
 
           <TabsContent value="routing" className="flex-1 overflow-y-auto p-4 space-y-4">

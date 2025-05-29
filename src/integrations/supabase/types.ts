@@ -41,6 +41,9 @@ export type Database = {
       }
       articles: {
         Row: {
+          byline_text: string | null
+          co_authors: string[] | null
+          content_complexity_score: number | null
           content_variants: Json | null
           created_at: string | null
           destinations: string[] | null
@@ -49,16 +52,22 @@ export type Database = {
           fred_data: Json | null
           id: string
           linked_prior_articles: string[] | null
+          primary_author_id: string | null
           publication_targets: string[] | null
           published_at: string | null
           related_trends: string[] | null
+          source_attribution: string | null
           source_news_id: string | null
           source_system: string | null
           status: string | null
+          template_type: string | null
           title: string
           updated_at: string | null
         }
         Insert: {
+          byline_text?: string | null
+          co_authors?: string[] | null
+          content_complexity_score?: number | null
           content_variants?: Json | null
           created_at?: string | null
           destinations?: string[] | null
@@ -67,16 +76,22 @@ export type Database = {
           fred_data?: Json | null
           id?: string
           linked_prior_articles?: string[] | null
+          primary_author_id?: string | null
           publication_targets?: string[] | null
           published_at?: string | null
           related_trends?: string[] | null
+          source_attribution?: string | null
           source_news_id?: string | null
           source_system?: string | null
           status?: string | null
+          template_type?: string | null
           title: string
           updated_at?: string | null
         }
         Update: {
+          byline_text?: string | null
+          co_authors?: string[] | null
+          content_complexity_score?: number | null
           content_variants?: Json | null
           created_at?: string | null
           destinations?: string[] | null
@@ -85,21 +100,99 @@ export type Database = {
           fred_data?: Json | null
           id?: string
           linked_prior_articles?: string[] | null
+          primary_author_id?: string | null
           publication_targets?: string[] | null
           published_at?: string | null
           related_trends?: string[] | null
+          source_attribution?: string | null
           source_news_id?: string | null
           source_system?: string | null
           status?: string | null
+          template_type?: string | null
           title?: string
           updated_at?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "articles_primary_author_id_fkey"
+            columns: ["primary_author_id"]
+            isOneToOne: false
+            referencedRelation: "authors"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "articles_source_news_id_fkey"
             columns: ["source_news_id"]
             isOneToOne: false
             referencedRelation: "news"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      authors: {
+        Row: {
+          article_count: number | null
+          author_type: string
+          average_rating: number | null
+          bio: string | null
+          created_at: string
+          email: string | null
+          expertise_areas: string[] | null
+          first_published_date: string | null
+          id: string
+          is_active: boolean
+          last_published_date: string | null
+          name: string
+          photo_url: string | null
+          social_links: Json | null
+          total_views: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          article_count?: number | null
+          author_type: string
+          average_rating?: number | null
+          bio?: string | null
+          created_at?: string
+          email?: string | null
+          expertise_areas?: string[] | null
+          first_published_date?: string | null
+          id?: string
+          is_active?: boolean
+          last_published_date?: string | null
+          name: string
+          photo_url?: string | null
+          social_links?: Json | null
+          total_views?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          article_count?: number | null
+          author_type?: string
+          average_rating?: number | null
+          bio?: string | null
+          created_at?: string
+          email?: string | null
+          expertise_areas?: string[] | null
+          first_published_date?: string | null
+          id?: string
+          is_active?: boolean
+          last_published_date?: string | null
+          name?: string
+          photo_url?: string | null
+          social_links?: Json | null
+          total_views?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "authors_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

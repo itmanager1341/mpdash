@@ -17,6 +17,12 @@ export interface NewsItem {
   editorial_summary?: string;
   editorial_content?: string;
   
+  // New author and template fields
+  primary_author_id?: string;
+  template_type?: 'contributing' | 'hybrid' | 'original' | 'announcement' | 'analysis' | 'interview' | 'policy';
+  source_attribution?: string;
+  byline_text?: string;
+  
   content_variants?: {
     source_content?: {
       original_title?: string;
