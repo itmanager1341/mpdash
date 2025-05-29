@@ -42,7 +42,13 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
   const [editorialNotes, setEditorialNotes] = useState('');
   
   // Article metadata with optional fields
-  const [articleMetadata, setArticleMetadata] = useState({
+  const [articleMetadata, setArticleMetadata] = useState<{
+    authorId?: string;
+    templateType?: string;
+    sourceAttribution?: string;
+    contentComplexityScore?: number;
+    bylineText?: string;
+  }>({
     authorId: newsItem.primary_author_id,
     templateType: newsItem.template_type,
     sourceAttribution: newsItem.source_attribution || '',
