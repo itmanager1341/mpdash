@@ -41,7 +41,7 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
   const [editorialContent, setEditorialContent] = useState('');
   const [editorialNotes, setEditorialNotes] = useState('');
   
-  // Article metadata
+  // Article metadata with optional fields
   const [articleMetadata, setArticleMetadata] = useState({
     authorId: newsItem.primary_author_id,
     templateType: newsItem.template_type,
@@ -69,6 +69,19 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
       setEditorialNotes(newsItem.content_variants.metadata.editorial_notes);
     }
   }, [newsItem]);
+
+  const handleMetadataChange = (metadata: {
+    authorId?: string;
+    templateType?: string;
+    sourceAttribution?: string;
+    contentComplexityScore?: number;
+    bylineText?: string;
+  }) => {
+    setArticleMetadata(prev => ({
+      ...prev,
+      ...metadata
+    }));
+  };
 
   const scrapeArticleContent = async () => {
     setIsScrapingContent(true);
@@ -342,7 +355,7 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
               sourceAttribution={articleMetadata.sourceAttribution}
               contentComplexityScore={articleMetadata.contentComplexityScore}
               bylineText={articleMetadata.bylineText}
-              onMetadataChange={setArticleMetadata}
+              onMetadataChange={handleMetadataChange}
             />
           </TabsContent>
 

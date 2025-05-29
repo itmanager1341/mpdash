@@ -37,7 +37,7 @@ export function AuthorSelector({ selectedAuthorId, onAuthorChange, className }: 
     name: '',
     email: '',
     bio: '',
-    author_type: 'internal' as const,
+    author_type: 'internal' as 'internal' | 'external' | 'contributor',
     expertise_areas: [] as string[]
   });
 
