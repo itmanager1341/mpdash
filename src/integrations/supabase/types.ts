@@ -39,8 +39,57 @@ export type Database = {
         }
         Relationships: []
       }
+      article_import_logs: {
+        Row: {
+          articles_found: number | null
+          articles_imported: number | null
+          articles_skipped: number | null
+          created_at: string
+          date_range_end: string | null
+          date_range_start: string | null
+          error_message: string | null
+          id: string
+          import_completed_at: string | null
+          import_parameters: Json | null
+          import_started_at: string
+          imported_by: string | null
+          status: string
+        }
+        Insert: {
+          articles_found?: number | null
+          articles_imported?: number | null
+          articles_skipped?: number | null
+          created_at?: string
+          date_range_end?: string | null
+          date_range_start?: string | null
+          error_message?: string | null
+          id?: string
+          import_completed_at?: string | null
+          import_parameters?: Json | null
+          import_started_at?: string
+          imported_by?: string | null
+          status?: string
+        }
+        Update: {
+          articles_found?: number | null
+          articles_imported?: number | null
+          articles_skipped?: number | null
+          created_at?: string
+          date_range_end?: string | null
+          date_range_start?: string | null
+          error_message?: string | null
+          id?: string
+          import_completed_at?: string | null
+          import_parameters?: Json | null
+          import_started_at?: string
+          imported_by?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       articles: {
         Row: {
+          article_date: string | null
           byline_text: string | null
           co_authors: string[] | null
           content_complexity_score: number | null
@@ -49,22 +98,30 @@ export type Database = {
           destinations: string[] | null
           editor_brief_id: string | null
           embedding: string | null
+          excerpt: string | null
+          featured_image_url: string | null
           fred_data: Json | null
           id: string
           linked_prior_articles: string[] | null
           primary_author_id: string | null
           publication_targets: string[] | null
           published_at: string | null
+          read_time_minutes: number | null
           related_trends: string[] | null
+          scraped_at: string | null
           source_attribution: string | null
           source_news_id: string | null
           source_system: string | null
+          source_url: string | null
           status: string | null
           template_type: string | null
           title: string
           updated_at: string | null
+          website_article_id: string | null
+          word_count: number | null
         }
         Insert: {
+          article_date?: string | null
           byline_text?: string | null
           co_authors?: string[] | null
           content_complexity_score?: number | null
@@ -73,22 +130,30 @@ export type Database = {
           destinations?: string[] | null
           editor_brief_id?: string | null
           embedding?: string | null
+          excerpt?: string | null
+          featured_image_url?: string | null
           fred_data?: Json | null
           id?: string
           linked_prior_articles?: string[] | null
           primary_author_id?: string | null
           publication_targets?: string[] | null
           published_at?: string | null
+          read_time_minutes?: number | null
           related_trends?: string[] | null
+          scraped_at?: string | null
           source_attribution?: string | null
           source_news_id?: string | null
           source_system?: string | null
+          source_url?: string | null
           status?: string | null
           template_type?: string | null
           title: string
           updated_at?: string | null
+          website_article_id?: string | null
+          word_count?: number | null
         }
         Update: {
+          article_date?: string | null
           byline_text?: string | null
           co_authors?: string[] | null
           content_complexity_score?: number | null
@@ -97,20 +162,27 @@ export type Database = {
           destinations?: string[] | null
           editor_brief_id?: string | null
           embedding?: string | null
+          excerpt?: string | null
+          featured_image_url?: string | null
           fred_data?: Json | null
           id?: string
           linked_prior_articles?: string[] | null
           primary_author_id?: string | null
           publication_targets?: string[] | null
           published_at?: string | null
+          read_time_minutes?: number | null
           related_trends?: string[] | null
+          scraped_at?: string | null
           source_attribution?: string | null
           source_news_id?: string | null
           source_system?: string | null
+          source_url?: string | null
           status?: string | null
           template_type?: string | null
           title?: string
           updated_at?: string | null
+          website_article_id?: string | null
+          word_count?: number | null
         }
         Relationships: [
           {

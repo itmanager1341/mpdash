@@ -1,0 +1,337 @@
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { 
+  Edit, 
+  Trash2, 
+  Eye, 
+  Check, 
+  X, 
+  ExternalLink,
+  Calendar,
+  User
+} from "lucide-react";
+import { AuthorSelector } from "@/components/editorial/AuthorSelector";
+import { TemplateSelector } from "@/components/editorial/TemplateSelector";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle 
+} from "@/components/ui/dialog";
+import { formatDistanceToNow } from "date-fns";
+
+interface Article {
+  id: string;
+  title: string;
+  status: string;
+  article_date: string;
+  source_url?: string;
+  excerpt?: string;
+  word_count?: number;
+  read_time_minutes?: number;
+  primary_author_id?: string;
+  template_type?: string;
+  created_at: string;
+  authors?: {
+    id: string;
+    name: string;
+    author_type: string;
+  };
+}
+
+interface ArticlesTableProps {
+  articles: Article[];
+  isLoading: boolean;
+  onDelete: (id: string) => void;
+  onUpdate: (id: string, updates: any) => void;
+}
+
+export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: ArticlesTableProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
+  const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  const totalPages = Math.ceil(articles.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedArticles = articles.slice(startIndex, startIndex + itemsPerPage);
+
+  const handleEdit = (article: Article) => {
+    setEditingId(article.id);
+    setEditForm({
+      title: article.title,
+      status: article.status,
+      primary_author_id: article.primary_author_id,
+      template_type: article.template_type
+    });
+  };
+
+  const handleSave = () => {
+    if (editingId) {
+      onUpdate(editingId, editForm);
+      setEditingId(null);
+      setEditForm({});
+    }
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setEditForm({});
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'published': return 'bg-green-100 text-green-800';
+      case 'draft': return 'bg-yellow-100 text-yellow-800';
+      case 'archived': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-blue-100 text-blue-800';
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-16 bg-gray-100 rounded animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="border rounded-lg">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Title</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Author</TableHead>
+              <TableHead>Template</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Words</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedArticles.map((article) => (
+              <TableRow key={article.id}>
+                <TableCell className="max-w-md">
+                  {editingId === article.id ? (
+                    <Input
+                      value={editForm.title}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      className="text-sm"
+                    />
+                  ) : (
+                    <div>
+                      <div className="font-medium truncate">{article.title}</div>
+                      {article.excerpt && (
+                        <div className="text-xs text-muted-foreground truncate mt-1">
+                          {article.excerpt}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {editingId === article.id ? (
+                    <select
+                      value={editForm.status}
+                      onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                      className="px-2 py-1 border rounded text-sm"
+                    >
+                      <option value="published">Published</option>
+                      <option value="draft">Draft</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  ) : (
+                    <Badge className={getStatusColor(article.status)}>
+                      {article.status}
+                    </Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {editingId === article.id ? (
+                    <div className="w-48">
+                      <AuthorSelector
+                        selectedAuthorId={editForm.primary_author_id}
+                        onAuthorChange={(authorId) => 
+                          setEditForm({ ...editForm, primary_author_id: authorId })
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      <span className="text-sm">
+                        {article.authors?.name || 'Unassigned'}
+                      </span>
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {editingId === article.id ? (
+                    <div className="w-48">
+                      <TemplateSelector
+                        selectedTemplate={editForm.template_type}
+                        onTemplateChange={(template) => 
+                          setEditForm({ ...editForm, template_type: template })
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-sm">
+                      {article.template_type || '-'}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1 text-sm">
+                    <Calendar className="h-3 w-3" />
+                    {article.article_date 
+                      ? new Date(article.article_date).toLocaleDateString()
+                      : formatDistanceToNow(new Date(article.created_at), { addSuffix: true })
+                    }
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="text-sm">
+                    {article.word_count ? (
+                      <div>
+                        <div>{article.word_count.toLocaleString()} words</div>
+                        <div className="text-xs text-muted-foreground">
+                          {article.read_time_minutes} min read
+                        </div>
+                      </div>
+                    ) : '-'}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    {editingId === article.id ? (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={handleSave}>
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={handleCancel}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => setPreviewArticle(article)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => handleEdit(article)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        {article.source_url && (
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            onClick={() => window.open(article.source_url, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={() => onDelete(article.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, articles.length)} of {articles.length} articles
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(currentPage - 1)}
+            >
+              Previous
+            </Button>
+            <span className="flex items-center px-3 text-sm">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(currentPage + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Dialog */}
+      <Dialog open={!!previewArticle} onOpenChange={() => setPreviewArticle(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{previewArticle?.title}</DialogTitle>
+          </DialogHeader>
+          {previewArticle && (
+            <div className="space-y-4">
+              <div className="flex gap-4 text-sm text-muted-foreground">
+                <span>Status: {previewArticle.status}</span>
+                <span>Words: {previewArticle.word_count}</span>
+                <span>Read time: {previewArticle.read_time_minutes} min</span>
+              </div>
+              {previewArticle.excerpt && (
+                <p className="text-muted-foreground italic">{previewArticle.excerpt}</p>
+              )}
+              {previewArticle.source_url && (
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.open(previewArticle.source_url, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Original
+                </Button>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
