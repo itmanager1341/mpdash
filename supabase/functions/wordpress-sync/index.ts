@@ -13,7 +13,20 @@ serve(async (req) => {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    const { wordpressUrl, username, password, page = 1, perPage = 100 } = await req.json()
+    
+    // Get WordPress credentials from environment secrets
+    const wordpressUrl = Deno.env.get('WORDPRESS_URL')
+    const username = Deno.env.get('WORDPRESS_USERNAME')
+    const password = Deno.env.get('WORDPRESS_PASSWORD')
+    
+    if (!wordpressUrl || !username || !password) {
+      throw new Error('WordPress credentials not configured. Please set WORDPRESS_URL, WORDPRESS_USERNAME, and WORDPRESS_PASSWORD in Supabase secrets.')
+    }
+    
+    // Get pagination parameters from request body (optional)
+    const { page = 1, perPage = 50 } = await req.json().catch(() => ({}))
+
+    console.log(`Starting WordPress sync from ${wordpressUrl}, page ${page}, ${perPage} per page`)
 
     // WordPress REST API authentication
     const auth = btoa(`${username}:${password}`)
@@ -30,7 +43,7 @@ serve(async (req) => {
     )
 
     if (!wpResponse.ok) {
-      throw new Error(`WordPress API error: ${wpResponse.status}`)
+      throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)
     }
 
     const wpArticles = await wpResponse.json()
@@ -39,6 +52,8 @@ serve(async (req) => {
       updated: 0,
       errors: []
     }
+
+    console.log(`Found ${wpArticles.length} articles to process`)
 
     for (const wpArticle of wpArticles) {
       try {
@@ -84,6 +99,7 @@ serve(async (req) => {
           
           if (error) throw error
           syncResults.updated++
+          console.log(`Updated article: ${wpArticle.title.rendered}`)
         } else {
           // Insert new article
           const { error } = await supabase
@@ -92,6 +108,7 @@ serve(async (req) => {
           
           if (error) throw error
           syncResults.synced++
+          console.log(`Synced new article: ${wpArticle.title.rendered}`)
         }
 
         // Handle author mapping
@@ -110,6 +127,8 @@ serve(async (req) => {
         syncResults.errors.push(`Article ${wpArticle.id}: ${error.message}`)
       }
     }
+
+    console.log(`Sync completed: ${syncResults.synced} new, ${syncResults.updated} updated, ${syncResults.errors.length} errors`)
 
     return new Response(
       JSON.stringify({ 

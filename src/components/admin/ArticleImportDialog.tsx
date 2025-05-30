@@ -9,10 +9,9 @@ import {
   DialogHeader, 
   DialogTitle 
 } from "@/components/ui/dialog";
-import { Calendar, Download, AlertCircle, CheckCircle } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ArticleImportDialogProps {
@@ -22,52 +21,57 @@ interface ArticleImportDialogProps {
 }
 
 export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: ArticleImportDialogProps) {
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{
     status: string;
     articlesFound: number;
     articlesImported: number;
-    articlesSkipped: number;
+    articlesUpdated: number;
+    errors: string[];
   } | null>(null);
 
   const handleImport = async () => {
-    if (!startDate || !endDate) {
-      toast.error("Please select both start and end dates");
-      return;
-    }
-
-    if (new Date(startDate) > new Date(endDate)) {
-      toast.error("Start date must be before end date");
-      return;
-    }
-
     setIsImporting(true);
-    setImportProgress({ status: 'starting', articlesFound: 0, articlesImported: 0, articlesSkipped: 0 });
+    setImportProgress({ 
+      status: 'starting', 
+      articlesFound: 0, 
+      articlesImported: 0, 
+      articlesUpdated: 0,
+      errors: []
+    });
 
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-website-articles', {
-        body: { startDate, endDate }
+      console.log('Starting WordPress sync...');
+      
+      const { data, error } = await supabase.functions.invoke('wordpress-sync', {
+        body: { page, perPage }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
 
       if (data.success) {
         setImportProgress({
           status: 'completed',
-          articlesFound: data.articlesFound,
-          articlesImported: data.articlesImported,
-          articlesSkipped: data.articlesSkipped
+          articlesFound: data.totalArticles,
+          articlesImported: data.results.synced,
+          articlesUpdated: data.results.updated,
+          errors: data.results.errors || []
         });
-        toast.success(`Import completed! ${data.articlesImported} articles imported, ${data.articlesSkipped} skipped`);
+        
+        const total = data.results.synced + data.results.updated;
+        toast.success(`WordPress sync completed! ${total} articles processed (${data.results.synced} new, ${data.results.updated} updated)`);
         onImportComplete();
       } else {
-        throw new Error(data.error || 'Import failed');
+        throw new Error(data.error || 'WordPress sync failed');
       }
     } catch (error) {
-      console.error('Import error:', error);
-      toast.error(`Import failed: ${error.message}`);
+      console.error('WordPress sync error:', error);
+      toast.error(`WordPress sync failed: ${error.message}`);
       setImportProgress(null);
     } finally {
       setIsImporting(false);
@@ -78,24 +82,18 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     if (!isImporting) {
       onOpenChange(false);
       setImportProgress(null);
-      setStartDate('');
-      setEndDate('');
+      setPage(1);
+      setPerPage(50);
     }
   };
-
-  // Set default date range to last 7 days
-  const today = new Date();
-  const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const defaultStartDate = lastWeek.toISOString().split('T')[0];
-  const defaultEndDate = today.toISOString().split('T')[0];
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
-            Import Website Articles
+            <RefreshCw className="h-5 w-5" />
+            WordPress Article Sync
           </DialogTitle>
         </DialogHeader>
         
@@ -103,40 +101,41 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              This will fetch articles from themortgagepoint.com within the specified date range.
-              Existing articles will be skipped automatically.
+              This will sync articles from your WordPress site using stored credentials.
+              Existing articles will be updated automatically.
             </AlertDescription>
           </Alert>
 
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="start-date" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Start Date
-              </Label>
-              <Input
-                id="start-date"
-                type="date"
-                value={startDate || defaultStartDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                disabled={isImporting}
-              />
-            </div>
+          {!importProgress && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="page">Page Number</Label>
+                  <Input
+                    id="page"
+                    type="number"
+                    min="1"
+                    value={page}
+                    onChange={(e) => setPage(parseInt(e.target.value) || 1)}
+                    disabled={isImporting}
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="end-date" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                End Date
-              </Label>
-              <Input
-                id="end-date"
-                type="date"
-                value={endDate || defaultEndDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                disabled={isImporting}
-              />
+                <div className="space-y-2">
+                  <Label htmlFor="per-page">Articles per Page</Label>
+                  <Input
+                    id="per-page"
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={perPage}
+                    onChange={(e) => setPerPage(parseInt(e.target.value) || 50)}
+                    disabled={isImporting}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
           {importProgress && (
             <div className="space-y-3">
@@ -147,16 +146,30 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                   <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 )}
                 <span className="text-sm font-medium">
-                  {importProgress.status === 'starting' && 'Starting import...'}
-                  {importProgress.status === 'completed' && 'Import completed!'}
+                  {importProgress.status === 'starting' && 'Starting WordPress sync...'}
+                  {importProgress.status === 'completed' && 'WordPress sync completed!'}
                 </span>
               </div>
               
               {importProgress.status === 'completed' && (
                 <div className="bg-gray-50 p-3 rounded-lg text-sm space-y-1">
                   <div>Articles found: {importProgress.articlesFound}</div>
-                  <div className="text-green-600">Articles imported: {importProgress.articlesImported}</div>
-                  <div className="text-yellow-600">Articles skipped: {importProgress.articlesSkipped}</div>
+                  <div className="text-green-600">New articles: {importProgress.articlesImported}</div>
+                  <div className="text-blue-600">Updated articles: {importProgress.articlesUpdated}</div>
+                  {importProgress.errors.length > 0 && (
+                    <div className="text-red-600">Errors: {importProgress.errors.length}</div>
+                  )}
+                </div>
+              )}
+
+              {importProgress.errors.length > 0 && (
+                <div className="max-h-32 overflow-y-auto">
+                  <Label className="text-red-600">Errors:</Label>
+                  <div className="text-xs text-red-500 mt-1">
+                    {importProgress.errors.map((error, index) => (
+                      <div key={index}>{error}</div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -168,17 +181,17 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
             </Button>
             <Button 
               onClick={handleImport} 
-              disabled={isImporting || !startDate || !endDate}
+              disabled={isImporting}
             >
               {isImporting ? (
                 <>
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Importing...
+                  Syncing...
                 </>
               ) : (
                 <>
-                  <Download className="h-4 w-4 mr-2" />
-                  Start Import
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Start WordPress Sync
                 </>
               )}
             </Button>

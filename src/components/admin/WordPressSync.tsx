@@ -8,44 +8,42 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, Download, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Settings } from "lucide-react";
 
 export default function WordPressSync() {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResults, setSyncResults] = useState(null);
   const [config, setConfig] = useState({
-    wordpressUrl: '',
-    username: '',
-    password: '',
     page: 1,
     perPage: 50
   });
 
   const handleSync = async () => {
-    if (!config.wordpressUrl || !config.username || !config.password) {
-      toast.error("Please fill in all WordPress credentials");
-      return;
-    }
-
     setIsLoading(true);
     setSyncResults(null);
 
     try {
+      console.log('Starting WordPress sync with stored credentials...');
+      
       const { data, error } = await supabase.functions.invoke('wordpress-sync', {
         body: config
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
 
       if (data.success) {
         setSyncResults(data.results);
-        toast.success(`WordPress sync completed! Synced: ${data.results.synced}, Updated: ${data.results.updated}`);
+        const total = data.results.synced + data.results.updated;
+        toast.success(`WordPress sync completed! ${total} articles processed (${data.results.synced} new, ${data.results.updated} updated)`);
       } else {
-        throw new Error(data.error || 'Sync failed');
+        throw new Error(data.error || 'WordPress sync failed');
       }
     } catch (error) {
       console.error('WordPress sync error:', error);
-      toast.error(`Sync failed: ${error.message}`);
+      toast.error(`WordPress sync failed: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -56,56 +54,36 @@ export default function WordPressSync() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5" />
+            <RefreshCw className="h-5 w-5" />
             WordPress Article Sync
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="wp-url">WordPress URL</Label>
-              <Input
-                id="wp-url"
-                placeholder="https://mortgagepoint.com"
-                value={config.wordpressUrl}
-                onChange={(e) => setConfig(prev => ({ ...prev, wordpressUrl: e.target.value }))}
-              />
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-2 mb-2">
+              <Settings className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">Using Stored Credentials</span>
             </div>
-            <div>
-              <Label htmlFor="wp-username">Username</Label>
-              <Input
-                id="wp-username"
-                placeholder="WordPress username"
-                value={config.username}
-                onChange={(e) => setConfig(prev => ({ ...prev, username: e.target.value }))}
-              />
-            </div>
-          </div>
-          
-          <div>
-            <Label htmlFor="wp-password">Application Password</Label>
-            <Input
-              id="wp-password"
-              type="password"
-              placeholder="WordPress application password"
-              value={config.password}
-              onChange={(e) => setConfig(prev => ({ ...prev, password: e.target.value }))}
-            />
+            <p className="text-sm text-blue-700">
+              WordPress credentials are securely stored in Supabase secrets. 
+              The sync will use your configured WordPress URL, username, and application password.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="page">Page</Label>
+              <Label htmlFor="page">Page Number</Label>
               <Input
                 id="page"
                 type="number"
                 min="1"
                 value={config.page}
                 onChange={(e) => setConfig(prev => ({ ...prev, page: parseInt(e.target.value) || 1 }))}
+                disabled={isLoading}
               />
             </div>
             <div>
-              <Label htmlFor="per-page">Articles per page</Label>
+              <Label htmlFor="per-page">Articles per Page</Label>
               <Input
                 id="per-page"
                 type="number"
@@ -113,6 +91,7 @@ export default function WordPressSync() {
                 max="100"
                 value={config.perPage}
                 onChange={(e) => setConfig(prev => ({ ...prev, perPage: parseInt(e.target.value) || 50 }))}
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -145,7 +124,7 @@ export default function WordPressSync() {
           <CardContent>
             <div className="flex gap-4 mb-4">
               <Badge variant="outline" className="bg-green-50 text-green-700">
-                Synced: {syncResults.synced}
+                New: {syncResults.synced}
               </Badge>
               <Badge variant="outline" className="bg-blue-50 text-blue-700">
                 Updated: {syncResults.updated}
