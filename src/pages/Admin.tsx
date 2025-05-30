@@ -43,7 +43,7 @@ export default function Admin() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ApiKeysManager service="perplexityai" />
+                <ApiKeysManager />
               </CardContent>
             </Card>
           </div>
