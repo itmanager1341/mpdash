@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -118,7 +117,7 @@ export default function EnhancedArticleAnalysis() {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Transform the data to match our interface
+      // Transform the data to match our interface with proper type casting
       const transformedData: ArticleWithAnalysis[] = data.map(article => ({
         id: article.id,
         title: article.title,
@@ -130,9 +129,23 @@ export default function EnhancedArticleAnalysis() {
           analysis_version: article.article_ai_analysis[0].analysis_version,
           content_quality_score: article.article_ai_analysis[0].content_quality_score,
           template_classification: article.article_ai_analysis[0].template_classification,
-          extracted_keywords: article.article_ai_analysis[0].extracted_keywords,
-          matched_clusters: article.article_ai_analysis[0].matched_clusters,
-          performance_prediction: article.article_ai_analysis[0].performance_prediction,
+          extracted_keywords: Array.isArray(article.article_ai_analysis[0].extracted_keywords) 
+            ? article.article_ai_analysis[0].extracted_keywords as string[]
+            : [],
+          matched_clusters: Array.isArray(article.article_ai_analysis[0].matched_clusters)
+            ? article.article_ai_analysis[0].matched_clusters as string[]
+            : [],
+          performance_prediction: article.article_ai_analysis[0].performance_prediction as {
+            engagement_score: number;
+            shareability: number;
+            seo_potential: number;
+            target_audience: string;
+          } || {
+            engagement_score: 0,
+            shareability: 0,
+            seo_potential: 0,
+            target_audience: 'Unknown'
+          },
           analysis_data: article.article_ai_analysis[0].analysis_data,
           analyzed_at: article.article_ai_analysis[0].analyzed_at,
         } : undefined
