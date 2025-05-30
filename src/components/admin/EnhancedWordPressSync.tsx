@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Loader2, RefreshCw, Settings, Users, Target, StopCircle } from "lucide-react";
+import { Loader2, RefreshCw, Settings, Users, Target } from "lucide-react";
 
 interface SyncResults {
   processed: number;
@@ -34,25 +34,16 @@ export default function EnhancedWordPressSync() {
     endDate: '',
     legacyMode: true
   });
-  
-  // Add abort controller for canceling requests
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const handleEnhancedSync = async () => {
     setIsLoading(true);
     setSyncResults(null);
 
-    // Create new abort controller
-    abortControllerRef.current = new AbortController();
-
     try {
       console.log('Starting enhanced WordPress sync...');
       
       const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
-        body: config,
-        options: {
-          signal: abortControllerRef.current.signal
-        }
+        body: config
       });
 
       if (error) {
@@ -68,23 +59,10 @@ export default function EnhancedWordPressSync() {
         throw new Error(data.error || 'Enhanced WordPress sync failed');
       }
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('Sync was cancelled by user');
-        toast.info('WordPress sync was cancelled');
-      } else {
-        console.error('Enhanced WordPress sync error:', error);
-        toast.error(`Enhanced WordPress sync failed: ${error.message}`);
-      }
+      console.error('Enhanced WordPress sync error:', error);
+      toast.error(`Enhanced WordPress sync failed: ${error.message}`);
     } finally {
       setIsLoading(false);
-      abortControllerRef.current = null;
-    }
-  };
-
-  const handleStopSync = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      toast.info('Stopping sync...');
     }
   };
 
@@ -178,36 +156,23 @@ export default function EnhancedWordPressSync() {
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Button 
-              onClick={handleEnhancedSync} 
-              disabled={isLoading}
-              className="flex-1"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Running Enhanced Sync...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Run Enhanced WordPress Sync
-                </>
-              )}
-            </Button>
-            
-            {isLoading && (
-              <Button 
-                variant="destructive"
-                onClick={handleStopSync}
-                className="px-4"
-              >
-                <StopCircle className="h-4 w-4 mr-2" />
-                Stop Sync
-              </Button>
+          <Button 
+            onClick={handleEnhancedSync} 
+            disabled={isLoading}
+            className="w-full"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Running Enhanced Sync...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Run Enhanced WordPress Sync
+              </>
             )}
-          </div>
+          </Button>
         </CardContent>
       </Card>
 
