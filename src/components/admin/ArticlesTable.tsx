@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -219,12 +220,14 @@ export function ArticlesTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-12">
-                <Checkbox 
+                <input
+                  type="checkbox"
                   checked={allCurrentPageSelected}
                   ref={(el) => {
                     if (el) el.indeterminate = someCurrentPageSelected && !allCurrentPageSelected;
                   }}
-                  onCheckedChange={handleSelectAll}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="rounded border-gray-300"
                 />
               </TableHead>
               <TableHead>WordPress</TableHead>
@@ -266,9 +269,11 @@ export function ArticlesTable({
             {paginatedArticles.map((article) => (
               <TableRow key={article.id} className={selectedArticles.has(article.id) ? "bg-blue-50" : ""}>
                 <TableCell>
-                  <Checkbox 
+                  <input
+                    type="checkbox"
                     checked={selectedArticles.has(article.id)}
-                    onCheckedChange={(checked) => handleSelectArticle(article.id, checked as boolean)}
+                    onChange={(e) => handleSelectArticle(article.id, e.target.checked)}
+                    className="rounded border-gray-300"
                   />
                 </TableCell>
                 <TableCell>
