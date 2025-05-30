@@ -21,8 +21,7 @@ interface ArticleImportDialogProps {
 }
 
 export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: ArticleImportDialogProps) {
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(50);
+  const [maxArticles, setMaxArticles] = useState(100);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [isImporting, setIsImporting] = useState(false);
@@ -31,6 +30,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     articlesFound: number;
     articlesImported: number;
     articlesUpdated: number;
+    duplicatesSkipped: number;
     errors: string[];
   } | null>(null);
 
@@ -41,6 +41,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
       articlesFound: 0, 
       articlesImported: 0, 
       articlesUpdated: 0,
+      duplicatesSkipped: 0,
       errors: []
     });
 
@@ -48,7 +49,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
       console.log('Starting WordPress sync...');
       
       const { data, error } = await supabase.functions.invoke('wordpress-sync', {
-        body: { page, perPage, startDate, endDate }
+        body: { maxArticles, startDate, endDate }
       });
 
       if (error) {
@@ -62,11 +63,12 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
           articlesFound: data.totalArticles,
           articlesImported: data.results.synced,
           articlesUpdated: data.results.updated,
+          duplicatesSkipped: data.results.duplicates || 0,
           errors: data.results.errors || []
         });
         
         const total = data.results.synced + data.results.updated;
-        toast.success(`WordPress sync completed! ${total} articles processed (${data.results.synced} new, ${data.results.updated} updated)`);
+        toast.success(`WordPress sync completed! ${total} articles processed (${data.results.synced} new, ${data.results.updated} updated, ${data.results.duplicates || 0} duplicates skipped)`);
         onImportComplete();
       } else {
         throw new Error(data.error || 'WordPress sync failed');
@@ -84,8 +86,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     if (!isImporting) {
       onOpenChange(false);
       setImportProgress(null);
-      setPage(1);
-      setPerPage(50);
+      setMaxArticles(100);
       setStartDate('');
       setEndDate('');
     }
@@ -106,37 +107,26 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               This will sync articles from your WordPress site using stored credentials.
-              Existing articles will be updated automatically.
+              Duplicate articles will be automatically detected and skipped.
             </AlertDescription>
           </Alert>
 
           {!importProgress && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="page">Page Number</Label>
-                  <Input
-                    id="page"
-                    type="number"
-                    min="1"
-                    value={page}
-                    onChange={(e) => setPage(parseInt(e.target.value) || 1)}
-                    disabled={isImporting}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="per-page">Articles per Page</Label>
-                  <Input
-                    id="per-page"
-                    type="number"
-                    min="1"
-                    max="100"
-                    value={perPage}
-                    onChange={(e) => setPerPage(parseInt(e.target.value) || 50)}
-                    disabled={isImporting}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="max-articles">Maximum Articles to Sync</Label>
+                <Input
+                  id="max-articles"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={maxArticles}
+                  onChange={(e) => setMaxArticles(parseInt(e.target.value) || 100)}
+                  disabled={isImporting}
+                />
+                <p className="text-xs text-gray-500">
+                  Limit the number of articles to sync (1-1000). Higher numbers may take longer.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -184,6 +174,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                   <div>Articles found: {importProgress.articlesFound}</div>
                   <div className="text-green-600">New articles: {importProgress.articlesImported}</div>
                   <div className="text-blue-600">Updated articles: {importProgress.articlesUpdated}</div>
+                  <div className="text-yellow-600">Duplicates skipped: {importProgress.duplicatesSkipped}</div>
                   {importProgress.errors.length > 0 && (
                     <div className="text-red-600">Errors: {importProgress.errors.length}</div>
                   )}

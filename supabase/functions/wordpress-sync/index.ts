@@ -6,6 +6,50 @@ import { corsHeaders } from '../_shared/cors.ts'
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+// Function to check if an article already exists by WordPress ID or title similarity
+async function checkForDuplicate(supabase: any, wpArticle: any) {
+  // First, check by WordPress ID (most reliable)
+  if (wpArticle.id) {
+    const { data: existingByWpId } = await supabase
+      .from('articles')
+      .select('id')
+      .eq('wordpress_id', wpArticle.id)
+      .maybeSingle();
+    
+    if (existingByWpId) {
+      return { isDuplicate: true, existingId: existingByWpId.id, matchType: 'wordpress_id' };
+    }
+  }
+
+  // For legacy articles or when WordPress ID doesn't match, check by title similarity
+  const title = wpArticle.title.rendered?.trim();
+  if (title && title.length > 5) {
+    // Get articles with similar titles (case-insensitive, partial match)
+    const { data: similarTitles } = await supabase
+      .from('articles')
+      .select('id, title')
+      .ilike('title', `%${title.substring(0, Math.min(20, title.length))}%`)
+      .limit(5);
+
+    if (similarTitles && similarTitles.length > 0) {
+      // Check for close title matches
+      for (const existing of similarTitles) {
+        const normalizedExisting = existing.title.toLowerCase().trim();
+        const normalizedNew = title.toLowerCase().trim();
+        
+        // Consider it a duplicate if titles are very similar
+        if (normalizedExisting === normalizedNew || 
+            normalizedExisting.includes(normalizedNew) || 
+            normalizedNew.includes(normalizedExisting)) {
+          return { isDuplicate: true, existingId: existing.id, matchType: 'title_similarity' };
+        }
+      }
+    }
+  }
+
+  return { isDuplicate: false, existingId: null, matchType: null };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -24,17 +68,17 @@ serve(async (req) => {
     }
     
     // Get parameters from request body
-    const { page = 1, perPage = 50, startDate, endDate } = await req.json().catch(() => ({}))
+    const { maxArticles = 100, startDate, endDate } = await req.json().catch(() => ({}))
 
-    console.log(`Starting WordPress sync from ${wordpressUrl}, page ${page}, ${perPage} per page`)
+    console.log(`Starting WordPress sync from ${wordpressUrl}, max ${maxArticles} articles`)
     if (startDate) console.log(`Start date filter: ${startDate}`)
     if (endDate) console.log(`End date filter: ${endDate}`)
 
     // WordPress REST API authentication
     const auth = btoa(`${username}:${password}`)
     
-    // Build WordPress API URL with date filters
-    let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?page=${page}&per_page=${perPage}&_embed`
+    // Build WordPress API URL with date filters and per_page limit
+    let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?per_page=${Math.min(maxArticles, 100)}&_embed`
     
     if (startDate) {
       wpApiUrl += `&after=${startDate}T00:00:00`
@@ -44,29 +88,77 @@ serve(async (req) => {
       wpApiUrl += `&before=${endDate}T23:59:59`
     }
     
-    // Fetch articles from WordPress
-    const wpResponse = await fetch(wpApiUrl, {
-      headers: {
-        'Authorization': `Basic ${auth}`,
-        'Content-Type': 'application/json'
+    // If we need more than 100 articles, we'll need to paginate
+    let allArticles = []
+    let page = 1
+    let totalFetched = 0
+    
+    while (totalFetched < maxArticles) {
+      const remainingArticles = maxArticles - totalFetched
+      const perPage = Math.min(remainingArticles, 100)
+      
+      let currentUrl = wpApiUrl.replace(/per_page=\d+/, `per_page=${perPage}`)
+      if (page > 1) {
+        currentUrl += `&page=${page}`
       }
-    })
+      
+      console.log(`Fetching page ${page}, ${perPage} articles...`)
+      
+      const wpResponse = await fetch(currentUrl, {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Content-Type': 'application/json'
+        }
+      })
 
-    if (!wpResponse.ok) {
-      throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)
+      if (!wpResponse.ok) {
+        if (wpResponse.status === 400 && page > 1) {
+          // No more pages available
+          console.log('No more pages available')
+          break
+        }
+        throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)
+      }
+
+      const wpArticles = await wpResponse.json()
+      
+      if (!wpArticles || wpArticles.length === 0) {
+        console.log('No more articles found')
+        break
+      }
+      
+      allArticles.push(...wpArticles)
+      totalFetched += wpArticles.length
+      
+      // If we got fewer articles than requested, we've reached the end
+      if (wpArticles.length < perPage) {
+        console.log('Reached end of available articles')
+        break
+      }
+      
+      page++
     }
 
-    const wpArticles = await wpResponse.json()
     const syncResults = {
       synced: 0,
       updated: 0,
+      duplicates: 0,
       errors: []
     }
 
-    console.log(`Found ${wpArticles.length} articles to process`)
+    console.log(`Processing ${allArticles.length} articles...`)
 
-    for (const wpArticle of wpArticles) {
+    for (const wpArticle of allArticles) {
       try {
+        // Check for duplicates using improved logic
+        const duplicateCheck = await checkForDuplicate(supabase, wpArticle)
+        
+        if (duplicateCheck.isDuplicate) {
+          syncResults.duplicates++
+          console.log(`Skipping duplicate article (${duplicateCheck.matchType}): ${wpArticle.title.rendered}`)
+          continue
+        }
+
         // Extract WordPress author info
         const authorData = wpArticle._embedded?.author?.[0]
         
@@ -90,36 +182,18 @@ serve(async (req) => {
           published_at: new Date(wpArticle.date).toISOString().split('T')[0],
           last_wordpress_sync: new Date().toISOString(),
           status: wpArticle.status === 'publish' ? 'published' : 'draft',
-          source_system: 'wordpress'
+          source_system: 'wordpress',
+          source_url: wpArticle.link || null
         }
 
-        // Check if article exists
-        const { data: existingArticle } = await supabase
+        // Insert new article (we already checked for duplicates)
+        const { error } = await supabase
           .from('articles')
-          .select('id')
-          .eq('wordpress_id', wpArticle.id)
-          .single()
-
-        if (existingArticle) {
-          // Update existing article
-          const { error } = await supabase
-            .from('articles')
-            .update(articleData)
-            .eq('wordpress_id', wpArticle.id)
-          
-          if (error) throw error
-          syncResults.updated++
-          console.log(`Updated article: ${wpArticle.title.rendered}`)
-        } else {
-          // Insert new article
-          const { error } = await supabase
-            .from('articles')
-            .insert(articleData)
-          
-          if (error) throw error
-          syncResults.synced++
-          console.log(`Synced new article: ${wpArticle.title.rendered}`)
-        }
+          .insert(articleData)
+        
+        if (error) throw error
+        syncResults.synced++
+        console.log(`Synced new article: ${wpArticle.title.rendered}`)
 
         // Handle author mapping
         if (authorData) {
@@ -138,13 +212,13 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Sync completed: ${syncResults.synced} new, ${syncResults.updated} updated, ${syncResults.errors.length} errors`)
+    console.log(`Sync completed: ${syncResults.synced} new, ${syncResults.updated} updated, ${syncResults.duplicates} duplicates skipped, ${syncResults.errors.length} errors`)
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         results: syncResults,
-        totalArticles: wpArticles.length
+        totalArticles: allArticles.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

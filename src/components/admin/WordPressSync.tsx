@@ -14,8 +14,7 @@ export default function WordPressSync() {
   const [isLoading, setIsLoading] = useState(false);
   const [syncResults, setSyncResults] = useState(null);
   const [config, setConfig] = useState({
-    page: 1,
-    perPage: 50,
+    maxArticles: 100,
     startDate: '',
     endDate: ''
   });
@@ -72,30 +71,20 @@ export default function WordPressSync() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="page">Page Number</Label>
-              <Input
-                id="page"
-                type="number"
-                min="1"
-                value={config.page}
-                onChange={(e) => setConfig(prev => ({ ...prev, page: parseInt(e.target.value) || 1 }))}
-                disabled={isLoading}
-              />
-            </div>
-            <div>
-              <Label htmlFor="per-page">Articles per Page</Label>
-              <Input
-                id="per-page"
-                type="number"
-                min="1"
-                max="100"
-                value={config.perPage}
-                onChange={(e) => setConfig(prev => ({ ...prev, perPage: parseInt(e.target.value) || 50 }))}
-                disabled={isLoading}
-              />
-            </div>
+          <div>
+            <Label htmlFor="max-articles">Maximum Articles to Sync</Label>
+            <Input
+              id="max-articles"
+              type="number"
+              min="1"
+              max="1000"
+              value={config.maxArticles}
+              onChange={(e) => setConfig(prev => ({ ...prev, maxArticles: parseInt(e.target.value) || 100 }))}
+              disabled={isLoading}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Limit the number of articles to sync (1-1000). Higher numbers may take longer.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -153,6 +142,9 @@ export default function WordPressSync() {
               </Badge>
               <Badge variant="outline" className="bg-blue-50 text-blue-700">
                 Updated: {syncResults.updated}
+              </Badge>
+              <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                Duplicates Skipped: {syncResults.duplicates}
               </Badge>
               {syncResults.errors?.length > 0 && (
                 <Badge variant="destructive">
