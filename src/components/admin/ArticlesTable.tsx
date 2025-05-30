@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,10 @@ import {
   X, 
   ExternalLink,
   Calendar,
-  User
+  User,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { AuthorSelector } from "@/components/editorial/AuthorSelector";
 import { TemplateSelector } from "@/components/editorial/TemplateSelector";
@@ -36,6 +38,7 @@ interface Article {
   title: string;
   status: string;
   article_date: string;
+  published_at?: string;
   source_url?: string;
   excerpt?: string;
   word_count?: number;
@@ -57,16 +60,70 @@ interface ArticlesTableProps {
   onUpdate: (id: string, updates: any) => void;
 }
 
+type SortColumn = 'published_at' | 'author' | 'created_at' | null;
+type SortDirection = 'asc' | 'desc';
+
 export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: ArticlesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortColumn, setSortColumn] = useState<SortColumn>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const itemsPerPage = 20;
 
-  const totalPages = Math.ceil(articles.length / itemsPerPage);
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+  };
+
+  const getSortedArticles = () => {
+    if (!sortColumn) return articles;
+
+    return [...articles].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortColumn) {
+        case 'published_at':
+          aValue = a.published_at ? new Date(a.published_at).getTime() : 0;
+          bValue = b.published_at ? new Date(b.published_at).getTime() : 0;
+          break;
+        case 'author':
+          aValue = a.authors?.name || '';
+          bValue = b.authors?.name || '';
+          break;
+        case 'created_at':
+          aValue = new Date(a.created_at).getTime();
+          bValue = new Date(b.created_at).getTime();
+          break;
+        default:
+          return 0;
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+  };
+
+  const sortedArticles = getSortedArticles();
+  const totalPages = Math.ceil(sortedArticles.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedArticles = articles.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedArticles = sortedArticles.slice(startIndex, startIndex + itemsPerPage);
+
+  const getSortIcon = (column: SortColumn) => {
+    if (sortColumn !== column) {
+      return <ArrowUpDown className="h-4 w-4" />;
+    }
+    return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
+  };
 
   const handleEdit = (article: Article) => {
     setEditingId(article.id);
@@ -118,9 +175,34 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
             <TableRow>
               <TableHead>Title</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Author</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-50" 
+                onClick={() => handleSort('author')}
+              >
+                <div className="flex items-center gap-1">
+                  Author
+                  {getSortIcon('author')}
+                </div>
+              </TableHead>
               <TableHead>Template</TableHead>
-              <TableHead>Date</TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-50" 
+                onClick={() => handleSort('published_at')}
+              >
+                <div className="flex items-center gap-1">
+                  Published Date
+                  {getSortIcon('published_at')}
+                </div>
+              </TableHead>
+              <TableHead 
+                className="cursor-pointer hover:bg-gray-50" 
+                onClick={() => handleSort('created_at')}
+              >
+                <div className="flex items-center gap-1">
+                  Date
+                  {getSortIcon('created_at')}
+                </div>
+              </TableHead>
               <TableHead>Words</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -201,10 +283,16 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
                 <TableCell>
                   <div className="flex items-center gap-1 text-sm">
                     <Calendar className="h-3 w-3" />
-                    {article.article_date 
-                      ? new Date(article.article_date).toLocaleDateString()
-                      : formatDistanceToNow(new Date(article.created_at), { addSuffix: true })
+                    {article.published_at 
+                      ? new Date(article.published_at).toLocaleDateString()
+                      : '-'
                     }
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1 text-sm">
+                    <Calendar className="h-3 w-3" />
+                    {formatDistanceToNow(new Date(article.created_at), { addSuffix: true })}
                   </div>
                 </TableCell>
                 <TableCell>
@@ -277,7 +365,7 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, articles.length)} of {articles.length} articles
+            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, sortedArticles.length)} of {sortedArticles.length} articles
           </div>
           <div className="flex gap-2">
             <Button
@@ -315,6 +403,9 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
                 <span>Status: {previewArticle.status}</span>
                 <span>Words: {previewArticle.word_count}</span>
                 <span>Read time: {previewArticle.read_time_minutes} min</span>
+                {previewArticle.published_at && (
+                  <span>Published: {new Date(previewArticle.published_at).toLocaleDateString()}</span>
+                )}
               </div>
               {previewArticle.excerpt && (
                 <p className="text-muted-foreground italic">{previewArticle.excerpt}</p>
