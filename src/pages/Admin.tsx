@@ -1,11 +1,12 @@
+
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ApiKeysManager } from "@/components/admin/ApiKeysManager";
-import { NewsImporter } from "@/components/admin/NewsImporter";
-import { UserManagement } from "@/components/admin/UserManagement";
-import { ScheduledImportSettings } from "@/components/admin/ScheduledImportSettings";
-import { JobExecutionHistory } from "@/components/admin/JobExecutionHistory";
+import ApiKeysManager from "@/components/admin/ApiKeysManager";
+import NewsImporter from "@/components/admin/NewsImporter";
+import UserManagement from "@/components/admin/UserManagement";
+import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
+import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
 import ArticlesManagement from "./ArticlesManagement";
 import { Settings, Database, Users, Clock, History, FileText } from "lucide-react";
 
