@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Table, 
   TableBody, 
@@ -32,6 +33,7 @@ import {
   DialogTitle 
 } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
+import { BulkOperationsToolbar } from "./BulkOperationsToolbar";
 
 interface Article {
   id: string;
@@ -45,6 +47,7 @@ interface Article {
   read_time_minutes?: number;
   primary_author_id?: string;
   template_type?: string;
+  wordpress_id?: number;
   created_at: string;
   authors?: {
     id: string;
@@ -58,18 +61,26 @@ interface ArticlesTableProps {
   isLoading: boolean;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
+  onRefresh?: () => void;
 }
 
 type SortColumn = 'published_at' | 'author' | 'created_at' | null;
 type SortDirection = 'asc' | 'desc';
 
-export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: ArticlesTableProps) {
+export function ArticlesTable({ 
+  articles, 
+  isLoading, 
+  onDelete, 
+  onUpdate, 
+  onRefresh 
+}: ArticlesTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>({});
   const [previewArticle, setPreviewArticle] = useState<Article | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortColumn, setSortColumn] = useState<SortColumn>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [selectedArticles, setSelectedArticles] = useState<Set<string>>(new Set());
   const itemsPerPage = 20;
 
   const handleSort = (column: SortColumn) => {
@@ -79,6 +90,25 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
       setSortColumn(column);
       setSortDirection('desc');
     }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const currentPageArticleIds = paginatedArticles.map(article => article.id);
+      setSelectedArticles(new Set(currentPageArticleIds));
+    } else {
+      setSelectedArticles(new Set());
+    }
+  };
+
+  const handleSelectArticle = (articleId: string, checked: boolean) => {
+    const newSelected = new Set(selectedArticles);
+    if (checked) {
+      newSelected.add(articleId);
+    } else {
+      newSelected.delete(articleId);
+    }
+    setSelectedArticles(newSelected);
   };
 
   const getSortedArticles = () => {
@@ -157,6 +187,11 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
     }
   };
 
+  const currentPageIds = new Set(paginatedArticles.map(a => a.id));
+  const allCurrentPageSelected = currentPageIds.size > 0 && 
+    [...currentPageIds].every(id => selectedArticles.has(id));
+  const someCurrentPageSelected = [...currentPageIds].some(id => selectedArticles.has(id));
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -169,10 +204,30 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
 
   return (
     <div className="space-y-4">
+      <BulkOperationsToolbar
+        selectedIds={selectedArticles}
+        onClearSelection={() => setSelectedArticles(new Set())}
+        onRefresh={() => {
+          setSelectedArticles(new Set());
+          onRefresh?.();
+        }}
+        articles={articles}
+      />
+
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12">
+                <Checkbox 
+                  checked={allCurrentPageSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someCurrentPageSelected && !allCurrentPageSelected;
+                  }}
+                  onCheckedChange={handleSelectAll}
+                />
+              </TableHead>
+              <TableHead>WordPress</TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Status</TableHead>
               <TableHead 
@@ -209,7 +264,26 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
           </TableHeader>
           <TableBody>
             {paginatedArticles.map((article) => (
-              <TableRow key={article.id}>
+              <TableRow key={article.id} className={selectedArticles.has(article.id) ? "bg-blue-50" : ""}>
+                <TableCell>
+                  <Checkbox 
+                    checked={selectedArticles.has(article.id)}
+                    onCheckedChange={(checked) => handleSelectArticle(article.id, checked as boolean)}
+                  />
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    {article.wordpress_id ? (
+                      <Badge variant="outline" className="bg-green-50 text-green-700">
+                        WP: {article.wordpress_id}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-red-50 text-red-700">
+                        No WP ID
+                      </Badge>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell className="max-w-md">
                   {editingId === article.id ? (
                     <Input
@@ -259,7 +333,9 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4" />
                       <span className="text-sm">
-                        {article.authors?.name || 'Unassigned'}
+                        {article.authors?.name || (
+                          <span className="text-red-600">Unassigned</span>
+                        )}
                       </span>
                     </div>
                   )}
@@ -405,6 +481,9 @@ export function ArticlesTable({ articles, isLoading, onDelete, onUpdate }: Artic
                 <span>Read time: {previewArticle.read_time_minutes} min</span>
                 {previewArticle.published_at && (
                   <span>Published: {new Date(previewArticle.published_at).toLocaleDateString()}</span>
+                )}
+                {previewArticle.wordpress_id && (
+                  <span>WP ID: {previewArticle.wordpress_id}</span>
                 )}
               </div>
               {previewArticle.excerpt && (
