@@ -23,6 +23,8 @@ interface ArticleImportDialogProps {
 export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: ArticleImportDialogProps) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{
     status: string;
@@ -46,7 +48,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
       console.log('Starting WordPress sync...');
       
       const { data, error } = await supabase.functions.invoke('wordpress-sync', {
-        body: { page, perPage }
+        body: { page, perPage, startDate, endDate }
       });
 
       if (error) {
@@ -84,6 +86,8 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
       setImportProgress(null);
       setPage(1);
       setPerPage(50);
+      setStartDate('');
+      setEndDate('');
     }
   };
 
@@ -130,6 +134,30 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     max="100"
                     value={perPage}
                     onChange={(e) => setPerPage(parseInt(e.target.value) || 50)}
+                    disabled={isImporting}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="start-date">Start Date</Label>
+                  <Input
+                    id="start-date"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    disabled={isImporting}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="end-date">End Date</Label>
+                  <Input
+                    id="end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
                     disabled={isImporting}
                   />
                 </div>

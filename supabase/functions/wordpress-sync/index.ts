@@ -23,24 +23,34 @@ serve(async (req) => {
       throw new Error('WordPress credentials not configured. Please set WORDPRESS_URL, WORDPRESS_USERNAME, and WORDPRESS_PASSWORD in Supabase secrets.')
     }
     
-    // Get pagination parameters from request body (optional)
-    const { page = 1, perPage = 50 } = await req.json().catch(() => ({}))
+    // Get parameters from request body
+    const { page = 1, perPage = 50, startDate, endDate } = await req.json().catch(() => ({}))
 
     console.log(`Starting WordPress sync from ${wordpressUrl}, page ${page}, ${perPage} per page`)
+    if (startDate) console.log(`Start date filter: ${startDate}`)
+    if (endDate) console.log(`End date filter: ${endDate}`)
 
     // WordPress REST API authentication
     const auth = btoa(`${username}:${password}`)
     
+    // Build WordPress API URL with date filters
+    let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?page=${page}&per_page=${perPage}&_embed`
+    
+    if (startDate) {
+      wpApiUrl += `&after=${startDate}T00:00:00`
+    }
+    
+    if (endDate) {
+      wpApiUrl += `&before=${endDate}T23:59:59`
+    }
+    
     // Fetch articles from WordPress
-    const wpResponse = await fetch(
-      `${wordpressUrl}/wp-json/wp/v2/posts?page=${page}&per_page=${perPage}&_embed`,
-      {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json'
-        }
+    const wpResponse = await fetch(wpApiUrl, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
       }
-    )
+    })
 
     if (!wpResponse.ok) {
       throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)

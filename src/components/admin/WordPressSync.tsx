@@ -15,7 +15,9 @@ export default function WordPressSync() {
   const [syncResults, setSyncResults] = useState(null);
   const [config, setConfig] = useState({
     page: 1,
-    perPage: 50
+    perPage: 50,
+    startDate: '',
+    endDate: ''
   });
 
   const handleSync = async () => {
@@ -91,6 +93,29 @@ export default function WordPressSync() {
                 max="100"
                 value={config.perPage}
                 onChange={(e) => setConfig(prev => ({ ...prev, perPage: parseInt(e.target.value) || 50 }))}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="start-date">Start Date</Label>
+              <Input
+                id="start-date"
+                type="date"
+                value={config.startDate}
+                onChange={(e) => setConfig(prev => ({ ...prev, startDate: e.target.value }))}
+                disabled={isLoading}
+              />
+            </div>
+            <div>
+              <Label htmlFor="end-date">End Date</Label>
+              <Input
+                id="end-date"
+                type="date"
+                value={config.endDate}
+                onChange={(e) => setConfig(prev => ({ ...prev, endDate: e.target.value }))}
                 disabled={isLoading}
               />
             </div>
