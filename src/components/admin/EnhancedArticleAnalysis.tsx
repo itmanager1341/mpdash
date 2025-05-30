@@ -74,93 +74,102 @@ export default function EnhancedArticleAnalysis() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
 
-  // Fetch all articles with their analysis data
+  // Fetch all articles with their LATEST analysis data
   const { data: articles, isLoading, refetch } = useQuery({
     queryKey: ['all-articles-with-analysis', sortColumn, sortDirection, filterStatus],
     queryFn: async () => {
-      let query = supabase
+      // First, get all articles with wordpress_id
+      let articlesQuery = supabase
         .from('articles')
-        .select(`
-          id,
-          title,
-          published_at,
-          wordpress_id,
-          status,
-          article_ai_analysis!left (
-            id,
-            analysis_version,
-            content_quality_score,
-            template_classification,
-            extracted_keywords,
-            matched_clusters,
-            performance_prediction,
-            analysis_data,
-            analyzed_at
-          )
-        `)
+        .select('id, title, published_at, wordpress_id, status')
         .not('wordpress_id', 'is', null);
 
-      // Apply status filter
-      if (filterStatus === 'analyzed') {
-        query = query.not('article_ai_analysis.id', 'is', null);
-      } else if (filterStatus === 'pending') {
-        query = query.is('article_ai_analysis.id', null);
-      }
-
-      // Apply sorting
+      // Apply basic sorting for articles
       if (sortColumn === 'title') {
-        query = query.order('title', { ascending: sortDirection === 'asc' });
+        articlesQuery = articlesQuery.order('title', { ascending: sortDirection === 'asc' });
       } else if (sortColumn === 'analyzed_at') {
-        query = query.order('published_at', { ascending: sortDirection === 'asc' });
+        articlesQuery = articlesQuery.order('published_at', { ascending: sortDirection === 'asc' });
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      const { data: articlesData, error: articlesError } = await articlesQuery;
+      if (articlesError) throw articlesError;
 
-      // Transform the data to match our interface with proper type casting
-      const transformedData: ArticleWithAnalysis[] = data.map(article => ({
-        id: article.id,
-        title: article.title,
-        published_at: article.published_at,
-        wordpress_id: article.wordpress_id,
-        status: article.status,
-        analysis: article.article_ai_analysis?.[0] ? {
-          id: article.article_ai_analysis[0].id,
-          analysis_version: article.article_ai_analysis[0].analysis_version,
-          content_quality_score: article.article_ai_analysis[0].content_quality_score,
-          template_classification: article.article_ai_analysis[0].template_classification,
-          extracted_keywords: Array.isArray(article.article_ai_analysis[0].extracted_keywords) 
-            ? article.article_ai_analysis[0].extracted_keywords as string[]
-            : [],
-          matched_clusters: Array.isArray(article.article_ai_analysis[0].matched_clusters)
-            ? article.article_ai_analysis[0].matched_clusters as string[]
-            : [],
-          performance_prediction: article.article_ai_analysis[0].performance_prediction as {
-            engagement_score: number;
-            shareability: number;
-            seo_potential: number;
-            target_audience: string;
-          } || {
-            engagement_score: 0,
-            shareability: 0,
-            seo_potential: 0,
-            target_audience: 'Unknown'
-          },
-          analysis_data: article.article_ai_analysis[0].analysis_data,
-          analyzed_at: article.article_ai_analysis[0].analyzed_at,
-        } : undefined
-      }));
+      // Get the latest analysis for each article
+      const articleIds = articlesData.map(article => article.id);
+      
+      let analysisQuery = supabase
+        .from('article_ai_analysis')
+        .select('*')
+        .in('article_id', articleIds)
+        .order('analysis_version', { ascending: false });
+
+      const { data: analysisData, error: analysisError } = await analysisQuery;
+      if (analysisError) throw analysisError;
+
+      // Create a map of article_id to latest analysis
+      const latestAnalysisMap = new Map();
+      analysisData?.forEach(analysis => {
+        if (!latestAnalysisMap.has(analysis.article_id)) {
+          latestAnalysisMap.set(analysis.article_id, analysis);
+        }
+      });
+
+      // Combine articles with their latest analysis
+      const transformedData: ArticleWithAnalysis[] = articlesData.map(article => {
+        const latestAnalysis = latestAnalysisMap.get(article.id);
+        
+        return {
+          id: article.id,
+          title: article.title,
+          published_at: article.published_at,
+          wordpress_id: article.wordpress_id,
+          status: article.status,
+          analysis: latestAnalysis ? {
+            id: latestAnalysis.id,
+            analysis_version: latestAnalysis.analysis_version,
+            content_quality_score: latestAnalysis.content_quality_score,
+            template_classification: latestAnalysis.template_classification,
+            extracted_keywords: Array.isArray(latestAnalysis.extracted_keywords) 
+              ? latestAnalysis.extracted_keywords as string[]
+              : [],
+            matched_clusters: Array.isArray(latestAnalysis.matched_clusters)
+              ? latestAnalysis.matched_clusters as string[]
+              : [],
+            performance_prediction: latestAnalysis.performance_prediction as {
+              engagement_score: number;
+              shareability: number;
+              seo_potential: number;
+              target_audience: string;
+            } || {
+              engagement_score: 0,
+              shareability: 0,
+              seo_potential: 0,
+              target_audience: 'Unknown'
+            },
+            analysis_data: latestAnalysis.analysis_data,
+            analyzed_at: latestAnalysis.analyzed_at,
+          } : undefined
+        };
+      });
+
+      // Apply status filter
+      let filteredData = transformedData;
+      if (filterStatus === 'analyzed') {
+        filteredData = transformedData.filter(article => article.analysis);
+      } else if (filterStatus === 'pending') {
+        filteredData = transformedData.filter(article => !article.analysis);
+      }
 
       // Apply client-side sorting for analysis-specific fields
       if (sortColumn === 'quality_score') {
-        transformedData.sort((a, b) => {
+        filteredData.sort((a, b) => {
           const scoreA = a.analysis?.content_quality_score || 0;
           const scoreB = b.analysis?.content_quality_score || 0;
           return sortDirection === 'asc' ? scoreA - scoreB : scoreB - scoreA;
         });
       }
 
-      return transformedData;
+      return filteredData;
     }
   });
 
@@ -210,6 +219,8 @@ export default function EnhancedArticleAnalysis() {
 
       if (data.success) {
         setProcessingStatus(prev => ({ ...prev, [articleId]: 'success' }));
+        // Refetch data to show the new analysis
+        refetch();
         return true;
       } else {
         throw new Error(data.error || 'Analysis failed');
