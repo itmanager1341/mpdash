@@ -11,8 +11,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BulkOperationsToolbar } from "./BulkOperationsToolbar";
-import { ExternalLink, Edit, Trash2, Eye } from "lucide-react";
+import { SimplifiedBulkOperations } from "./SimplifiedBulkOperations";
+import { ExternalLink, Trash2, RefreshCw } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface ArticlesTableProps {
   articles: any[];
@@ -22,6 +24,8 @@ interface ArticlesTableProps {
   onRefresh: () => void;
 }
 
+const ARTICLES_PER_PAGE = 20;
+
 export function ArticlesTable({ 
   articles, 
   isLoading, 
@@ -30,10 +34,17 @@ export function ArticlesTable({
   onRefresh 
 }: ArticlesTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
+
+  const totalPages = Math.ceil(articles.length / ARTICLES_PER_PAGE);
+  const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
+  const endIndex = startIndex + ARTICLES_PER_PAGE;
+  const currentArticles = articles.slice(startIndex, endIndex);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(articles.map(article => article.id)));
+      setSelectedIds(new Set(currentArticles.map(article => article.id)));
     } else {
       setSelectedIds(new Set());
     }
@@ -49,8 +60,34 @@ export function ArticlesTable({
     setSelectedIds(newSelection);
   };
 
-  const isAllSelected = articles.length > 0 && selectedIds.size === articles.length;
-  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < articles.length;
+  const handleSyncArticle = async (articleId: string) => {
+    setSyncingArticleId(articleId);
+    try {
+      const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
+        body: { 
+          legacyMode: true,
+          targetArticleIds: [articleId]
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success("Article synced successfully");
+        onRefresh();
+      } else {
+        throw new Error(data.error || 'Sync failed');
+      }
+    } catch (error) {
+      console.error('Article sync error:', error);
+      toast.error(`Sync failed: ${error.message}`);
+    } finally {
+      setSyncingArticleId(null);
+    }
+  };
+
+  const isAllSelected = currentArticles.length > 0 && currentArticles.every(article => selectedIds.has(article.id));
+  const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
 
   if (isLoading) {
     return (
@@ -65,7 +102,7 @@ export function ArticlesTable({
 
   return (
     <div className="space-y-4">
-      <BulkOperationsToolbar
+      <SimplifiedBulkOperations
         selectedIds={selectedIds}
         onClearSelection={() => setSelectedIds(new Set())}
         onRefresh={onRefresh}
@@ -80,7 +117,7 @@ export function ArticlesTable({
                 <Checkbox
                   checked={isAllSelected}
                   onCheckedChange={handleSelectAll}
-                  className={isIndeterminate ? "data-[state=checked]:bg-blue-600" : ""}
+                  className={isIndeterminate ? "data-[state=indeterminate]:bg-blue-600" : ""}
                 />
               </TableHead>
               <TableHead>Title</TableHead>
@@ -88,19 +125,18 @@ export function ArticlesTable({
               <TableHead>Status</TableHead>
               <TableHead>Published</TableHead>
               <TableHead>WP ID</TableHead>
-              <TableHead>Source</TableHead>
               <TableHead className="w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {articles.length === 0 ? (
+            {currentArticles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No articles found
                 </TableCell>
               </TableRow>
             ) : (
-              articles.map((article) => (
+              currentArticles.map((article) => (
                 <TableRow key={article.id}>
                   <TableCell>
                     <Checkbox
@@ -166,32 +202,27 @@ export function ArticlesTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      {article.source_system && (
-                        <Badge variant="outline" className="text-xs">
-                          {article.source_system}
-                        </Badge>
-                      )}
-                      {article.source_url && (
-                        <a 
-                          href={article.source_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-blue-500 hover:text-blue-700"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleSyncArticle(article.id)}
+                        disabled={syncingArticleId === article.id}
+                        title="Sync with WordPress"
+                      >
+                        {syncingArticleId === article.id ? (
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-4 w-4" />
+                        )}
+                      </Button>
                       {article.source_url && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => window.open(article.source_url, '_blank')}
+                          title="View on WordPress"
                         >
-                          <Eye className="h-4 w-4" />
+                          <ExternalLink className="h-4 w-4" />
                         </Button>
                       )}
                       <Button
@@ -199,6 +230,7 @@ export function ArticlesTable({
                         size="sm"
                         onClick={() => onDelete(article.id)}
                         className="text-red-600 hover:text-red-700"
+                        title="Delete article"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -210,6 +242,36 @@ export function ArticlesTable({
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-muted-foreground">
+            Showing {startIndex + 1} to {Math.min(endIndex, articles.length)} of {articles.length} articles
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
+              Previous
+            </Button>
+            <span className="text-sm">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

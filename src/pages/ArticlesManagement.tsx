@@ -4,26 +4,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Download, 
-  Calendar, 
   RefreshCw, 
   Search, 
-  Edit, 
-  Trash2,
-  Eye,
-  Plus,
   AlertTriangle,
   Users
 } from "lucide-react";
 import { toast } from "sonner";
 import { ArticlesTable } from "@/components/admin/ArticlesTable";
 import { ArticleImportDialog } from "@/components/admin/ArticleImportDialog";
-import { ImportLogsTable } from "@/components/admin/ImportLogsTable";
-import EnhancedWordPressSync from "@/components/admin/EnhancedWordPressSync";
 
 export default function ArticlesManagement() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -55,20 +46,6 @@ export default function ArticlesManagement() {
       }
 
       const { data, error } = await query;
-      if (error) throw error;
-      return data;
-    }
-  });
-
-  const { data: importLogs, isLoading: logsLoading } = useQuery({
-    queryKey: ['import-logs'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('article_import_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(20);
-      
       if (error) throw error;
       return data;
     }
@@ -161,7 +138,7 @@ export default function ArticlesManagement() {
         <div>
           <h1 className="text-2xl font-bold">Articles Management</h1>
           <p className="text-muted-foreground">
-            Manage articles imported from the website and editorial content
+            Manage articles imported from WordPress and editorial content
           </p>
         </div>
         <div className="flex gap-2">
@@ -243,74 +220,52 @@ export default function ArticlesManagement() {
             </div>
             <p className="text-orange-700 text-sm mt-1">
               Some articles are missing WordPress IDs or author assignments. 
-              Use the Enhanced WordPress Sync to automatically match and update legacy articles.
+              Use the sync functionality to automatically match and update articles.
             </p>
           </CardContent>
         </Card>
       )}
 
-      <Tabs defaultValue="articles" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="articles">Articles</TabsTrigger>
-          <TabsTrigger value="enhanced-sync">Enhanced WordPress Sync</TabsTrigger>
-          <TabsTrigger value="import-logs">Import History</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="articles" className="space-y-4">
-          {/* Filters */}
-          <div className="flex gap-4 items-center">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search articles..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border rounded-md"
-            >
-              <option value="all">All Status</option>
-              <option value="published">Published</option>
-              <option value="draft">Draft</option>
-              <option value="archived">Archived</option>
-            </select>
-            <Button variant="outline" onClick={handleRefresh}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
-          </div>
-
-          <ArticlesTable
-            articles={articles || []}
-            isLoading={articlesLoading}
-            onDelete={handleDeleteArticle}
-            onUpdate={handleUpdateArticle}
-            onRefresh={handleRefresh}
+      {/* Filters */}
+      <div className="flex gap-4 items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search articles..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
           />
-        </TabsContent>
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3 py-2 border rounded-md"
+        >
+          <option value="all">All Status</option>
+          <option value="published">Published</option>
+          <option value="draft">Draft</option>
+          <option value="archived">Archived</option>
+        </select>
+        <Button variant="outline" onClick={handleRefresh}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
+      </div>
 
-        <TabsContent value="enhanced-sync">
-          <EnhancedWordPressSync />
-        </TabsContent>
-
-        <TabsContent value="import-logs">
-          <ImportLogsTable
-            logs={importLogs || []}
-            isLoading={logsLoading}
-          />
-        </TabsContent>
-      </Tabs>
+      <ArticlesTable
+        articles={articles || []}
+        isLoading={articlesLoading}
+        onDelete={handleDeleteArticle}
+        onUpdate={handleUpdateArticle}
+        onRefresh={handleRefresh}
+      />
 
       <ArticleImportDialog
         open={showImportDialog}
         onOpenChange={setShowImportDialog}
         onImportComplete={() => {
           queryClient.invalidateQueries({ queryKey: ['articles'] });
-          queryClient.invalidateQueries({ queryKey: ['import-logs'] });
           queryClient.invalidateQueries({ queryKey: ['data-quality-stats'] });
         }}
       />
