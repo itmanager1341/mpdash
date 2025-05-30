@@ -20,7 +20,8 @@ import {
   Edit, 
   Loader2,
   ExternalLink,
-  CheckCircle
+  CheckCircle,
+  X
 } from "lucide-react";
 import { AuthorSelector } from "@/components/editorial/AuthorSelector";
 
@@ -46,6 +47,7 @@ export function BulkOperationsToolbar({
     current: number;
     total: number;
     operation: string;
+    operationId?: string;
   } | null>(null);
 
   const selectedCount = selectedIds.size;
@@ -90,21 +92,35 @@ export function BulkOperationsToolbar({
 
   const handleBulkWordPressSync = async () => {
     setIsLoading(true);
-    setOperationProgress({ current: 0, total: selectedCount, operation: "Syncing with WordPress" });
+    const operationId = crypto.randomUUID();
+    setOperationProgress({ 
+      current: 0, 
+      total: selectedCount, 
+      operation: "Syncing with WordPress",
+      operationId 
+    });
 
     try {
+      console.log(`Starting WordPress sync for ${selectedCount} selected articles...`);
+      
       const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
         body: { 
-          maxArticles: 1000, 
           legacyMode: true,
-          targetArticleIds: Array.from(selectedIds)
+          targetArticleIds: Array.from(selectedIds),
+          operationId
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
 
       if (data.success) {
-        toast.success(`WordPress sync completed! ${data.results.updated} articles updated, ${data.results.matched} matched`);
+        const { results } = data;
+        toast.success(
+          `WordPress sync completed! ${results.updated} articles updated, ${results.matched} matched, ${results.skipped} skipped`
+        );
         onClearSelection();
         onRefresh();
       } else {
@@ -112,10 +128,33 @@ export function BulkOperationsToolbar({
       }
     } catch (error) {
       console.error('Bulk WordPress sync error:', error);
-      toast.error("WordPress sync failed");
+      toast.error(`WordPress sync failed: ${error.message}`);
     } finally {
       setIsLoading(false);
       setOperationProgress(null);
+    }
+  };
+
+  const handleCancelOperation = async () => {
+    if (!operationProgress?.operationId) return;
+    
+    try {
+      // Mark operation as cancelled in database
+      const { error } = await supabase
+        .from('sync_operations')
+        .upsert({
+          id: operationProgress.operationId,
+          status: 'cancelled',
+          updated_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Error cancelling operation:', error);
+      }
+
+      toast.info("Cancellation requested...");
+    } catch (error) {
+      console.error('Cancel operation error:', error);
     }
   };
 
@@ -206,6 +245,17 @@ export function BulkOperationsToolbar({
                   <span className="text-sm text-muted-foreground">
                     {operationProgress.operation}: {operationProgress.current}/{operationProgress.total}
                   </span>
+                  {operationProgress.operationId && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCancelOperation}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  )}
                 </div>
               )}
             </div>

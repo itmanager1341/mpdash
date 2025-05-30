@@ -27,100 +27,70 @@ function calculateTitleSimilarity(title1: string, title2: string): number {
   return intersection.size / union.size;
 }
 
-// Enhanced duplicate checking with proper date range filtering
-async function findExistingArticle(supabase: any, wpArticle: any, startDate?: string, endDate?: string) {
-  console.log(`Checking for duplicates of WP article ${wpArticle.id}: "${wpArticle.title.rendered}"`);
+// Search for WordPress post by title
+async function searchWordPressPostByTitle(title: string, wordpressUrl: string, auth: string) {
+  if (!title || title.length < 5) return null;
   
-  // First check by WordPress ID (for already synced articles)
-  if (wpArticle.id) {
-    const { data: existingByWpId } = await supabase
-      .from('articles')
-      .select('id, title, wordpress_id')
-      .eq('wordpress_id', wpArticle.id)
-      .maybeSingle();
-    
-    if (existingByWpId) {
-      console.log(`Found existing article with WP ID ${wpArticle.id}: ${existingByWpId.title}`);
-      return { 
-        match: existingByWpId, 
-        matchType: 'wordpress_id', 
-        confidence: 1.0,
-        action: 'update'
-      };
-    }
-  }
+  const searchQuery = encodeURIComponent(title.substring(0, 50));
+  const searchUrl = `${wordpressUrl}/wp-json/wp/v2/posts?search=${searchQuery}&per_page=5&_embed`;
+  
+  console.log(`Searching WordPress for: "${title}"`);
+  
+  try {
+    const response = await fetch(searchUrl, {
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      }
+    });
 
-  const wpTitle = wpArticle.title.rendered?.trim();
-  const wpPublishDate = new Date(wpArticle.date).toISOString().split('T')[0];
-  
-  if (!wpTitle || wpTitle.length < 10) {
-    console.log(`Skipping similarity check - title too short: "${wpTitle}"`);
+    if (!response.ok) {
+      console.log(`WordPress search failed: ${response.status}`);
+      return null;
+    }
+
+    const results = await response.json();
+    if (!results || results.length === 0) {
+      console.log('No WordPress posts found');
+      return null;
+    }
+
+    // Find best title match
+    let bestMatch = null;
+    let bestScore = 0.8;
+
+    for (const post of results) {
+      const similarity = calculateTitleSimilarity(title, post.title.rendered);
+      if (similarity > bestScore) {
+        bestScore = similarity;
+        bestMatch = { post, similarity };
+      }
+    }
+
+    if (bestMatch) {
+      console.log(`Found WordPress match: "${bestMatch.post.title.rendered}" (confidence: ${bestScore.toFixed(2)})`);
+      return bestMatch;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('WordPress search error:', error);
     return null;
   }
-
-  console.log(`WP article publish date: ${wpPublishDate}`);
-
-  // Only check for duplicates outside the requested date range to avoid false positives
-  let dateQuery = supabase
-    .from('articles')
-    .select('id, title, published_at, article_date, wordpress_id')
-    .is('wordpress_id', null);
-
-  // If we have a date range filter, only check articles outside that range for duplicates
-  if (startDate && endDate) {
-    console.log(`Date range filter: ${startDate} to ${endDate}`);
-    // Check articles published before start date or after end date
-    dateQuery = dateQuery.or(`published_at.lt.${startDate},published_at.gt.${endDate}`);
-  }
-
-  const { data: candidates } = await dateQuery.limit(50);
-
-  if (!candidates || candidates.length === 0) {
-    console.log('No candidates found for similarity matching');
-    return null;
-  }
-
-  console.log(`Found ${candidates.length} candidates for similarity matching`);
-
-  let bestMatch = null;
-  let bestScore = 0.85; // Higher threshold to reduce false positives
-
-  for (const candidate of candidates) {
-    const similarity = calculateTitleSimilarity(wpTitle, candidate.title);
-    
-    if (similarity > bestScore) {
-      bestScore = similarity;
-      bestMatch = candidate;
-      console.log(`High similarity match found: ${similarity.toFixed(3)} - "${candidate.title}"`);
-    }
-  }
-
-  if (bestMatch) {
-    return {
-      match: bestMatch,
-      matchType: 'title_similarity',
-      confidence: bestScore,
-      action: 'update'
-    };
-  }
-
-  console.log('No duplicate found - article is unique');
-  return null;
 }
 
 // Enhanced author creation and mapping
-async function handleAuthor(supabase: any, wpArticle: any) {
-  const authorData = wpArticle._embedded?.author?.[0];
-  console.log(`Processing author for article ${wpArticle.id}:`, {
-    wordpress_author_id: wpArticle.author,
-    author_data: authorData ? {
-      name: authorData.name,
-      slug: authorData.slug,
-      description: authorData.description
-    } : 'No embedded author data'
+async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any) {
+  console.log(`Processing author:`, {
+    wordpress_author_id: wpAuthorId,
+    author_data: wpAuthorData ? {
+      name: wpAuthorData.name,
+      slug: wpAuthorData.slug,
+      description: wpAuthorData.description
+    } : 'No author data'
   });
 
-  if (!authorData || !wpArticle.author) {
+  if (!wpAuthorData || !wpAuthorId) {
     console.log('No author data available');
     return null;
   }
@@ -136,7 +106,7 @@ async function handleAuthor(supabase: any, wpArticle: any) {
         author_type
       )
     `)
-    .eq('wordpress_author_id', wpArticle.author)
+    .eq('wordpress_author_id', wpAuthorId)
     .maybeSingle();
 
   if (existingMapping?.system_author_id) {
@@ -148,7 +118,7 @@ async function handleAuthor(supabase: any, wpArticle: any) {
   const { data: existingAuthor } = await supabase
     .from('authors')
     .select('id, name')
-    .ilike('name', authorData.name)
+    .ilike('name', wpAuthorData.name)
     .maybeSingle();
 
   if (existingAuthor) {
@@ -158,12 +128,12 @@ async function handleAuthor(supabase: any, wpArticle: any) {
     const { error: mappingError } = await supabase
       .from('wordpress_author_mapping')
       .upsert({
-        wordpress_author_id: wpArticle.author,
-        wordpress_author_name: authorData.name,
+        wordpress_author_id: wpAuthorId,
+        wordpress_author_name: wpAuthorData.name,
         system_author_id: existingAuthor.id,
         mapping_confidence: 1.0,
         is_verified: true
-      });
+      }, { onConflict: 'wordpress_author_id' });
 
     if (mappingError) {
       console.error('Error creating author mapping:', mappingError);
@@ -172,15 +142,15 @@ async function handleAuthor(supabase: any, wpArticle: any) {
     return existingAuthor.id;
   }
 
-  // Create new author
-  console.log(`Creating new author: ${authorData.name}`);
+  // Create new author with valid author_type
+  console.log(`Creating new author: ${wpAuthorData.name}`);
   const { data: newAuthor, error: authorError } = await supabase
     .from('authors')
     .insert({
-      name: authorData.name,
-      author_type: 'staff',
-      email: authorData.email || null,
-      bio: authorData.description || null,
+      name: wpAuthorData.name,
+      author_type: 'contributor', // Use valid author_type
+      email: wpAuthorData.email || null,
+      bio: wpAuthorData.description || null,
       is_active: true
     })
     .select('id')
@@ -191,14 +161,14 @@ async function handleAuthor(supabase: any, wpArticle: any) {
     return null;
   }
 
-  console.log(`Created new author: ${authorData.name} (${newAuthor.id})`);
+  console.log(`Created new author: ${wpAuthorData.name} (${newAuthor.id})`);
 
   // Create mapping
   const { error: mappingError } = await supabase
     .from('wordpress_author_mapping')
     .insert({
-      wordpress_author_id: wpArticle.author,
-      wordpress_author_name: authorData.name,
+      wordpress_author_id: wpAuthorId,
+      wordpress_author_name: wpAuthorData.name,
       system_author_id: newAuthor.id,
       mapping_confidence: 1.0,
       is_verified: true
@@ -209,6 +179,19 @@ async function handleAuthor(supabase: any, wpArticle: any) {
   }
 
   return newAuthor.id;
+}
+
+// Check if operation is cancelled
+async function checkCancellation(supabase: any, operationId: string) {
+  if (!operationId) return false;
+  
+  const { data } = await supabase
+    .from('sync_operations')
+    .select('status')
+    .eq('id', operationId)
+    .single();
+    
+  return data?.status === 'cancelled';
 }
 
 serve(async (req) => {
@@ -228,54 +211,21 @@ serve(async (req) => {
       throw new Error('WordPress credentials not configured')
     }
     
-    const { maxArticles = 100, startDate, endDate, legacyMode = true } = await req.json().catch(() => ({}))
+    const { 
+      maxArticles = 100, 
+      startDate, 
+      endDate, 
+      legacyMode = true,
+      targetArticleIds = null,
+      operationId = null
+    } = await req.json().catch(() => ({}))
 
-    console.log(`Starting enhanced WordPress sync, legacy mode: ${legacyMode}`)
+    console.log(`Starting enhanced WordPress sync`)
+    console.log(`Target articles: ${targetArticleIds ? targetArticleIds.length : 'all'}`)
     console.log(`Date range: ${startDate || 'no start'} to ${endDate || 'no end'}`)
-    console.log(`Max articles: ${maxArticles}`)
+    console.log(`Operation ID: ${operationId}`)
 
     const auth = btoa(`${username}:${password}`)
-    let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?per_page=100&_embed`
-    
-    if (startDate) wpApiUrl += `&after=${startDate}T00:00:00`
-    if (endDate) wpApiUrl += `&before=${endDate}T23:59:59`
-    
-    // Fetch WordPress articles
-    let allArticles = []
-    let page = 1
-    let totalFetched = 0
-    
-    while (totalFetched < maxArticles) {
-      const remainingArticles = maxArticles - totalFetched
-      const perPage = Math.min(remainingArticles, 100)
-      
-      let currentUrl = wpApiUrl.replace(/per_page=\d+/, `per_page=${perPage}`)
-      if (page > 1) currentUrl += `&page=${page}`
-      
-      console.log(`Fetching page ${page}: ${currentUrl}`)
-      
-      const wpResponse = await fetch(currentUrl, {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!wpResponse.ok) {
-        if (wpResponse.status === 400 && page > 1) break
-        throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)
-      }
-
-      const wpArticles = await wpResponse.json()
-      if (!wpArticles || wpArticles.length === 0) break
-      
-      console.log(`Fetched ${wpArticles.length} articles from page ${page}`)
-      allArticles.push(...wpArticles)
-      totalFetched += wpArticles.length
-      
-      if (wpArticles.length < perPage) break
-      page++
-    }
 
     const syncResults = {
       processed: 0,
@@ -287,71 +237,194 @@ serve(async (req) => {
       matchDetails: []
     }
 
-    console.log(`Processing ${allArticles.length} WordPress articles...`)
+    let articlesToProcess = [];
 
-    for (const wpArticle of allArticles) {
+    // If targetArticleIds is provided, fetch only those articles from database
+    if (targetArticleIds && targetArticleIds.length > 0) {
+      console.log(`Fetching ${targetArticleIds.length} selected articles from database...`);
+      
+      const { data: selectedArticles, error } = await supabase
+        .from('articles')
+        .select('*')
+        .in('id', targetArticleIds);
+
+      if (error) {
+        throw new Error(`Failed to fetch selected articles: ${error.message}`);
+      }
+
+      if (!selectedArticles || selectedArticles.length === 0) {
+        throw new Error('No articles found with the provided IDs');
+      }
+
+      console.log(`Found ${selectedArticles.length} articles to sync`);
+      articlesToProcess = selectedArticles;
+    } else {
+      // Fallback to fetching from WordPress (original behavior)
+      console.log('No target articles specified, fetching from WordPress API...');
+      
+      let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?per_page=100&_embed`
+      if (startDate) wpApiUrl += `&after=${startDate}T00:00:00`
+      if (endDate) wpApiUrl += `&before=${endDate}T23:59:59`
+      
+      let allArticles = []
+      let page = 1
+      let totalFetched = 0
+      
+      while (totalFetched < maxArticles) {
+        if (operationId && await checkCancellation(supabase, operationId)) {
+          console.log('Operation cancelled by user');
+          return new Response(JSON.stringify({ success: false, error: 'Operation cancelled' }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200
+          });
+        }
+
+        const remainingArticles = maxArticles - totalFetched
+        const perPage = Math.min(remainingArticles, 100)
+        
+        let currentUrl = wpApiUrl.replace(/per_page=\d+/, `per_page=${perPage}`)
+        if (page > 1) currentUrl += `&page=${page}`
+        
+        const wpResponse = await fetch(currentUrl, {
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          }
+        })
+
+        if (!wpResponse.ok) {
+          if (wpResponse.status === 400 && page > 1) break
+          throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)
+        }
+
+        const wpArticles = await wpResponse.json()
+        if (!wpArticles || wpArticles.length === 0) break
+        
+        allArticles.push(...wpArticles)
+        totalFetched += wpArticles.length
+        
+        if (wpArticles.length < perPage) break
+        page++
+      }
+      
+      articlesToProcess = allArticles;
+    }
+
+    console.log(`Processing ${articlesToProcess.length} articles...`)
+
+    for (let i = 0; i < articlesToProcess.length; i++) {
+      // Check for cancellation every few articles
+      if (operationId && i % 5 === 0 && await checkCancellation(supabase, operationId)) {
+        console.log('Operation cancelled by user');
+        break;
+      }
+
+      const article = articlesToProcess[i];
+      
       try {
         syncResults.processed++
         
-        console.log(`\n--- Processing article ${syncResults.processed}/${allArticles.length} ---`);
-        console.log(`WP ID: ${wpArticle.id}, Title: "${wpArticle.title.rendered}"`);
-        console.log(`WP Date: ${wpArticle.date}, Modified: ${wpArticle.modified}`);
-        console.log(`WP Status: ${wpArticle.status}, Author ID: ${wpArticle.author}`);
+        console.log(`\n--- Processing article ${syncResults.processed}/${articlesToProcess.length} ---`);
 
-        // Handle author first
-        const authorId = await handleAuthor(supabase, wpArticle)
-        console.log(`Author assigned: ${authorId || 'none'}`);
+        // Handle different article sources
+        let wpPost = null;
+        let authorId = null;
 
-        // Check for existing article with proper date range consideration
-        const existingMatch = await findExistingArticle(supabase, wpArticle, startDate, endDate)
+        if (targetArticleIds) {
+          // For selected articles, search WordPress for matching post
+          console.log(`Database article: "${article.title}"`);
+          console.log(`Published: ${article.published_at}, WP ID: ${article.wordpress_id || 'none'}`);
 
-        // Parse dates properly
-        const publishedDate = new Date(wpArticle.date).toISOString().split('T')[0];
-        const modifiedDate = wpArticle.modified ? new Date(wpArticle.modified).toISOString().split('T')[0] : publishedDate;
+          if (article.wordpress_id) {
+            // Try to fetch by WordPress ID first
+            try {
+              const wpResponse = await fetch(`${wordpressUrl}/wp-json/wp/v2/posts/${article.wordpress_id}?_embed`, {
+                headers: {
+                  'Authorization': `Basic ${auth}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+
+              if (wpResponse.ok) {
+                wpPost = await wpResponse.json();
+                console.log(`Found WordPress post by ID: ${wpPost.id}`);
+              }
+            } catch (error) {
+              console.log(`Failed to fetch by WP ID: ${error.message}`);
+            }
+          }
+
+          if (!wpPost) {
+            // Search by title
+            const searchResult = await searchWordPressPostByTitle(article.title, wordpressUrl, auth);
+            if (searchResult) {
+              wpPost = searchResult.post;
+              console.log(`Found WordPress post by title search: ${wpPost.id}`);
+            }
+          }
+
+          if (!wpPost) {
+            console.log(`No WordPress post found for: "${article.title}"`);
+            syncResults.skipped++;
+            continue;
+          }
+
+          // Handle author
+          const authorData = wpPost._embedded?.author?.[0];
+          if (authorData && wpPost.author) {
+            authorId = await handleAuthor(supabase, wpPost.author, authorData);
+          }
+
+        } else {
+          // For WordPress articles, use the article directly
+          wpPost = article;
+          const authorData = wpPost._embedded?.author?.[0];
+          if (authorData && wpPost.author) {
+            authorId = await handleAuthor(supabase, wpPost.author, authorData);
+          }
+        }
+
+        // Parse dates properly from WordPress post
+        const publishedDate = new Date(wpPost.date).toISOString().split('T')[0];
+        const modifiedDate = wpPost.modified ? new Date(wpPost.modified).toISOString().split('T')[0] : publishedDate;
         
         console.log(`Using published date: ${publishedDate}, modified date: ${modifiedDate}`);
+        console.log(`Author assigned: ${authorId || 'none'}`);
 
         const articleData = {
-          wordpress_id: wpArticle.id,
-          title: wpArticle.title.rendered,
+          wordpress_id: wpPost.id,
+          title: wpPost.title.rendered,
           content_variants: {
             wordpress_content: {
-              content: wpArticle.content.rendered,
-              excerpt: wpArticle.excerpt.rendered,
-              featured_media: wpArticle.featured_media,
-              categories: wpArticle.categories,
-              tags: wpArticle.tags
+              content: wpPost.content.rendered,
+              excerpt: wpPost.excerpt.rendered,
+              featured_media: wpPost.featured_media,
+              categories: wpPost.categories,
+              tags: wpPost.tags
             }
           },
           primary_author_id: authorId,
-          wordpress_author_id: wpArticle.author,
-          wordpress_author_name: wpArticle._embedded?.author?.[0]?.name || 'Unknown',
-          wordpress_categories: wpArticle.categories || [],
-          wordpress_tags: wpArticle.tags || [],
+          wordpress_author_id: wpPost.author,
+          wordpress_author_name: wpPost._embedded?.author?.[0]?.name || 'Unknown',
+          wordpress_categories: wpPost.categories || [],
+          wordpress_tags: wpPost.tags || [],
           published_at: publishedDate,
           article_date: publishedDate,
           last_wordpress_sync: new Date().toISOString(),
-          status: wpArticle.status === 'publish' ? 'published' : 'draft',
+          status: wpPost.status === 'publish' ? 'published' : 'draft',
           source_system: 'wordpress',
-          source_url: wpArticle.link || null,
-          excerpt: wpArticle.excerpt.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null,
+          source_url: wpPost.link || null,
+          excerpt: wpPost.excerpt.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null,
           updated_at: modifiedDate
         }
 
-        console.log(`Article data prepared:`, {
-          wordpress_id: articleData.wordpress_id,
-          published_at: articleData.published_at,
-          primary_author_id: articleData.primary_author_id,
-          status: articleData.status
-        });
-
-        if (existingMatch) {
+        if (targetArticleIds) {
           // Update existing article
-          console.log(`Updating existing article: ${existingMatch.match.id}`);
+          console.log(`Updating existing article: ${article.id}`);
           const { error } = await supabase
             .from('articles')
             .update(articleData)
-            .eq('id', existingMatch.match.id)
+            .eq('id', article.id)
           
           if (error) {
             console.error('Update error:', error);
@@ -361,16 +434,16 @@ serve(async (req) => {
           syncResults.updated++
           syncResults.matched++
           syncResults.matchDetails.push({
-            wordpress_id: wpArticle.id,
-            article_id: existingMatch.match.id,
-            match_type: existingMatch.matchType,
-            confidence: existingMatch.confidence,
-            title: wpArticle.title.rendered
+            wordpress_id: wpPost.id,
+            article_id: article.id,
+            match_type: 'selected_article',
+            confidence: 1.0,
+            title: article.title
           })
           
-          console.log(`✓ Updated article: ${wpArticle.title.rendered} (${existingMatch.matchType}, confidence: ${existingMatch.confidence.toFixed(2)})`)
+          console.log(`✓ Updated article: ${article.title}`)
         } else {
-          // Create new article
+          // Create new article (original behavior)
           console.log(`Creating new article...`);
           const { error } = await supabase
             .from('articles')
@@ -382,12 +455,12 @@ serve(async (req) => {
           }
           
           syncResults.created++
-          console.log(`✓ Created new article: ${wpArticle.title.rendered}`)
+          console.log(`✓ Created new article: ${wpPost.title.rendered}`)
         }
 
       } catch (error) {
-        console.error(`Error processing article ${wpArticle.id}:`, error)
-        syncResults.errors.push(`Article ${wpArticle.id} (${wpArticle.title?.rendered || 'Unknown'}): ${error.message}`)
+        console.error(`Error processing article:`, error)
+        syncResults.errors.push(`Article "${article.title || article.id}": ${error.message}`)
       }
     }
 
@@ -396,13 +469,14 @@ serve(async (req) => {
     console.log(`Created: ${syncResults.created}`);
     console.log(`Updated: ${syncResults.updated}`);
     console.log(`Matched: ${syncResults.matched}`);
+    console.log(`Skipped: ${syncResults.skipped}`);
     console.log(`Errors: ${syncResults.errors.length}`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         results: syncResults,
-        totalArticles: allArticles.length
+        totalArticles: articlesToProcess.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
