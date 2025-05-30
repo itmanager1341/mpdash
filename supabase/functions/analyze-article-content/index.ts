@@ -112,7 +112,7 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'You are an expert content analyst for mortgage industry publications.' },
+          { role: 'system', content: 'You are an expert content analyst for mortgage industry publications. Always respond with valid JSON only.' },
           { role: 'user', content: analysisPrompt }
         ],
         temperature: 0.3
@@ -126,17 +126,34 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
     const openaiResult = await openaiResponse.json()
     const analysisText = openaiResult.choices[0]?.message?.content
 
+    console.log('Raw OpenAI response:', analysisText)
+
     let analysisData
     try {
-      analysisData = JSON.parse(analysisText)
+      // Remove markdown code blocks if present
+      const cleanedText = analysisText.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      analysisData = JSON.parse(cleanedText)
+      console.log('Parsed analysis data:', analysisData)
     } catch (e) {
+      console.error('JSON parsing failed:', e)
       // Fallback if JSON parsing fails
       analysisData = {
         content_quality_score: 70,
         template_classification: 'unknown',
         extracted_keywords: [],
         matched_clusters: [],
-        performance_prediction: {},
+        performance_prediction: {
+          engagement_score: 60,
+          shareability: 50,
+          seo_potential: 65,
+          target_audience: 'general'
+        },
+        readability_analysis: {
+          reading_level: 'intermediate',
+          sentence_complexity: 'medium',
+          jargon_level: 'medium'
+        },
+        content_suggestions: ['Review content structure'],
         analysis_raw: analysisText
       }
     }
@@ -152,7 +169,7 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
 
     const nextVersion = (lastAnalysis?.analysis_version || 0) + 1
 
-    // Save analysis
+    // Save analysis with properly structured data
     const { data: newAnalysis, error: insertError } = await supabase
       .from('article_ai_analysis')
       .insert({
@@ -170,8 +187,11 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
       .single()
 
     if (insertError) {
+      console.error('Database insert error:', insertError)
       throw insertError
     }
+
+    console.log('Analysis saved successfully:', newAnalysis)
 
     return new Response(
       JSON.stringify({ 
