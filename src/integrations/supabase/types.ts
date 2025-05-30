@@ -347,6 +347,8 @@ export type Database = {
           total_views: number | null
           updated_at: string
           user_id: string | null
+          wordpress_author_id: number | null
+          wordpress_author_name: string | null
         }
         Insert: {
           article_count?: number | null
@@ -366,6 +368,8 @@ export type Database = {
           total_views?: number | null
           updated_at?: string
           user_id?: string | null
+          wordpress_author_id?: number | null
+          wordpress_author_name?: string | null
         }
         Update: {
           article_count?: number | null
@@ -385,6 +389,8 @@ export type Database = {
           total_views?: number | null
           updated_at?: string
           user_id?: string | null
+          wordpress_author_id?: number | null
+          wordpress_author_name?: string | null
         }
         Relationships: [
           {
@@ -820,47 +826,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
-      }
-      wordpress_author_mapping: {
-        Row: {
-          created_at: string | null
-          id: string
-          is_verified: boolean | null
-          mapping_confidence: number | null
-          system_author_id: string | null
-          updated_at: string | null
-          wordpress_author_id: number
-          wordpress_author_name: string
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          is_verified?: boolean | null
-          mapping_confidence?: number | null
-          system_author_id?: string | null
-          updated_at?: string | null
-          wordpress_author_id: number
-          wordpress_author_name: string
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          is_verified?: boolean | null
-          mapping_confidence?: number | null
-          system_author_id?: string | null
-          updated_at?: string | null
-          wordpress_author_id?: number
-          wordpress_author_name?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "wordpress_author_mapping_system_author_id_fkey"
-            columns: ["system_author_id"]
-            isOneToOne: false
-            referencedRelation: "authors"
-            referencedColumns: ["id"]
-          },
-        ]
       }
     }
     Views: {

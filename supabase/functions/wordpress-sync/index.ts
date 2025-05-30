@@ -53,6 +53,85 @@ async function checkForDuplicate(supabase: any, wpArticle: any) {
   return { isDuplicate: false, existingId: null, matchType: null };
 }
 
+// Simplified author handling - works directly with authors table
+async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any) {
+  console.log(`Processing author:`, {
+    wordpress_author_id: wpAuthorId,
+    author_data: wpAuthorData ? {
+      name: wpAuthorData.name,
+      slug: wpAuthorData.slug,
+      description: wpAuthorData.description
+    } : 'No author data'
+  });
+
+  if (!wpAuthorData || !wpAuthorId) {
+    console.log('No author data available');
+    return null;
+  }
+
+  // Check if author already exists by WordPress ID
+  const { data: existingAuthor } = await supabase
+    .from('authors')
+    .select('id, name')
+    .eq('wordpress_author_id', wpAuthorId)
+    .maybeSingle();
+
+  if (existingAuthor) {
+    console.log(`Found existing author by WordPress ID: ${existingAuthor.name} (${existingAuthor.id})`);
+    return existingAuthor.id;
+  }
+
+  // Try to find existing author by name (case-insensitive)
+  const { data: authorByName } = await supabase
+    .from('authors')
+    .select('id, name, wordpress_author_id')
+    .ilike('name', wpAuthorData.name)
+    .maybeSingle();
+
+  if (authorByName && !authorByName.wordpress_author_id) {
+    // Found existing author without WordPress ID - update it
+    console.log(`Found existing author by name, updating with WordPress info: ${authorByName.name} (${authorByName.id})`);
+    
+    const { error: updateError } = await supabase
+      .from('authors')
+      .update({
+        wordpress_author_id: wpAuthorId,
+        wordpress_author_name: wpAuthorData.name
+      })
+      .eq('id', authorByName.id);
+
+    if (updateError) {
+      console.error('Error updating author with WordPress info:', updateError);
+    }
+
+    return authorByName.id;
+  }
+
+  // Create new author
+  console.log(`Creating new author: ${wpAuthorData.name}`);
+  const { data: newAuthor, error: authorError } = await supabase
+    .from('authors')
+    .insert({
+      name: wpAuthorData.name,
+      author_type: 'external',
+      email: wpAuthorData.email || null,
+      bio: wpAuthorData.description || null,
+      wordpress_author_id: wpAuthorId,
+      wordpress_author_name: wpAuthorData.name,
+      is_active: true
+    })
+    .select('id')
+    .single();
+
+  if (authorError) {
+    console.error('Error creating author:', authorError);
+    return null;
+  }
+
+  console.log(`Created new author: ${wpAuthorData.name} (${newAuthor.id})`);
+  return newAuthor.id;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -165,12 +244,18 @@ serve(async (req) => {
           continue
         }
 
-        // Extract WordPress author info
+        // Extract WordPress author info and handle author
         const authorData = wpArticle._embedded?.author?.[0]
+        let authorId = null;
+        
+        if (authorData && wpArticle.author) {
+          authorId = await handleAuthor(supabase, wpArticle.author, authorData);
+        }
+        
         const publishedDate = new Date(wpArticle.date).toISOString().split('T')[0];
         
         console.log(`Using published date: ${publishedDate}`);
-        console.log(`Author data:`, authorData ? { name: authorData.name, id: wpArticle.author } : 'No author data');
+        console.log(`Author assigned: ${authorId || 'none'}`);
         
         // Prepare article data
         const articleData = {
@@ -185,6 +270,7 @@ serve(async (req) => {
               tags: wpArticle.tags
             }
           },
+          primary_author_id: authorId,
           wordpress_author_id: wpArticle.author,
           wordpress_author_name: authorData?.name || 'Unknown',
           wordpress_categories: wpArticle.categories || [],
@@ -210,17 +296,6 @@ serve(async (req) => {
         
         syncResults.synced++
         console.log(`✓ Synced new article: ${wpArticle.title.rendered}`)
-
-        // Handle author mapping
-        if (authorData) {
-          await supabase
-            .from('wordpress_author_mapping')
-            .upsert({
-              wordpress_author_id: wpArticle.author,
-              wordpress_author_name: authorData.name,
-              mapping_confidence: 1.0
-            }, { onConflict: 'wordpress_author_id' })
-        }
 
       } catch (error) {
         console.error(`Error syncing article ${wpArticle.id}:`, error)

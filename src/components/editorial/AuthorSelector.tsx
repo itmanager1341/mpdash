@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, User } from "lucide-react";
+import { Plus, User, Link } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -105,12 +105,20 @@ export function AuthorSelector({ selectedAuthorId, onAuthorChange, className }: 
               <SelectItem key={author.id} value={author.id}>
                 <div className="flex items-center gap-2">
                   <span>{author.name}</span>
-                  <Badge 
-                    variant={author.author_type === 'internal' ? 'default' : 'secondary'}
-                    className="text-xs"
-                  >
-                    {author.author_type}
-                  </Badge>
+                  <div className="flex gap-1">
+                    <Badge 
+                      variant={author.author_type === 'internal' ? 'default' : 'secondary'}
+                      className="text-xs"
+                    >
+                      {author.author_type}
+                    </Badge>
+                    {author.wordpress_author_id && (
+                      <Badge variant="outline" className="text-xs">
+                        <Link className="h-3 w-3 mr-1" />
+                        WP
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </SelectItem>
             ))}
@@ -196,15 +204,26 @@ export function AuthorSelector({ selectedAuthorId, onAuthorChange, className }: 
         <div className="p-3 bg-muted rounded-md">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-medium">{selectedAuthor.name}</span>
-            <Badge variant={selectedAuthor.author_type === 'internal' ? 'default' : 'secondary'}>
-              {selectedAuthor.author_type}
-            </Badge>
+            <div className="flex gap-1">
+              <Badge variant={selectedAuthor.author_type === 'internal' ? 'default' : 'secondary'}>
+                {selectedAuthor.author_type}
+              </Badge>
+              {selectedAuthor.wordpress_author_id && (
+                <Badge variant="outline" className="text-xs">
+                  <Link className="h-3 w-3 mr-1" />
+                  WordPress ID: {selectedAuthor.wordpress_author_id}
+                </Badge>
+              )}
+            </div>
           </div>
           {selectedAuthor.bio && (
             <p className="text-sm text-muted-foreground">{selectedAuthor.bio}</p>
           )}
           <div className="text-xs text-muted-foreground mt-1">
             {selectedAuthor.article_count} articles published
+            {selectedAuthor.wordpress_author_name && selectedAuthor.wordpress_author_name !== selectedAuthor.name && (
+              <span className="ml-2">• WordPress name: {selectedAuthor.wordpress_author_name}</span>
+            )}
           </div>
         </div>
       )}

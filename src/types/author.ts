@@ -14,6 +14,8 @@ export interface Author {
   author_type: 'internal' | 'external' | 'contributor';
   is_active: boolean;
   user_id?: string;
+  wordpress_author_id?: number;
+  wordpress_author_name?: string;
   article_count: number;
   total_views: number;
   average_rating: number;

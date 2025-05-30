@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -138,7 +137,7 @@ async function searchWordPressPostByTitle(title: string, wordpressUrl: string, a
   }
 }
 
-// Enhanced author creation and mapping
+// Simplified author handling - works directly with authors table
 async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any) {
   console.log(`Processing author:`, {
     wordpress_author_id: wpAuthorId,
@@ -154,62 +153,55 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
     return null;
   }
 
-  // Check existing WordPress author mapping
-  const { data: existingMapping } = await supabase
-    .from('wordpress_author_mapping')
-    .select(`
-      system_author_id,
-      authors (
-        id,
-        name,
-        author_type
-      )
-    `)
-    .eq('wordpress_author_id', wpAuthorId)
-    .maybeSingle();
-
-  if (existingMapping?.system_author_id) {
-    console.log(`Found existing author mapping: ${existingMapping.system_author_id}`);
-    return existingMapping.system_author_id;
-  }
-
-  // Try to find existing author by name (case-insensitive)
+  // Check if author already exists by WordPress ID
   const { data: existingAuthor } = await supabase
     .from('authors')
     .select('id, name')
-    .ilike('name', wpAuthorData.name)
+    .eq('wordpress_author_id', wpAuthorId)
     .maybeSingle();
 
   if (existingAuthor) {
-    console.log(`Found existing author by name: ${existingAuthor.name} (${existingAuthor.id})`);
-    
-    // Create mapping
-    const { error: mappingError } = await supabase
-      .from('wordpress_author_mapping')
-      .upsert({
-        wordpress_author_id: wpAuthorId,
-        wordpress_author_name: wpAuthorData.name,
-        system_author_id: existingAuthor.id,
-        mapping_confidence: 1.0,
-        is_verified: true
-      }, { onConflict: 'wordpress_author_id' });
-
-    if (mappingError) {
-      console.error('Error creating author mapping:', mappingError);
-    }
-
+    console.log(`Found existing author by WordPress ID: ${existingAuthor.name} (${existingAuthor.id})`);
     return existingAuthor.id;
   }
 
-  // Create new author with valid author_type
+  // Try to find existing author by name (case-insensitive)
+  const { data: authorByName } = await supabase
+    .from('authors')
+    .select('id, name, wordpress_author_id')
+    .ilike('name', wpAuthorData.name)
+    .maybeSingle();
+
+  if (authorByName && !authorByName.wordpress_author_id) {
+    // Found existing author without WordPress ID - update it
+    console.log(`Found existing author by name, updating with WordPress info: ${authorByName.name} (${authorByName.id})`);
+    
+    const { error: updateError } = await supabase
+      .from('authors')
+      .update({
+        wordpress_author_id: wpAuthorId,
+        wordpress_author_name: wpAuthorData.name
+      })
+      .eq('id', authorByName.id);
+
+    if (updateError) {
+      console.error('Error updating author with WordPress info:', updateError);
+    }
+
+    return authorByName.id;
+  }
+
+  // Create new author
   console.log(`Creating new author: ${wpAuthorData.name}`);
   const { data: newAuthor, error: authorError } = await supabase
     .from('authors')
     .insert({
       name: wpAuthorData.name,
-      author_type: 'contributor', // Use valid author_type
+      author_type: 'external',
       email: wpAuthorData.email || null,
       bio: wpAuthorData.description || null,
+      wordpress_author_id: wpAuthorId,
+      wordpress_author_name: wpAuthorData.name,
       is_active: true
     })
     .select('id')
@@ -221,22 +213,6 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
   }
 
   console.log(`Created new author: ${wpAuthorData.name} (${newAuthor.id})`);
-
-  // Create mapping
-  const { error: mappingError } = await supabase
-    .from('wordpress_author_mapping')
-    .insert({
-      wordpress_author_id: wpAuthorId,
-      wordpress_author_name: wpAuthorData.name,
-      system_author_id: newAuthor.id,
-      mapping_confidence: 1.0,
-      is_verified: true
-    });
-
-  if (mappingError) {
-    console.error('Error creating author mapping:', mappingError);
-  }
-
   return newAuthor.id;
 }
 
@@ -320,7 +296,7 @@ serve(async (req) => {
       console.log(`Found ${selectedArticles.length} articles to sync`);
       articlesToProcess = selectedArticles;
     } else {
-      // Fallback to fetching from WordPress (original behavior)
+      // ... keep existing code (WordPress API fetching logic)
       console.log('No target articles specified, fetching from WordPress API...');
       
       let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?per_page=100&_embed`
@@ -461,7 +437,7 @@ serve(async (req) => {
             }
           }
 
-          // Handle author
+          // Handle author using simplified approach
           const authorData = wpPost._embedded?.author?.[0];
           if (authorData && wpPost.author) {
             authorId = await handleAuthor(supabase, wpPost.author, authorData);
