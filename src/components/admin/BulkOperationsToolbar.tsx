@@ -103,6 +103,17 @@ export function BulkOperationsToolbar({
     try {
       console.log(`Starting WordPress sync for ${selectedCount} selected articles...`);
       
+      // Create operation record
+      await supabase
+        .from('sync_operations')
+        .insert({
+          id: operationId,
+          status: 'running',
+          operation_type: 'wordpress_sync',
+          total_items: selectedCount,
+          completed_items: 0
+        });
+      
       const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
         body: { 
           legacyMode: true,

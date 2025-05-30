@@ -770,6 +770,36 @@ export type Database = {
         }
         Relationships: []
       }
+      sync_operations: {
+        Row: {
+          completed_items: number | null
+          created_at: string
+          id: string
+          operation_type: string
+          status: string
+          total_items: number | null
+          updated_at: string
+        }
+        Insert: {
+          completed_items?: number | null
+          created_at?: string
+          id?: string
+          operation_type: string
+          status?: string
+          total_items?: number | null
+          updated_at?: string
+        }
+        Update: {
+          completed_items?: number | null
+          created_at?: string
+          id?: string
+          operation_type?: string
+          status?: string
+          total_items?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string

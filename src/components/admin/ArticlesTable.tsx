@@ -80,9 +80,7 @@ export function ArticlesTable({
                 <Checkbox
                   checked={isAllSelected}
                   onCheckedChange={handleSelectAll}
-                  ref={(el) => {
-                    if (el) el.indeterminate = isIndeterminate;
-                  }}
+                  className={isIndeterminate ? "data-[state=checked]:bg-blue-600" : ""}
                 />
               </TableHead>
               <TableHead>Title</TableHead>
