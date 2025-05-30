@@ -28,7 +28,8 @@ import {
   User,
   Search,
   Command,
-  Edit3
+  Edit3,
+  Shield
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
@@ -142,7 +143,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </SidebarGroup>
             
             <SidebarGroup>
-              <SidebarGroupLabel>Legacy Management</SidebarGroupLabel>
+              <SidebarGroupLabel>Management</SidebarGroupLabel>
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="LLM Management">
@@ -169,14 +170,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 {isAdmin && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton asChild tooltip="Settings">
-                      <a href="/admin-settings">
-                        <Settings />
-                        <span>Admin Settings</span>
-                      </a>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild tooltip="Admin Dashboard">
+                        <a href="/admin">
+                          <Shield />
+                          <span>Admin Dashboard</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild tooltip="Settings">
+                        <a href="/admin-settings">
+                          <Settings />
+                          <span>Admin Settings</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </>
                 )}
               </SidebarMenu>
             </SidebarGroup>

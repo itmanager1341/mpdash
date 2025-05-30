@@ -10,6 +10,7 @@ import MPDailyPlanner from "@/pages/MPDailyPlanner";
 import MagazinePlanner from "@/pages/MagazinePlanner";
 import Performance from "@/pages/Performance";
 import AdminSettings from "@/pages/AdminSettings";
+import Admin from "@/pages/Admin";
 import Documentation from "@/pages/Documentation";
 import LlmManagement from "@/pages/LlmManagement";
 import KeywordManagement from "@/pages/KeywordManagement";
@@ -81,6 +82,7 @@ function App() {
           
           <Route element={<ProtectedRoute requiredRole="admin" />}>
             <Route path="/admin-settings" element={<AdminSettings />} />
+            <Route path="/admin" element={<Admin />} />
           </Route>
           
           <Route path="*" element={<NotFound />} />
