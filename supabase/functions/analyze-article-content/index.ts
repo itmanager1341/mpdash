@@ -7,6 +7,94 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const openaiApiKey = Deno.env.get('OPENAI_API_KEY')!
 
+// Robust JSON extraction function
+function extractAndParseJSON(text: string): any {
+  console.log('Attempting to parse JSON from text:', text)
+  
+  // Method 1: Try direct JSON.parse first
+  try {
+    const trimmed = text.trim()
+    return JSON.parse(trimmed)
+  } catch (e) {
+    console.log('Direct JSON.parse failed:', e.message)
+  }
+  
+  // Method 2: Remove common markdown code block patterns
+  try {
+    let cleaned = text
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim()
+    
+    console.log('After markdown cleanup:', cleaned)
+    return JSON.parse(cleaned)
+  } catch (e) {
+    console.log('Markdown cleanup parsing failed:', e.message)
+  }
+  
+  // Method 3: Extract content between first { and last }
+  try {
+    const firstBrace = text.indexOf('{')
+    const lastBrace = text.lastIndexOf('}')
+    
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      const extracted = text.substring(firstBrace, lastBrace + 1)
+      console.log('Extracted JSON between braces:', extracted)
+      return JSON.parse(extracted)
+    }
+  } catch (e) {
+    console.log('Brace extraction parsing failed:', e.message)
+  }
+  
+  // Method 4: More aggressive cleaning - remove everything before first { and after last }
+  try {
+    let cleaned = text
+    const lines = cleaned.split('\n')
+    const jsonLines = []
+    let inJson = false
+    
+    for (const line of lines) {
+      if (line.trim().startsWith('{') || inJson) {
+        inJson = true
+        jsonLines.push(line)
+      }
+      if (line.trim().endsWith('}') && inJson) {
+        break
+      }
+    }
+    
+    const jsonText = jsonLines.join('\n').trim()
+    console.log('Line-by-line extracted JSON:', jsonText)
+    return JSON.parse(jsonText)
+  } catch (e) {
+    console.log('Line-by-line extraction failed:', e.message)
+  }
+  
+  throw new Error('Unable to extract valid JSON from response')
+}
+
+// Validate analysis data structure
+function validateAnalysisData(data: any): boolean {
+  const required = ['content_quality_score', 'template_classification']
+  const hasRequired = required.every(field => data.hasOwnProperty(field))
+  
+  if (!hasRequired) {
+    console.log('Missing required fields:', required.filter(field => !data.hasOwnProperty(field)))
+    return false
+  }
+  
+  // Validate score is reasonable (not placeholder)
+  if (typeof data.content_quality_score !== 'number' || 
+      data.content_quality_score < 1 || 
+      data.content_quality_score > 100) {
+    console.log('Invalid quality score:', data.content_quality_score)
+    return false
+  }
+  
+  return true
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -15,6 +103,8 @@ serve(async (req) => {
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const { articleId, forceReanalysis = false } = await req.json()
+
+    console.log('Starting analysis for article:', articleId)
 
     // Get article content
     const { data: article, error: articleError } = await supabase
@@ -77,7 +167,7 @@ CONTENT: ${content.substring(0, 4000)}...
 KEYWORD CLUSTERS CONTEXT:
 ${clustersContext}
 
-Provide analysis in this JSON format:
+Provide analysis in this JSON format ONLY (no markdown, no extra text):
 {
   "content_quality_score": 85,
   "template_classification": "news_analysis",
@@ -100,7 +190,9 @@ Provide analysis in this JSON format:
   ]
 }
 
-Focus on mortgage industry relevance, professional audience engagement, and content optimization opportunities.`
+Focus on mortgage industry relevance, professional audience engagement, and content optimization opportunities. Return ONLY valid JSON.`
+
+    console.log('Calling OpenAI with prompt for article:', article.title)
 
     // Call OpenAI
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -112,7 +204,7 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'You are an expert content analyst for mortgage industry publications. Always respond with valid JSON only.' },
+          { role: 'system', content: 'You are an expert content analyst for mortgage industry publications. Always respond with valid JSON only, no markdown formatting.' },
           { role: 'user', content: analysisPrompt }
         ],
         temperature: 0.3
@@ -126,17 +218,24 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
     const openaiResult = await openaiResponse.json()
     const analysisText = openaiResult.choices[0]?.message?.content
 
+    console.log('Raw OpenAI response length:', analysisText?.length)
     console.log('Raw OpenAI response:', analysisText)
 
     let analysisData
     try {
-      // Remove markdown code blocks if present
-      const cleanedText = analysisText.replace(/^```json\s*/, '').replace(/\s*```$/, '')
-      analysisData = JSON.parse(cleanedText)
-      console.log('Parsed analysis data:', analysisData)
+      analysisData = extractAndParseJSON(analysisText)
+      console.log('Successfully parsed analysis data:', JSON.stringify(analysisData, null, 2))
+      
+      // Validate the parsed data
+      if (!validateAnalysisData(analysisData)) {
+        throw new Error('Parsed data failed validation')
+      }
+      
     } catch (e) {
-      console.error('JSON parsing failed:', e)
-      // Fallback if JSON parsing fails
+      console.error('JSON parsing completely failed:', e)
+      console.error('Original text that failed:', analysisText)
+      
+      // Only use fallback as last resort
       analysisData = {
         content_quality_score: 70,
         template_classification: 'unknown',
@@ -154,8 +253,11 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
           jargon_level: 'medium'
         },
         content_suggestions: ['Review content structure'],
-        analysis_raw: analysisText
+        analysis_raw: analysisText,
+        parsing_error: e.message
       }
+      
+      console.log('Using fallback data due to parsing failure')
     }
 
     // Get next version number
@@ -169,6 +271,8 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
 
     const nextVersion = (lastAnalysis?.analysis_version || 0) + 1
 
+    console.log('Saving analysis with score:', analysisData.content_quality_score)
+
     // Save analysis with properly structured data
     const { data: newAnalysis, error: insertError } = await supabase
       .from('article_ai_analysis')
@@ -178,9 +282,9 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
         ai_model_used: 'gpt-4o-mini',
         content_quality_score: analysisData.content_quality_score,
         template_classification: analysisData.template_classification,
-        extracted_keywords: analysisData.extracted_keywords,
-        matched_clusters: analysisData.matched_clusters,
-        performance_prediction: analysisData.performance_prediction,
+        extracted_keywords: analysisData.extracted_keywords || [],
+        matched_clusters: analysisData.matched_clusters || [],
+        performance_prediction: analysisData.performance_prediction || {},
         analysis_data: analysisData
       })
       .select()
@@ -191,13 +295,15 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
       throw insertError
     }
 
-    console.log('Analysis saved successfully:', newAnalysis)
+    console.log('Analysis saved successfully with ID:', newAnalysis.id)
+    console.log('Final saved quality score:', newAnalysis.content_quality_score)
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         analysis: newAnalysis,
-        version: nextVersion
+        version: nextVersion,
+        qualityScore: newAnalysis.content_quality_score
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
