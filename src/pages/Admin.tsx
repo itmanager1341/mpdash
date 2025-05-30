@@ -7,7 +7,6 @@ import NewsImporter from "@/components/admin/NewsImporter";
 import UserManagement from "@/components/admin/UserManagement";
 import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
 import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
-import WordPressSync from "@/components/admin/WordPressSync";
 import ArticleAnalysis from "@/components/admin/ArticleAnalysis";
 import NewsArticleMatching from "@/components/admin/NewsArticleMatching";
 import ArticlesManagement from "./ArticlesManagement";
@@ -22,15 +21,14 @@ export default function Admin() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
           <p className="text-muted-foreground">
-            Manage API keys, WordPress sync, AI analysis, and scheduled jobs
+            Manage API keys, articles, AI analysis, and scheduled jobs
           </p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-          <TabsTrigger value="wordpress">WordPress</TabsTrigger>
           <TabsTrigger value="ai-analysis">AI Analysis</TabsTrigger>
           <TabsTrigger value="news-matching">News Matching</TabsTrigger>
           <TabsTrigger value="news-import">News Import</TabsTrigger>
@@ -53,10 +51,6 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="wordpress" className="space-y-4">
-          <WordPressSync />
         </TabsContent>
 
         <TabsContent value="ai-analysis" className="space-y-4">

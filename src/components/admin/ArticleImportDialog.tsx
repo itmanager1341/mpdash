@@ -48,7 +48,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     try {
       console.log('Starting WordPress sync...');
       
-      const { data, error } = await supabase.functions.invoke('wordpress-sync', {
+      const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
         body: { maxArticles, startDate, endDate }
       });
 
@@ -61,14 +61,14 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
         setImportProgress({
           status: 'completed',
           articlesFound: data.totalArticles,
-          articlesImported: data.results.synced,
-          articlesUpdated: data.results.updated,
-          duplicatesSkipped: data.results.duplicates || 0,
+          articlesImported: data.results.created || 0,
+          articlesUpdated: data.results.updated || 0,
+          duplicatesSkipped: data.results.skipped || 0,
           errors: data.results.errors || []
         });
         
-        const total = data.results.synced + data.results.updated;
-        toast.success(`WordPress sync completed! ${total} articles processed (${data.results.synced} new, ${data.results.updated} updated, ${data.results.duplicates || 0} duplicates skipped)`);
+        const total = (data.results.created || 0) + (data.results.updated || 0);
+        toast.success(`WordPress sync completed! ${total} articles processed (${data.results.created || 0} new, ${data.results.updated || 0} updated, ${data.results.skipped || 0} skipped)`);
         onImportComplete();
       } else {
         throw new Error(data.error || 'WordPress sync failed');
@@ -174,7 +174,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                   <div>Articles found: {importProgress.articlesFound}</div>
                   <div className="text-green-600">New articles: {importProgress.articlesImported}</div>
                   <div className="text-blue-600">Updated articles: {importProgress.articlesUpdated}</div>
-                  <div className="text-yellow-600">Duplicates skipped: {importProgress.duplicatesSkipped}</div>
+                  <div className="text-yellow-600">Articles skipped: {importProgress.duplicatesSkipped}</div>
                   {importProgress.errors.length > 0 && (
                     <div className="text-red-600">Errors: {importProgress.errors.length}</div>
                   )}
