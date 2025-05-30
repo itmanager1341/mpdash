@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -156,6 +155,7 @@ export function BulkOperationsToolbar({
         .upsert({
           id: operationProgress.operationId,
           status: 'cancelled',
+          operation_type: 'wordpress_sync',
           updated_at: new Date().toISOString()
         });
 
