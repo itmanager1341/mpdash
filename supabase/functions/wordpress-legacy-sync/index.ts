@@ -27,8 +27,10 @@ function calculateTitleSimilarity(title1: string, title2: string): number {
   return intersection.size / union.size;
 }
 
-// Enhanced duplicate checking with legacy article matching
-async function findExistingArticle(supabase: any, wpArticle: any) {
+// Enhanced duplicate checking with proper date range filtering
+async function findExistingArticle(supabase: any, wpArticle: any, startDate?: string, endDate?: string) {
+  console.log(`Checking for duplicates of WP article ${wpArticle.id}: "${wpArticle.title.rendered}"`);
+  
   // First check by WordPress ID (for already synced articles)
   if (wpArticle.id) {
     const { data: existingByWpId } = await supabase
@@ -38,6 +40,7 @@ async function findExistingArticle(supabase: any, wpArticle: any) {
       .maybeSingle();
     
     if (existingByWpId) {
+      console.log(`Found existing article with WP ID ${wpArticle.id}: ${existingByWpId.title}`);
       return { 
         match: existingByWpId, 
         matchType: 'wordpress_id', 
@@ -48,43 +51,47 @@ async function findExistingArticle(supabase: any, wpArticle: any) {
   }
 
   const wpTitle = wpArticle.title.rendered?.trim();
-  const wpDate = new Date(wpArticle.date).toISOString().split('T')[0];
+  const wpPublishDate = new Date(wpArticle.date).toISOString().split('T')[0];
   
-  if (!wpTitle || wpTitle.length < 10) return null;
+  if (!wpTitle || wpTitle.length < 10) {
+    console.log(`Skipping similarity check - title too short: "${wpTitle}"`);
+    return null;
+  }
 
-  // Look for potential matches by title similarity and date proximity
-  const dateRange = 7; // days
-  const startDate = new Date(wpDate);
-  startDate.setDate(startDate.getDate() - dateRange);
-  const endDate = new Date(wpDate);
-  endDate.setDate(endDate.getDate() + dateRange);
+  console.log(`WP article publish date: ${wpPublishDate}`);
 
-  const { data: candidates } = await supabase
+  // Only check for duplicates outside the requested date range to avoid false positives
+  let dateQuery = supabase
     .from('articles')
     .select('id, title, published_at, article_date, wordpress_id')
-    .is('wordpress_id', null)
-    .gte('published_at', startDate.toISOString().split('T')[0])
-    .lte('published_at', endDate.toISOString().split('T')[0])
-    .limit(20);
+    .is('wordpress_id', null);
 
-  if (!candidates || candidates.length === 0) return null;
+  // If we have a date range filter, only check articles outside that range for duplicates
+  if (startDate && endDate) {
+    console.log(`Date range filter: ${startDate} to ${endDate}`);
+    // Check articles published before start date or after end date
+    dateQuery = dateQuery.or(`published_at.lt.${startDate},published_at.gt.${endDate}`);
+  }
+
+  const { data: candidates } = await dateQuery.limit(50);
+
+  if (!candidates || candidates.length === 0) {
+    console.log('No candidates found for similarity matching');
+    return null;
+  }
+
+  console.log(`Found ${candidates.length} candidates for similarity matching`);
 
   let bestMatch = null;
-  let bestScore = 0.7; // Minimum threshold for matching
+  let bestScore = 0.85; // Higher threshold to reduce false positives
 
   for (const candidate of candidates) {
     const similarity = calculateTitleSimilarity(wpTitle, candidate.title);
     
-    // Date proximity bonus
-    const candidateDate = new Date(candidate.published_at || candidate.article_date);
-    const daysDiff = Math.abs((new Date(wpDate).getTime() - candidateDate.getTime()) / (1000 * 60 * 60 * 24));
-    const dateBonus = Math.max(0, (dateRange - daysDiff) / dateRange * 0.1);
-    
-    const totalScore = similarity + dateBonus;
-    
-    if (totalScore > bestScore) {
-      bestScore = totalScore;
+    if (similarity > bestScore) {
+      bestScore = similarity;
       bestMatch = candidate;
+      console.log(`High similarity match found: ${similarity.toFixed(3)} - "${candidate.title}"`);
     }
   }
 
@@ -97,35 +104,58 @@ async function findExistingArticle(supabase: any, wpArticle: any) {
     };
   }
 
+  console.log('No duplicate found - article is unique');
   return null;
 }
 
-// Create or find author
+// Enhanced author creation and mapping
 async function handleAuthor(supabase: any, wpArticle: any) {
   const authorData = wpArticle._embedded?.author?.[0];
-  if (!authorData) return null;
+  console.log(`Processing author for article ${wpArticle.id}:`, {
+    wordpress_author_id: wpArticle.author,
+    author_data: authorData ? {
+      name: authorData.name,
+      slug: authorData.slug,
+      description: authorData.description
+    } : 'No embedded author data'
+  });
+
+  if (!authorData || !wpArticle.author) {
+    console.log('No author data available');
+    return null;
+  }
 
   // Check existing WordPress author mapping
   const { data: existingMapping } = await supabase
     .from('wordpress_author_mapping')
-    .select('system_author_id, authors(*)')
+    .select(`
+      system_author_id,
+      authors (
+        id,
+        name,
+        author_type
+      )
+    `)
     .eq('wordpress_author_id', wpArticle.author)
     .maybeSingle();
 
   if (existingMapping?.system_author_id) {
+    console.log(`Found existing author mapping: ${existingMapping.system_author_id}`);
     return existingMapping.system_author_id;
   }
 
-  // Try to find existing author by name
+  // Try to find existing author by name (case-insensitive)
   const { data: existingAuthor } = await supabase
     .from('authors')
-    .select('id')
+    .select('id, name')
     .ilike('name', authorData.name)
     .maybeSingle();
 
   if (existingAuthor) {
+    console.log(`Found existing author by name: ${existingAuthor.name} (${existingAuthor.id})`);
+    
     // Create mapping
-    await supabase
+    const { error: mappingError } = await supabase
       .from('wordpress_author_mapping')
       .upsert({
         wordpress_author_id: wpArticle.author,
@@ -134,10 +164,16 @@ async function handleAuthor(supabase: any, wpArticle: any) {
         mapping_confidence: 1.0,
         is_verified: true
       });
+
+    if (mappingError) {
+      console.error('Error creating author mapping:', mappingError);
+    }
+
     return existingAuthor.id;
   }
 
   // Create new author
+  console.log(`Creating new author: ${authorData.name}`);
   const { data: newAuthor, error: authorError } = await supabase
     .from('authors')
     .insert({
@@ -155,8 +191,10 @@ async function handleAuthor(supabase: any, wpArticle: any) {
     return null;
   }
 
+  console.log(`Created new author: ${authorData.name} (${newAuthor.id})`);
+
   // Create mapping
-  await supabase
+  const { error: mappingError } = await supabase
     .from('wordpress_author_mapping')
     .insert({
       wordpress_author_id: wpArticle.author,
@@ -165,6 +203,10 @@ async function handleAuthor(supabase: any, wpArticle: any) {
       mapping_confidence: 1.0,
       is_verified: true
     });
+
+  if (mappingError) {
+    console.error('Error creating author mapping:', mappingError);
+  }
 
   return newAuthor.id;
 }
@@ -189,6 +231,8 @@ serve(async (req) => {
     const { maxArticles = 100, startDate, endDate, legacyMode = true } = await req.json().catch(() => ({}))
 
     console.log(`Starting enhanced WordPress sync, legacy mode: ${legacyMode}`)
+    console.log(`Date range: ${startDate || 'no start'} to ${endDate || 'no end'}`)
+    console.log(`Max articles: ${maxArticles}`)
 
     const auth = btoa(`${username}:${password}`)
     let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?per_page=100&_embed`
@@ -208,7 +252,7 @@ serve(async (req) => {
       let currentUrl = wpApiUrl.replace(/per_page=\d+/, `per_page=${perPage}`)
       if (page > 1) currentUrl += `&page=${page}`
       
-      console.log(`Fetching page ${page}...`)
+      console.log(`Fetching page ${page}: ${currentUrl}`)
       
       const wpResponse = await fetch(currentUrl, {
         headers: {
@@ -219,12 +263,13 @@ serve(async (req) => {
 
       if (!wpResponse.ok) {
         if (wpResponse.status === 400 && page > 1) break
-        throw new Error(`WordPress API error: ${wpResponse.status}`)
+        throw new Error(`WordPress API error: ${wpResponse.status} - ${wpResponse.statusText}`)
       }
 
       const wpArticles = await wpResponse.json()
       if (!wpArticles || wpArticles.length === 0) break
       
+      console.log(`Fetched ${wpArticles.length} articles from page ${page}`)
       allArticles.push(...wpArticles)
       totalFetched += wpArticles.length
       
@@ -242,17 +287,29 @@ serve(async (req) => {
       matchDetails: []
     }
 
-    console.log(`Processing ${allArticles.length} articles...`)
+    console.log(`Processing ${allArticles.length} WordPress articles...`)
 
     for (const wpArticle of allArticles) {
       try {
         syncResults.processed++
+        
+        console.log(`\n--- Processing article ${syncResults.processed}/${allArticles.length} ---`);
+        console.log(`WP ID: ${wpArticle.id}, Title: "${wpArticle.title.rendered}"`);
+        console.log(`WP Date: ${wpArticle.date}, Modified: ${wpArticle.modified}`);
+        console.log(`WP Status: ${wpArticle.status}, Author ID: ${wpArticle.author}`);
 
-        // Handle author
+        // Handle author first
         const authorId = await handleAuthor(supabase, wpArticle)
+        console.log(`Author assigned: ${authorId || 'none'}`);
 
-        // Check for existing article
-        const existingMatch = await findExistingArticle(supabase, wpArticle)
+        // Check for existing article with proper date range consideration
+        const existingMatch = await findExistingArticle(supabase, wpArticle, startDate, endDate)
+
+        // Parse dates properly
+        const publishedDate = new Date(wpArticle.date).toISOString().split('T')[0];
+        const modifiedDate = wpArticle.modified ? new Date(wpArticle.modified).toISOString().split('T')[0] : publishedDate;
+        
+        console.log(`Using published date: ${publishedDate}, modified date: ${modifiedDate}`);
 
         const articleData = {
           wordpress_id: wpArticle.id,
@@ -271,23 +328,35 @@ serve(async (req) => {
           wordpress_author_name: wpArticle._embedded?.author?.[0]?.name || 'Unknown',
           wordpress_categories: wpArticle.categories || [],
           wordpress_tags: wpArticle.tags || [],
-          published_at: new Date(wpArticle.date).toISOString().split('T')[0],
-          article_date: new Date(wpArticle.date).toISOString().split('T')[0],
+          published_at: publishedDate,
+          article_date: publishedDate,
           last_wordpress_sync: new Date().toISOString(),
           status: wpArticle.status === 'publish' ? 'published' : 'draft',
           source_system: 'wordpress',
           source_url: wpArticle.link || null,
-          excerpt: wpArticle.excerpt.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null
+          excerpt: wpArticle.excerpt.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null,
+          updated_at: modifiedDate
         }
+
+        console.log(`Article data prepared:`, {
+          wordpress_id: articleData.wordpress_id,
+          published_at: articleData.published_at,
+          primary_author_id: articleData.primary_author_id,
+          status: articleData.status
+        });
 
         if (existingMatch) {
           // Update existing article
+          console.log(`Updating existing article: ${existingMatch.match.id}`);
           const { error } = await supabase
             .from('articles')
             .update(articleData)
             .eq('id', existingMatch.match.id)
           
-          if (error) throw error
+          if (error) {
+            console.error('Update error:', error);
+            throw error;
+          }
           
           syncResults.updated++
           syncResults.matched++
@@ -299,25 +368,35 @@ serve(async (req) => {
             title: wpArticle.title.rendered
           })
           
-          console.log(`Updated article: ${wpArticle.title.rendered} (${existingMatch.matchType}, confidence: ${existingMatch.confidence.toFixed(2)})`)
+          console.log(`✓ Updated article: ${wpArticle.title.rendered} (${existingMatch.matchType}, confidence: ${existingMatch.confidence.toFixed(2)})`)
         } else {
           // Create new article
+          console.log(`Creating new article...`);
           const { error } = await supabase
             .from('articles')
             .insert(articleData)
           
-          if (error) throw error
+          if (error) {
+            console.error('Insert error:', error);
+            throw error;
+          }
+          
           syncResults.created++
-          console.log(`Created new article: ${wpArticle.title.rendered}`)
+          console.log(`✓ Created new article: ${wpArticle.title.rendered}`)
         }
 
       } catch (error) {
         console.error(`Error processing article ${wpArticle.id}:`, error)
-        syncResults.errors.push(`Article ${wpArticle.id}: ${error.message}`)
+        syncResults.errors.push(`Article ${wpArticle.id} (${wpArticle.title?.rendered || 'Unknown'}): ${error.message}`)
       }
     }
 
-    console.log(`Enhanced sync completed: ${syncResults.created} created, ${syncResults.updated} updated, ${syncResults.matched} matched`)
+    console.log(`\n=== Enhanced sync completed ===`);
+    console.log(`Processed: ${syncResults.processed}`);
+    console.log(`Created: ${syncResults.created}`);
+    console.log(`Updated: ${syncResults.updated}`);
+    console.log(`Matched: ${syncResults.matched}`);
+    console.log(`Errors: ${syncResults.errors.length}`);
 
     return new Response(
       JSON.stringify({ 

@@ -8,6 +8,8 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 // Function to check if an article already exists by WordPress ID or title similarity
 async function checkForDuplicate(supabase: any, wpArticle: any) {
+  console.log(`Checking for duplicates of WP article ${wpArticle.id}: "${wpArticle.title.rendered}"`);
+  
   // First, check by WordPress ID (most reliable)
   if (wpArticle.id) {
     const { data: existingByWpId } = await supabase
@@ -17,6 +19,7 @@ async function checkForDuplicate(supabase: any, wpArticle: any) {
       .maybeSingle();
     
     if (existingByWpId) {
+      console.log(`Found existing article with WP ID ${wpArticle.id}`);
       return { isDuplicate: true, existingId: existingByWpId.id, matchType: 'wordpress_id' };
     }
   }
@@ -37,16 +40,16 @@ async function checkForDuplicate(supabase: any, wpArticle: any) {
         const normalizedExisting = existing.title.toLowerCase().trim();
         const normalizedNew = title.toLowerCase().trim();
         
-        // Consider it a duplicate if titles are very similar
-        if (normalizedExisting === normalizedNew || 
-            normalizedExisting.includes(normalizedNew) || 
-            normalizedNew.includes(normalizedExisting)) {
-          return { isDuplicate: true, existingId: existing.id, matchType: 'title_similarity' };
+        // Consider it a duplicate if titles are very similar (exact match only)
+        if (normalizedExisting === normalizedNew) {
+          console.log(`Found exact title match: "${existing.title}"`);
+          return { isDuplicate: true, existingId: existing.id, matchType: 'exact_title' };
         }
       }
     }
   }
 
+  console.log('No duplicate found - article is unique');
   return { isDuplicate: false, existingId: null, matchType: null };
 }
 
@@ -150,6 +153,9 @@ serve(async (req) => {
 
     for (const wpArticle of allArticles) {
       try {
+        console.log(`Processing WP article ${wpArticle.id}: "${wpArticle.title.rendered}"`);
+        console.log(`WP Date: ${wpArticle.date}, Status: ${wpArticle.status}, Author: ${wpArticle.author}`);
+        
         // Check for duplicates using improved logic
         const duplicateCheck = await checkForDuplicate(supabase, wpArticle)
         
@@ -161,6 +167,10 @@ serve(async (req) => {
 
         // Extract WordPress author info
         const authorData = wpArticle._embedded?.author?.[0]
+        const publishedDate = new Date(wpArticle.date).toISOString().split('T')[0];
+        
+        console.log(`Using published date: ${publishedDate}`);
+        console.log(`Author data:`, authorData ? { name: authorData.name, id: wpArticle.author } : 'No author data');
         
         // Prepare article data
         const articleData = {
@@ -179,11 +189,13 @@ serve(async (req) => {
           wordpress_author_name: authorData?.name || 'Unknown',
           wordpress_categories: wpArticle.categories || [],
           wordpress_tags: wpArticle.tags || [],
-          published_at: new Date(wpArticle.date).toISOString().split('T')[0],
+          published_at: publishedDate,
+          article_date: publishedDate,
           last_wordpress_sync: new Date().toISOString(),
           status: wpArticle.status === 'publish' ? 'published' : 'draft',
           source_system: 'wordpress',
-          source_url: wpArticle.link || null
+          source_url: wpArticle.link || null,
+          excerpt: wpArticle.excerpt.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null
         }
 
         // Insert new article (we already checked for duplicates)
@@ -191,9 +203,13 @@ serve(async (req) => {
           .from('articles')
           .insert(articleData)
         
-        if (error) throw error
+        if (error) {
+          console.error('Insert error:', error);
+          throw error;
+        }
+        
         syncResults.synced++
-        console.log(`Synced new article: ${wpArticle.title.rendered}`)
+        console.log(`✓ Synced new article: ${wpArticle.title.rendered}`)
 
         // Handle author mapping
         if (authorData) {
