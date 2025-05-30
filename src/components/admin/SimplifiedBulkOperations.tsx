@@ -9,7 +9,9 @@ import {
   RefreshCw, 
   Trash2,
   Loader2,
-  X
+  CheckCircle,
+  AlertTriangle,
+  Info
 } from "lucide-react";
 
 interface SimplifiedBulkOperationsProps {
@@ -60,9 +62,28 @@ export function SimplifiedBulkOperations({
 
       if (data.success) {
         const { results } = data;
-        toast.success(
-          `WordPress sync completed! ${results.updated} articles updated, ${results.matched} matched, ${results.skipped} skipped`
-        );
+        
+        // Create detailed success message
+        let message = `WordPress sync completed! `;
+        const details = [];
+        
+        if (results.updated > 0) details.push(`${results.updated} updated`);
+        if (results.created > 0) details.push(`${results.created} created`);
+        if (results.merged > 0) details.push(`${results.merged} duplicates merged`);
+        if (results.conflicts_resolved > 0) details.push(`${results.conflicts_resolved} conflicts resolved`);
+        if (results.skipped > 0) details.push(`${results.skipped} skipped`);
+        
+        message += details.join(', ');
+        
+        if (results.errors && results.errors.length > 0) {
+          console.warn('Sync completed with errors:', results.errors);
+          toast.success(message, {
+            description: `${results.errors.length} errors occurred - check console for details`
+          });
+        } else {
+          toast.success(message);
+        }
+        
         onClearSelection();
         onRefresh();
       } else {
@@ -138,6 +159,7 @@ export function SimplifiedBulkOperations({
               size="sm"
               onClick={handleWordPressSync}
               disabled={isLoading}
+              className="relative"
             >
               <RefreshCw className="h-4 w-4 mr-1" />
               Sync with WordPress
@@ -166,25 +188,29 @@ export function SimplifiedBulkOperations({
 
         {/* Selection Summary */}
         <div className="mt-3 grid grid-cols-4 gap-4 text-sm">
-          <div>
+          <div className="flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 text-orange-500" />
             <span className="text-muted-foreground">Missing WP ID: </span>
             <span className="font-medium">
               {selectedArticles.filter(a => !a.wordpress_id).length}
             </span>
           </div>
-          <div>
+          <div className="flex items-center gap-1">
+            <Info className="h-3 w-3 text-blue-500" />
             <span className="text-muted-foreground">Missing Author: </span>
             <span className="font-medium">
               {selectedArticles.filter(a => !a.primary_author_id).length}
             </span>
           </div>
-          <div>
+          <div className="flex items-center gap-1">
+            <CheckCircle className="h-3 w-3 text-green-500" />
             <span className="text-muted-foreground">Published: </span>
             <span className="font-medium">
               {selectedArticles.filter(a => a.status === 'published').length}
             </span>
           </div>
-          <div>
+          <div className="flex items-center gap-1">
+            <Info className="h-3 w-3 text-gray-500" />
             <span className="text-muted-foreground">Drafts: </span>
             <span className="font-medium">
               {selectedArticles.filter(a => a.status === 'draft').length}

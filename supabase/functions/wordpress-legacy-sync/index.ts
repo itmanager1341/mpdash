@@ -27,6 +27,65 @@ function calculateTitleSimilarity(title1: string, title2: string): number {
   return intersection.size / union.size;
 }
 
+// Check for existing WordPress ID conflicts
+async function checkWordPressIdConflict(supabase: any, wpId: number, currentArticleId: string) {
+  const { data: existingArticle } = await supabase
+    .from('articles')
+    .select('id, title, published_at')
+    .eq('wordpress_id', wpId)
+    .neq('id', currentArticleId)
+    .maybeSingle();
+  
+  return existingArticle;
+}
+
+// Handle duplicate article resolution
+async function resolveDuplicateArticle(supabase: any, currentArticle: any, conflictingArticle: any, wpPost: any) {
+  console.log(`Resolving duplicate: Current article "${currentArticle.title}" vs Existing article "${conflictingArticle.title}"`);
+  
+  // Check if they're essentially the same article (same title and similar date)
+  const titleSimilarity = calculateTitleSimilarity(currentArticle.title, conflictingArticle.title);
+  const currentDate = new Date(currentArticle.published_at || currentArticle.article_date);
+  const conflictingDate = new Date(conflictingArticle.published_at);
+  const dateDiff = Math.abs(currentDate.getTime() - conflictingDate.getTime()) / (1000 * 60 * 60 * 24); // days
+  
+  if (titleSimilarity >= 0.95 && dateDiff <= 7) {
+    // Articles are very similar - merge them
+    console.log(`Merging duplicate articles - keeping existing article ${conflictingArticle.id}, deleting ${currentArticle.id}`);
+    
+    // Delete the current article since the other one already has the WordPress ID
+    const { error: deleteError } = await supabase
+      .from('articles')
+      .delete()
+      .eq('id', currentArticle.id);
+    
+    if (deleteError) {
+      console.error('Error deleting duplicate article:', deleteError);
+      return { action: 'error', error: deleteError.message };
+    }
+    
+    return { action: 'merged', deletedArticleId: currentArticle.id, keptArticleId: conflictingArticle.id };
+  } else {
+    // Articles are different - clear the WordPress ID from the conflicting article
+    console.log(`Different articles with same WP ID - clearing WP ID from conflicting article ${conflictingArticle.id}`);
+    
+    const { error: clearError } = await supabase
+      .from('articles')
+      .update({ 
+        wordpress_id: null,
+        last_wordpress_sync: new Date().toISOString()
+      })
+      .eq('id', conflictingArticle.id);
+    
+    if (clearError) {
+      console.error('Error clearing WordPress ID:', clearError);
+      return { action: 'error', error: clearError.message };
+    }
+    
+    return { action: 'conflict_resolved', clearedArticleId: conflictingArticle.id };
+  }
+}
+
 // Search for WordPress post by title
 async function searchWordPressPostByTitle(title: string, wordpressUrl: string, auth: string) {
   if (!title || title.length < 5) return null;
@@ -233,6 +292,8 @@ serve(async (req) => {
       updated: 0,
       matched: 0,
       skipped: 0,
+      merged: 0,
+      conflicts_resolved: 0,
       errors: [],
       matchDetails: []
     }
@@ -369,6 +430,37 @@ serve(async (req) => {
             continue;
           }
 
+          // Check for WordPress ID conflicts before proceeding
+          if (wpPost.id !== article.wordpress_id) {
+            const conflictingArticle = await checkWordPressIdConflict(supabase, wpPost.id, article.id);
+            if (conflictingArticle) {
+              console.log(`WordPress ID conflict detected: ${wpPost.id} already assigned to article ${conflictingArticle.id}`);
+              
+              const resolution = await resolveDuplicateArticle(supabase, article, conflictingArticle, wpPost);
+              
+              if (resolution.action === 'merged') {
+                syncResults.merged++;
+                syncResults.matchDetails.push({
+                  wordpress_id: wpPost.id,
+                  article_id: resolution.keptArticleId,
+                  deleted_duplicate_id: resolution.deletedArticleId,
+                  match_type: 'merged_duplicate',
+                  confidence: 1.0,
+                  title: article.title
+                });
+                console.log(`✓ Merged duplicate article: ${article.title}`);
+                continue;
+              } else if (resolution.action === 'conflict_resolved') {
+                syncResults.conflicts_resolved++;
+                console.log(`✓ Resolved WordPress ID conflict for: ${article.title}`);
+                // Continue with the update since we cleared the conflict
+              } else if (resolution.action === 'error') {
+                syncResults.errors.push(`Article "${article.title}": ${resolution.error}`);
+                continue;
+              }
+            }
+          }
+
           // Handle author
           const authorData = wpPost._embedded?.author?.[0];
           if (authorData && wpPost.author) {
@@ -469,6 +561,8 @@ serve(async (req) => {
     console.log(`Created: ${syncResults.created}`);
     console.log(`Updated: ${syncResults.updated}`);
     console.log(`Matched: ${syncResults.matched}`);
+    console.log(`Merged: ${syncResults.merged}`);
+    console.log(`Conflicts resolved: ${syncResults.conflicts_resolved}`);
     console.log(`Skipped: ${syncResults.skipped}`);
     console.log(`Errors: ${syncResults.errors.length}`);
 
