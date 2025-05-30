@@ -1,4 +1,3 @@
-
 // Type definitions for custom Supabase functions and tables
 import { Json } from "@/integrations/supabase/types";
 import { DateRange } from "react-day-picker";
@@ -106,4 +105,80 @@ export interface SupabaseRpcFunctions {
     dismissed_count: number;
     total_reviewed: number;
   };
+}
+
+// Interface for article metrics
+export interface ArticleMetrics {
+  id: string;
+  article_id: string;
+  page_views: number;
+  time_on_page: number | null;
+  bounce_rate: number | null;
+  comments_count: number;
+  seo_score: number | null;
+  readability_score: number | null;
+  social_shares: number;
+  wordpress_stats: Json;
+  metric_type: string;
+  recorded_at: string;
+  created_at: string;
+}
+
+// Interface for article AI analysis
+export interface ArticleAiAnalysis {
+  id: string;
+  article_id: string;
+  analysis_version: number;
+  ai_model_used: string;
+  content_quality_score: number | null;
+  template_classification: string | null;
+  extracted_keywords: Json;
+  matched_clusters: Json;
+  performance_prediction: Json;
+  analysis_data: Json;
+  analyzed_at: string;
+  created_at: string;
+}
+
+// Interface for WordPress author mapping
+export interface WordPressAuthorMapping {
+  id: string;
+  wordpress_author_id: number;
+  wordpress_author_name: string;
+  system_author_id: string | null;
+  mapping_confidence: number | null;
+  is_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Extended interface for articles with WordPress fields
+export interface ArticleWithWordPress {
+  id: string;
+  title: string;
+  content_variants: Json | null;
+  status: string | null;
+  wordpress_id: number | null;
+  wordpress_author_id: number | null;
+  wordpress_author_name: string | null;
+  wordpress_categories: Json;
+  wordpress_tags: Json;
+  last_wordpress_sync: string | null;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+}
+
+// Extended interface for news with publication tracking
+export interface NewsWithPublication {
+  id: string;
+  headline: string;
+  summary: string | null;
+  publication_status: string;
+  published_article_id: string | null;
+  publication_confidence_score: number | null;
+  timestamp: string;
+  source: string | null;
+  url: string;
+  status: string | null;
 }

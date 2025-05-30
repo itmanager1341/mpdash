@@ -7,8 +7,11 @@ import NewsImporter from "@/components/admin/NewsImporter";
 import UserManagement from "@/components/admin/UserManagement";
 import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
 import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
+import WordPressSync from "@/components/admin/WordPressSync";
+import ArticleAnalysis from "@/components/admin/ArticleAnalysis";
+import NewsArticleMatching from "@/components/admin/NewsArticleMatching";
 import ArticlesManagement from "./ArticlesManagement";
-import { Settings, Database, Users, Clock, History, FileText } from "lucide-react";
+import { Settings, Database, Users, Clock, History, FileText, Download, Brain, Link2 } from "lucide-react";
 
 export default function Admin() {
   const [activeTab, setActiveTab] = useState("api-keys");
@@ -19,14 +22,17 @@ export default function Admin() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
           <p className="text-muted-foreground">
-            Manage API keys, news imports, users, and scheduled jobs
+            Manage API keys, WordPress sync, AI analysis, and scheduled jobs
           </p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+          <TabsTrigger value="wordpress">WordPress</TabsTrigger>
+          <TabsTrigger value="ai-analysis">AI Analysis</TabsTrigger>
+          <TabsTrigger value="news-matching">News Matching</TabsTrigger>
           <TabsTrigger value="news-import">News Import</TabsTrigger>
           <TabsTrigger value="articles">Articles</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
@@ -47,6 +53,18 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="wordpress" className="space-y-4">
+          <WordPressSync />
+        </TabsContent>
+
+        <TabsContent value="ai-analysis" className="space-y-4">
+          <ArticleAnalysis />
+        </TabsContent>
+
+        <TabsContent value="news-matching" className="space-y-4">
+          <NewsArticleMatching />
         </TabsContent>
 
         <TabsContent value="news-import" className="space-y-4">
