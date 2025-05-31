@@ -24,57 +24,44 @@ export function extractWordCountFromArticle(article: any): number {
     return totalWords;
   }
   
-  // Fallback: Count words from content variants for existing articles
+  // Fallback: Count words from WordPress content
   if (article.content_variants) {
     const variants = typeof article.content_variants === 'string' 
       ? JSON.parse(article.content_variants) 
       : article.content_variants;
       
-    // Check for WordPress content first
+    // Check for WordPress content
     if (variants?.wordpress_content?.content) {
       const cleanContent = cleanHtmlContent(variants.wordpress_content.content);
       totalWords += calculateWordCount(cleanContent);
-    } else if (variants?.long) {
-      totalWords += calculateWordCount(variants.long);
-    } else if (variants?.editorial_content?.full_content) {
-      totalWords += calculateWordCount(variants.editorial_content.full_content);
+      return totalWords;
     }
   }
   
   // Final fallback: Count words from excerpt if no content variants
-  if (totalWords === 0 && article.excerpt) {
+  if (article.excerpt) {
     totalWords += calculateWordCount(article.excerpt);
   }
   
   return totalWords;
 }
 
-// Helper function to extract clean content from various content formats
+// Helper function to extract clean content from WordPress articles
 export function extractCleanContent(article: any): string {
   // If clean_content already exists, return it
   if (article.clean_content) {
     return article.clean_content;
   }
   
-  // Extract from content_variants for articles
+  // Extract from WordPress content
   if (article.content_variants) {
     const variants = typeof article.content_variants === 'string' 
       ? JSON.parse(article.content_variants) 
       : article.content_variants;
       
-    // Check for WordPress content first (this contains the full HTML article)
+    // Check for WordPress content (this contains the full HTML article)
     if (variants?.wordpress_content?.content) {
       return cleanHtmlContent(variants.wordpress_content.content);
-    }
-    
-    // Fallback to internal article content
-    if (variants?.long) {
-      return cleanHtmlContent(variants.long);
-    }
-    
-    // Final fallback for older article formats
-    if (variants?.editorial_content?.full_content) {
-      return cleanHtmlContent(variants.editorial_content.full_content);
     }
   }
   

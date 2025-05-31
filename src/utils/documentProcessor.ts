@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { extractCleanContent, generateContentHash, calculateWordCount } from "./wordCountUtils";
 
@@ -245,7 +244,7 @@ export async function extractCleanContentForArticle(articleId: string): Promise<
       return false;
     }
 
-    // Extract clean content
+    // Extract clean content using the simplified function
     const cleanContent = extractCleanContent(article);
     const contentHash = generateContentHash(cleanContent);
     const wordCount = calculateWordCount(cleanContent);

@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2?dts';
 
 // Configuration constants
@@ -174,20 +173,20 @@ Deno.serve(async (req) => {
           contentToProcess = article.clean_content;
           console.log(`Using clean_content for article ${article.id}: ${contentToProcess.length} characters`);
         } else {
-          // Fallback: Extract from content_variants
+          // Fallback: Extract from WordPress content
           const contentVariants = typeof article.content_variants === 'string' 
             ? JSON.parse(article.content_variants) 
             : article.content_variants;
 
-          const longContent = contentVariants?.long || '';
+          const wpContent = contentVariants?.wordpress_content?.content || '';
           
-          if (!longContent || longContent.trim().length < 50) {
+          if (!wpContent || wpContent.trim().length < 50) {
             console.warn(`⏭️ Skipping article ${article.id} - insufficient content`);
             continue;
           }
           
-          contentToProcess = longContent;
-          console.log(`Using content_variants.long for article ${article.id}: ${contentToProcess.length} characters`);
+          contentToProcess = wpContent;
+          console.log(`Using WordPress content for article ${article.id}: ${contentToProcess.length} characters`);
         }
 
         // Generate chunks for different content types
