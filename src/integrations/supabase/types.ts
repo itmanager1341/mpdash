@@ -200,6 +200,7 @@ export type Database = {
         Row: {
           article_date: string | null
           byline_text: string | null
+          chunks_count: number | null
           co_authors: string[] | null
           content_complexity_score: number | null
           content_variants: Json | null
@@ -211,6 +212,8 @@ export type Database = {
           featured_image_url: string | null
           fred_data: Json | null
           id: string
+          is_chunked: boolean | null
+          last_chunked_at: string | null
           last_wordpress_sync: string | null
           linked_prior_articles: string[] | null
           primary_author_id: string | null
@@ -238,6 +241,7 @@ export type Database = {
         Insert: {
           article_date?: string | null
           byline_text?: string | null
+          chunks_count?: number | null
           co_authors?: string[] | null
           content_complexity_score?: number | null
           content_variants?: Json | null
@@ -249,6 +253,8 @@ export type Database = {
           featured_image_url?: string | null
           fred_data?: Json | null
           id?: string
+          is_chunked?: boolean | null
+          last_chunked_at?: string | null
           last_wordpress_sync?: string | null
           linked_prior_articles?: string[] | null
           primary_author_id?: string | null
@@ -276,6 +282,7 @@ export type Database = {
         Update: {
           article_date?: string | null
           byline_text?: string | null
+          chunks_count?: number | null
           co_authors?: string[] | null
           content_complexity_score?: number | null
           content_variants?: Json | null
@@ -287,6 +294,8 @@ export type Database = {
           featured_image_url?: string | null
           fred_data?: Json | null
           id?: string
+          is_chunked?: boolean | null
+          last_chunked_at?: string | null
           last_wordpress_sync?: string | null
           linked_prior_articles?: string[] | null
           primary_author_id?: string | null
@@ -398,6 +407,53 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_chunks: {
+        Row: {
+          article_id: string
+          chunk_index: number
+          chunk_type: string
+          content: string
+          created_at: string
+          embedding: string | null
+          id: string
+          metadata: Json | null
+          updated_at: string
+          word_count: number
+        }
+        Insert: {
+          article_id: string
+          chunk_index: number
+          chunk_type?: string
+          content: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          metadata?: Json | null
+          updated_at?: string
+          word_count: number
+        }
+        Update: {
+          article_id?: string
+          chunk_index?: number
+          chunk_type?: string
+          content?: string
+          created_at?: string
+          embedding?: string | null
+          id?: string
+          metadata?: Json | null
+          updated_at?: string
+          word_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_chunks_article_id_fkey"
+            columns: ["article_id"]
+            isOneToOne: false
+            referencedRelation: "articles"
             referencedColumns: ["id"]
           },
         ]
@@ -957,6 +1013,26 @@ export type Database = {
       l2_normalize: {
         Args: { "": string } | { "": unknown } | { "": unknown }
         Returns: unknown
+      }
+      search_content_chunks: {
+        Args: {
+          query_text: string
+          query_embedding?: string
+          similarity_threshold?: number
+          max_results?: number
+          article_filters?: Json
+        }
+        Returns: {
+          id: string
+          article_id: string
+          content: string
+          word_count: number
+          chunk_type: string
+          similarity: number
+          rank: number
+          article_title: string
+          article_status: string
+        }[]
       }
       sparsevec_out: {
         Args: { "": unknown }

@@ -10,7 +10,14 @@ import {
   Users,
   CheckCircle,
   Clock,
-  X
+  X,
+  FileText,
+  Edit3,
+  UserX,
+  Zap,
+  ZapOff,
+  Package,
+  PackageX
 } from "lucide-react";
 import { toast } from "sonner";
 import { ArticlesTable } from "@/components/admin/ArticlesTable";
@@ -23,7 +30,9 @@ export type ArticleFilter =
   | 'missing-wp-id' 
   | 'missing-author' 
   | 'embedded' 
-  | 'not-embedded';
+  | 'not-embedded'
+  | 'chunked'
+  | 'not-chunked';
 
 export default function ArticlesManagement() {
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -133,6 +142,18 @@ export default function ArticlesManagement() {
   const publishedArticles = articles?.filter(a => a.status === 'published').length || 0;
   const draftArticles = articles?.filter(a => a.status === 'draft').length || 0;
 
+  const filterOptions = [
+    { value: 'all', label: 'All Articles', icon: FileText },
+    { value: 'published', label: 'Published', icon: CheckCircle },
+    { value: 'drafts', label: 'Drafts', icon: Edit3 },
+    { value: 'missing-wp-id', label: 'Missing WP ID', icon: AlertTriangle },
+    { value: 'missing-author', label: 'Missing Author', icon: UserX },
+    { value: 'embedded', label: 'With Embeddings', icon: Zap },
+    { value: 'not-embedded', label: 'No Embeddings', icon: ZapOff },
+    { value: 'chunked', label: 'Chunked', icon: Package },
+    { value: 'not-chunked', label: 'Not Chunked', icon: PackageX },
+  ];
+
   const getFilterTitle = () => {
     switch (activeFilter) {
       case 'published': return 'Published Articles';
@@ -141,6 +162,8 @@ export default function ArticlesManagement() {
       case 'missing-author': return 'Articles Missing Author';
       case 'embedded': return 'Articles with Embeddings';
       case 'not-embedded': return 'Articles without Embeddings';
+      case 'chunked': return 'Chunked Articles';
+      case 'not-chunked': return 'Not Chunked Articles';
       default: return 'All Articles';
     }
   };

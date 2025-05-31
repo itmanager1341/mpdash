@@ -1,17 +1,16 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
+  Trash2, 
   RefreshCw, 
-  Trash2,
-  Loader2,
-  CheckCircle,
-  AlertTriangle,
-  Info
+  Download,
+  Zap,
+  Package
 } from "lucide-react";
 
 interface SimplifiedBulkOperationsProps {
@@ -19,35 +18,64 @@ interface SimplifiedBulkOperationsProps {
   onClearSelection: () => void;
   onRefresh: () => void;
   articles: any[];
+  onBulkProcessChunks?: () => void;
+  isProcessingChunks?: boolean;
 }
 
 export function SimplifiedBulkOperations({ 
   selectedIds, 
   onClearSelection, 
-  onRefresh,
-  articles 
+  onRefresh, 
+  articles,
+  onBulkProcessChunks,
+  isProcessingChunks = false
 }: SimplifiedBulkOperationsProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [operationProgress, setOperationProgress] = useState<{
-    current: number;
-    total: number;
-    operation: string;
-  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  const selectedCount = selectedIds.size;
   const selectedArticles = articles.filter(article => selectedIds.has(article.id));
+  const selectedCount = selectedIds.size;
 
-  const handleWordPressSync = async () => {
-    setIsLoading(true);
-    setOperationProgress({ 
-      current: 0, 
-      total: selectedCount, 
-      operation: "Syncing with WordPress"
-    });
+  if (selectedCount === 0) {
+    return null;
+  }
 
+  // Calculate statistics for selected articles
+  const stats = {
+    chunked: selectedArticles.filter(a => a.is_chunked).length,
+    notChunked: selectedArticles.filter(a => !a.is_chunked).length,
+    withEmbeddings: selectedArticles.filter(a => a.embedding).length,
+    withWordCount: selectedArticles.filter(a => a.word_count > 0).length
+  };
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Are you sure you want to delete ${selectedCount} articles? This action cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
     try {
-      console.log(`Starting WordPress sync for ${selectedCount} selected articles...`);
-      
+      const { error } = await supabase
+        .from('articles')
+        .delete()
+        .in('id', Array.from(selectedIds));
+
+      if (error) throw error;
+
+      toast.success(`Successfully deleted ${selectedCount} articles`);
+      onClearSelection();
+      onRefresh();
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      toast.error(`Failed to delete articles: ${error.message}`);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleBulkSync = async () => {
+    setIsSyncing(true);
+    try {
       const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
         body: { 
           legacyMode: true,
@@ -55,166 +83,154 @@ export function SimplifiedBulkOperations({
         }
       });
 
-      if (error) {
-        console.error('Supabase function error:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       if (data.success) {
-        const { results } = data;
-        
-        // Create detailed success message
-        let message = `WordPress sync completed! `;
-        const details = [];
-        
-        if (results.updated > 0) details.push(`${results.updated} updated`);
-        if (results.created > 0) details.push(`${results.created} created`);
-        if (results.merged > 0) details.push(`${results.merged} duplicates merged`);
-        if (results.conflicts_resolved > 0) details.push(`${results.conflicts_resolved} conflicts resolved`);
-        if (results.skipped > 0) details.push(`${results.skipped} skipped`);
-        
-        message += details.join(', ');
-        
-        if (results.errors && results.errors.length > 0) {
-          console.warn('Sync completed with errors:', results.errors);
-          toast.success(message, {
-            description: `${results.errors.length} errors occurred - check console for details`
-          });
-        } else {
-          toast.success(message);
-        }
-        
-        onClearSelection();
+        toast.success(`Successfully synced ${selectedCount} articles`);
         onRefresh();
       } else {
         throw new Error(data.error || 'Sync failed');
       }
     } catch (error) {
-      console.error('WordPress sync error:', error);
-      toast.error(`WordPress sync failed: ${error.message}`);
+      console.error('Bulk sync error:', error);
+      toast.error(`Sync failed: ${error.message}`);
     } finally {
-      setIsLoading(false);
-      setOperationProgress(null);
+      setIsSyncing(false);
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (!window.confirm(`Are you sure you want to delete ${selectedCount} articles? This action cannot be undone.`)) {
-      return;
-    }
+  const exportSelectedArticles = () => {
+    const csvContent = selectedArticles.map(article => ({
+      id: article.id,
+      title: article.title,
+      status: article.status,
+      published_at: article.published_at,
+      word_count: article.word_count,
+      is_chunked: article.is_chunked,
+      chunks_count: article.chunks_count,
+      wordpress_id: article.wordpress_id,
+      author: article.authors?.name || article.wordpress_author_name || 'Unknown'
+    }));
 
-    setIsLoading(true);
-    setOperationProgress({ current: 0, total: selectedCount, operation: "Deleting articles" });
+    const csv = [
+      Object.keys(csvContent[0]).join(','),
+      ...csvContent.map(row => Object.values(row).map(val => `"${val || ''}"`).join(','))
+    ].join('\n');
 
-    try {
-      let completed = 0;
-      for (const articleId of selectedIds) {
-        const { error } = await supabase
-          .from('articles')
-          .delete()
-          .eq('id', articleId);
-
-        if (error) throw error;
-        
-        completed++;
-        setOperationProgress({ current: completed, total: selectedCount, operation: "Deleting articles" });
-      }
-
-      toast.success(`Successfully deleted ${selectedCount} articles`);
-      onClearSelection();
-      onRefresh();
-    } catch (error) {
-      console.error('Bulk delete error:', error);
-      toast.error("Failed to delete some articles");
-    } finally {
-      setIsLoading(false);
-      setOperationProgress(null);
-    }
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `articles-export-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success(`Exported ${selectedCount} articles`);
   };
-
-  if (selectedCount === 0) return null;
 
   return (
-    <Card className="mb-4">
-      <CardContent className="py-4">
+    <Card>
+      <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Badge variant="secondary" className="text-sm">
-              {selectedCount} article{selectedCount !== 1 ? 's' : ''} selected
+              {selectedCount} selected
             </Badge>
             
-            {operationProgress && (
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-sm text-muted-foreground">
-                  {operationProgress.operation}: {operationProgress.current}/{operationProgress.total}
-                </span>
+            {/* Statistics */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Package className="h-3 w-3" />
+                <span>{stats.chunked} chunked</span>
               </div>
-            )}
+              <span>•</span>
+              <span>{stats.withWordCount} with word count</span>
+              <span>•</span>
+              <span>{stats.withEmbeddings} with embeddings</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Chunk Processing */}
+            {onBulkProcessChunks && stats.notChunked > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onBulkProcessChunks}
+                disabled={isProcessingChunks}
+              >
+                {isProcessingChunks ? (
+                  <>
+                    <Zap className="h-4 w-4 mr-1 animate-pulse" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-4 w-4 mr-1" />
+                    Process Chunks ({stats.notChunked})
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Sync */}
             <Button
               variant="outline"
               size="sm"
-              onClick={handleWordPressSync}
-              disabled={isLoading}
-              className="relative"
+              onClick={handleBulkSync}
+              disabled={isSyncing}
             >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Sync with WordPress
+              {isSyncing ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Sync
+                </>
+              )}
             </Button>
 
+            {/* Export */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={exportSelectedArticles}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export
+            </Button>
+
+            {/* Delete */}
             <Button
               variant="destructive"
               size="sm"
               onClick={handleBulkDelete}
-              disabled={isLoading}
+              disabled={isDeleting}
             >
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete
+              {isDeleting ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </>
+              )}
             </Button>
 
+            {/* Clear Selection */}
             <Button
               variant="ghost"
               size="sm"
               onClick={onClearSelection}
-              disabled={isLoading}
             >
-              Clear Selection
+              Clear
             </Button>
-          </div>
-        </div>
-
-        {/* Selection Summary */}
-        <div className="mt-3 grid grid-cols-4 gap-4 text-sm">
-          <div className="flex items-center gap-1">
-            <AlertTriangle className="h-3 w-3 text-orange-500" />
-            <span className="text-muted-foreground">Missing WP ID: </span>
-            <span className="font-medium">
-              {selectedArticles.filter(a => !a.wordpress_id).length}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Info className="h-3 w-3 text-blue-500" />
-            <span className="text-muted-foreground">Missing Author: </span>
-            <span className="font-medium">
-              {selectedArticles.filter(a => !a.primary_author_id).length}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <CheckCircle className="h-3 w-3 text-green-500" />
-            <span className="text-muted-foreground">Published: </span>
-            <span className="font-medium">
-              {selectedArticles.filter(a => a.status === 'published').length}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Info className="h-3 w-3 text-gray-500" />
-            <span className="text-muted-foreground">Drafts: </span>
-            <span className="font-medium">
-              {selectedArticles.filter(a => a.status === 'draft').length}
-            </span>
           </div>
         </div>
       </CardContent>

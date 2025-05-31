@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SimplifiedBulkOperations } from "./SimplifiedBulkOperations";
-import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock } from "lucide-react";
+import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock, Zap, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArticleFilter } from "@/pages/ArticlesManagement";
@@ -39,6 +39,7 @@ export function ArticlesTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
+  const [processingChunks, setProcessingChunks] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
 
   // Apply filter first, then search
@@ -56,6 +57,10 @@ export function ArticlesTable({
         return article.embedding;
       case 'not-embedded':
         return !article.embedding;
+      case 'chunked':
+        return article.is_chunked;
+      case 'not-chunked':
+        return !article.is_chunked;
       case 'all':
       default:
         return true;
@@ -124,6 +129,62 @@ export function ArticlesTable({
     }
   };
 
+  const handleProcessChunks = async (articleId: string) => {
+    setProcessingChunks(prev => new Set(prev).add(articleId));
+    try {
+      const { data, error } = await supabase.functions.invoke('process-article-chunks', {
+        body: { 
+          articleIds: [articleId]
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.processed > 0) {
+        toast.success(`Article chunked successfully - ${data.results[0]?.chunks_created || 0} chunks created`);
+        onRefresh();
+      } else {
+        throw new Error(data.results[0]?.error || 'Chunking failed');
+      }
+    } catch (error) {
+      console.error('Article chunking error:', error);
+      toast.error(`Chunking failed: ${error.message}`);
+    } finally {
+      setProcessingChunks(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(articleId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleBulkProcessChunks = async () => {
+    if (selectedIds.size === 0) return;
+    
+    const articleIds = Array.from(selectedIds);
+    setProcessingChunks(new Set(articleIds));
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('process-article-chunks', {
+        body: { 
+          articleIds: articleIds,
+          limit: articleIds.length
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(`Bulk chunking completed - ${data.processed} articles processed`);
+      setSelectedIds(new Set());
+      onRefresh();
+    } catch (error) {
+      console.error('Bulk chunking error:', error);
+      toast.error(`Bulk chunking failed: ${error.message}`);
+    } finally {
+      setProcessingChunks(new Set());
+    }
+  };
+
   const handleClearSearch = () => {
     setSearchTerm("");
     setCurrentPage(1);
@@ -157,7 +218,9 @@ export function ArticlesTable({
       'missing-wp-id': 'articles missing WordPress ID',
       'missing-author': 'articles missing author',
       'embedded': 'articles with embeddings',
-      'not-embedded': 'articles without embeddings'
+      'not-embedded': 'articles without embeddings',
+      'chunked': 'articles with chunks',
+      'not-chunked': 'articles without chunks'
     };
     
     return ` (showing ${filterLabels[activeFilter]})`;
@@ -194,6 +257,8 @@ export function ArticlesTable({
         onClearSelection={() => setSelectedIds(new Set())}
         onRefresh={onRefresh}
         articles={articles}
+        onBulkProcessChunks={handleBulkProcessChunks}
+        isProcessingChunks={processingChunks.size > 0}
       />
 
       <div className="rounded-md border">
@@ -213,13 +278,14 @@ export function ArticlesTable({
               <TableHead>Published</TableHead>
               <TableHead>WP ID</TableHead>
               <TableHead>Embedded</TableHead>
-              <TableHead className="w-32">Actions</TableHead>
+              <TableHead>Chunked</TableHead>
+              <TableHead className="w-40">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {currentArticles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   {searchTerm ? 'No articles found matching your search' : 
                    activeFilter !== 'all' ? `No articles found for this filter` : 'No articles found'}
                 </TableCell>
@@ -238,6 +304,11 @@ export function ArticlesTable({
                     {article.excerpt && (
                       <div className="text-sm text-muted-foreground truncate mt-1">
                         {article.excerpt.substring(0, 100)}...
+                      </div>
+                    )}
+                    {article.word_count && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {article.word_count} words
                       </div>
                     )}
                   </TableCell>
@@ -306,6 +377,23 @@ export function ArticlesTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {article.is_chunked ? (
+                        <div className="flex items-center gap-1 text-green-600">
+                          <Package className="h-4 w-4" />
+                          <span className="text-xs">
+                            {article.chunks_count || 0} chunks
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-gray-500">
+                          <Clock className="h-4 w-4" />
+                          <span className="text-xs">No chunks</span>
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -317,6 +405,19 @@ export function ArticlesTable({
                           <RefreshCw className="h-4 w-4 animate-spin" />
                         ) : (
                           <RefreshCw className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleProcessChunks(article.id)}
+                        disabled={processingChunks.has(article.id)}
+                        title="Process into chunks"
+                      >
+                        {processingChunks.has(article.id) ? (
+                          <Zap className="h-4 w-4 animate-pulse text-blue-600" />
+                        ) : (
+                          <Zap className="h-4 w-4" />
                         )}
                       </Button>
                       {article.source_url && (

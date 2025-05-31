@@ -36,6 +36,42 @@ export interface UserRole {
   created_at: string;
 }
 
+// Interface for content chunks
+export interface ContentChunk {
+  id: string;
+  article_id: string;
+  chunk_index: number;
+  content: string;
+  word_count: number;
+  chunk_type: 'title' | 'content' | 'summary';
+  embedding: number[] | null;
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+// Interface for search results
+export interface SearchResult {
+  id: string;
+  article_id: string;
+  content: string;
+  word_count: number;
+  chunk_type: string;
+  similarity: number;
+  rank: number;
+  article_title: string;
+  article_status: string;
+}
+
+// Interface for grouped search results
+export interface GroupedSearchResult {
+  article_id: string;
+  article_title: string;
+  article_status: string;
+  chunks: Omit<SearchResult, 'article_title' | 'article_status' | 'article_id'>[];
+  max_rank: number;
+}
+
 // Interface for LLM model configuration
 export interface LlmModelConfig {
   id: string;
