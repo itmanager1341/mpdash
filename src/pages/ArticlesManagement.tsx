@@ -17,11 +17,13 @@ import {
   Zap,
   ZapOff,
   Package,
-  PackageX
+  PackageX,
+  Calculator
 } from "lucide-react";
 import { toast } from "sonner";
 import { ArticlesTable } from "@/components/admin/ArticlesTable";
 import { ArticleImportDialog } from "@/components/admin/ArticleImportDialog";
+import { BulkWordCountOperation } from "@/components/admin/BulkWordCountOperation";
 
 export type ArticleFilter = 
   | 'all' 
@@ -32,11 +34,14 @@ export type ArticleFilter =
   | 'embedded' 
   | 'not-embedded'
   | 'chunked'
-  | 'not-chunked';
+  | 'not-chunked'
+  | 'no-word-count';
 
 export default function ArticlesManagement() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [activeFilter, setActiveFilter] = useState<ArticleFilter>('all');
+  const [selectedArticles, setSelectedArticles] = useState<Set<string>>(new Set());
+  const [showWordCountOperation, setShowWordCountOperation] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: articles, isLoading: articlesLoading } = useQuery({
@@ -138,16 +143,23 @@ export default function ArticlesManagement() {
     queryClient.invalidateQueries({ queryKey: ['data-quality-stats'] });
   };
 
+  const handleClearSelection = () => {
+    setSelectedArticles(new Set());
+    setShowWordCountOperation(false);
+  };
+
   const totalArticles = articles?.length || 0;
   const publishedArticles = articles?.filter(a => a.status === 'published').length || 0;
   const draftArticles = articles?.filter(a => a.status === 'draft').length || 0;
 
+  // Updated filter options to include word count filter
   const filterOptions = [
     { value: 'all', label: 'All Articles', icon: FileText },
     { value: 'published', label: 'Published', icon: CheckCircle },
     { value: 'drafts', label: 'Drafts', icon: Edit3 },
     { value: 'missing-wp-id', label: 'Missing WP ID', icon: AlertTriangle },
     { value: 'missing-author', label: 'Missing Author', icon: UserX },
+    { value: 'no-word-count', label: 'No Word Count', icon: Calculator },
     { value: 'embedded', label: 'With Embeddings', icon: Zap },
     { value: 'not-embedded', label: 'No Embeddings', icon: ZapOff },
     { value: 'chunked', label: 'Chunked', icon: Package },
@@ -160,6 +172,7 @@ export default function ArticlesManagement() {
       case 'drafts': return 'Draft Articles';
       case 'missing-wp-id': return 'Articles Missing WordPress ID';
       case 'missing-author': return 'Articles Missing Author';
+      case 'no-word-count': return 'Articles Missing Word Count';
       case 'embedded': return 'Articles with Embeddings';
       case 'not-embedded': return 'Articles without Embeddings';
       case 'chunked': return 'Chunked Articles';
@@ -205,7 +218,7 @@ export default function ArticlesManagement() {
         </div>
       )}
 
-      {/* Interactive Stats Cards */}
+      {/* Interactive Stats Cards - Updated with word count stats */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card 
           className={`cursor-pointer transition-all hover:shadow-md ${
@@ -319,9 +332,39 @@ export default function ArticlesManagement() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* New Word Count Card */}
+            <Card 
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                activeFilter === 'no-word-count' ? 'ring-2 ring-yellow-500 bg-yellow-50' : 'hover:bg-gray-50'
+              }`}
+              onClick={() => setActiveFilter('no-word-count')}
+            >
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-1">
+                  <Calculator className="h-4 w-4 text-yellow-500" />
+                  No Word Count
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-yellow-600">
+                  {articles?.filter(a => !a.word_count || a.word_count === 0).length || 0}
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
+
+      {/* Show word count operation when articles are selected */}
+      {selectedArticles.size > 0 && showWordCountOperation && (
+        <BulkWordCountOperation
+          selectedIds={selectedArticles}
+          onClearSelection={handleClearSelection}
+          onRefresh={handleRefresh}
+          articles={articles || []}
+        />
+      )}
 
       {/* Data Quality Alert */}
       {dataQualityStats && (dataQualityStats.missingWordPressId > 0 || dataQualityStats.missingAuthor > 0) && (
@@ -346,6 +389,11 @@ export default function ArticlesManagement() {
         onUpdate={handleUpdateArticle}
         onRefresh={handleRefresh}
         activeFilter={activeFilter}
+        selectedArticles={selectedArticles}
+        onSelectionChange={(newSelection, showWordCount) => {
+          setSelectedArticles(newSelection);
+          setShowWordCountOperation(showWordCount);
+        }}
       />
 
       <ArticleImportDialog

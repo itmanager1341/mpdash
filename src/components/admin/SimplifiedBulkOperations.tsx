@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -45,7 +44,8 @@ export function SimplifiedBulkOperations({
     chunked: selectedArticles.filter(a => a.is_chunked).length,
     notChunked: selectedArticles.filter(a => !a.is_chunked).length,
     withEmbeddings: selectedArticles.filter(a => a.embedding).length,
-    withWordCount: selectedArticles.filter(a => a.word_count > 0).length
+    withWordCount: selectedArticles.filter(a => a.word_count > 0).length,
+    needsChunking: selectedArticles.filter(a => !a.is_chunked && a.word_count > 0).length
   };
 
   const handleBulkDelete = async () => {
@@ -137,7 +137,7 @@ export function SimplifiedBulkOperations({
               {selectedCount} selected
             </Badge>
             
-            {/* Statistics */}
+            {/* Updated Statistics */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Package className="h-3 w-3" />
@@ -146,13 +146,13 @@ export function SimplifiedBulkOperations({
               <span>•</span>
               <span>{stats.withWordCount} with word count</span>
               <span>•</span>
-              <span>{stats.withEmbeddings} with embeddings</span>
+              <span>{stats.needsChunking} ready to chunk</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Chunk Processing */}
-            {onBulkProcessChunks && stats.notChunked > 0 && (
+            {/* Single Chunk Processing Button */}
+            {onBulkProcessChunks && stats.needsChunking > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -167,7 +167,7 @@ export function SimplifiedBulkOperations({
                 ) : (
                   <>
                     <Zap className="h-4 w-4 mr-1" />
-                    Process Chunks ({stats.notChunked})
+                    Process Chunks ({stats.needsChunking})
                   </>
                 )}
               </Button>

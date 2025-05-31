@@ -135,7 +135,8 @@ Deno.serve(async (req) => {
       .from('articles')
       .select('id, title, content_variants, word_count, is_chunked')
       .eq('is_chunked', false)
-      .is('content_variants', 'not.null');
+      .is('content_variants', 'not.null')
+      .gt('word_count', 0); // Only process articles that already have word count
     
     if (articleIds && Array.isArray(articleIds)) {
       query = query.in('id', articleIds);
@@ -153,7 +154,7 @@ Deno.serve(async (req) => {
     if (!articles || articles.length === 0) {
       console.log('⚠️ No articles found for chunking');
       return new Response(JSON.stringify({
-        message: 'No articles found for chunking',
+        message: 'No articles found for chunking. Articles need word count > 0.',
         processed: 0
       }), { status: 200 });
     }
@@ -163,7 +164,7 @@ Deno.serve(async (req) => {
     const results = [];
     
     for (const article of articles) {
-      console.log(`📝 Processing article: ${article.id}`);
+      console.log(`📝 Processing article: ${article.id} (word count: ${article.word_count})`);
       
       try {
         // Parse content variants
@@ -177,15 +178,6 @@ Deno.serve(async (req) => {
         if (!longContent || longContent.trim().length < 50) {
           console.warn(`⏭️ Skipping article ${article.id} - insufficient content`);
           continue;
-        }
-
-        // Calculate actual word count if not set
-        const actualWordCount = longContent.trim().split(/\s+/).length;
-        if (!article.word_count) {
-          await supabase
-            .from('articles')
-            .update({ word_count: actualWordCount })
-            .eq('id', article.id);
         }
 
         // Generate chunks for different content types
@@ -230,7 +222,7 @@ Deno.serve(async (req) => {
               chunk_type: chunk.chunk_type,
               embedding: embedding,
               metadata: {
-                original_word_count: actualWordCount,
+                original_word_count: article.word_count, // Use existing word count
                 chunk_method: 'intelligent_sentence_boundary'
               }
             });
@@ -245,7 +237,7 @@ Deno.serve(async (req) => {
         results.push({
           article_id: article.id,
           chunks_created: processedChunks,
-          total_word_count: actualWordCount
+          total_word_count: article.word_count // Use existing word count
         });
 
         console.log(`✅ Successfully processed article ${article.id} with ${processedChunks} chunks`);
