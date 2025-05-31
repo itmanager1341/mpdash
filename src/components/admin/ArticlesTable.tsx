@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -283,6 +282,7 @@ export function ArticlesTable({
               <TableHead>Author</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Published</TableHead>
+              <TableHead>Word Count</TableHead>
               <TableHead>WP ID</TableHead>
               <TableHead>Embedded</TableHead>
               <TableHead>Chunked</TableHead>
@@ -292,7 +292,7 @@ export function ArticlesTable({
           <TableBody>
             {currentArticles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   {searchTerm ? 'No articles found matching your search' : 
                    activeFilter !== 'all' ? `No articles found for this filter` : 'No articles found'}
                 </TableCell>
@@ -311,11 +311,6 @@ export function ArticlesTable({
                     {article.excerpt && (
                       <div className="text-sm text-muted-foreground truncate mt-1">
                         {article.excerpt.substring(0, 100)}...
-                      </div>
-                    )}
-                    {article.word_count && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {article.word_count} words
                       </div>
                     )}
                   </TableCell>
@@ -356,6 +351,15 @@ export function ArticlesTable({
                       </div>
                     ) : (
                       <span className="text-muted-foreground">Not published</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {article.word_count ? (
+                      <div className="text-sm font-medium">
+                        {article.word_count.toLocaleString()}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
                   <TableCell>
