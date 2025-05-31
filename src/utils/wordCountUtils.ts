@@ -30,7 +30,11 @@ export function extractWordCountFromArticle(article: any): number {
       ? JSON.parse(article.content_variants) 
       : article.content_variants;
       
-    if (variants?.long) {
+    // Check for WordPress content first
+    if (variants?.wordpress_content?.content) {
+      const cleanContent = cleanHtmlContent(variants.wordpress_content.content);
+      totalWords += calculateWordCount(cleanContent);
+    } else if (variants?.long) {
       totalWords += calculateWordCount(variants.long);
     } else if (variants?.editorial_content?.full_content) {
       totalWords += calculateWordCount(variants.editorial_content.full_content);
@@ -58,20 +62,20 @@ export function extractCleanContent(article: any): string {
       ? JSON.parse(article.content_variants) 
       : article.content_variants;
       
+    // Check for WordPress content first (this contains the full HTML article)
+    if (variants?.wordpress_content?.content) {
+      return cleanHtmlContent(variants.wordpress_content.content);
+    }
+    
+    // Fallback to internal article content
     if (variants?.long) {
       return cleanHtmlContent(variants.long);
-    } else if (variants?.editorial_content?.full_content) {
+    }
+    
+    // Final fallback for older article formats
+    if (variants?.editorial_content?.full_content) {
       return cleanHtmlContent(variants.editorial_content.full_content);
     }
-  }
-  
-  // For news items, check source_content or editorial_content
-  if (article.source_content) {
-    return cleanHtmlContent(article.source_content);
-  }
-  
-  if (article.editorial_content) {
-    return cleanHtmlContent(article.editorial_content);
   }
   
   // Fallback to excerpt or empty string
