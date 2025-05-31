@@ -170,7 +170,7 @@ export async function uploadDocumentToStorage(file: File): Promise<string> {
   return data.path;
 }
 
-// Updated draft creation to calculate and include word count
+// Updated draft creation to calculate and store word count separately
 export async function createDraftFromDocument(document: ProcessedDocument): Promise<any> {
   const newDraft = {
     title: document.title, // Use filename as-is
@@ -212,23 +212,6 @@ export async function createDraftFromDocument(document: ProcessedDocument): Prom
   if (error) {
     console.error("Supabase error:", error);
     throw error;
-  }
-
-  // Calculate and update word count for the created draft
-  const wordCount = extractWordCountFromArticle({
-    title: document.title,
-    content_variants: newDraft.content_variants
-  });
-
-  if (wordCount > 0) {
-    const { error: updateError } = await supabase
-      .from('editor_briefs')
-      .update({ word_count: wordCount })
-      .eq('id', data.id);
-
-    if (updateError) {
-      console.warn("Failed to update word count for created draft:", updateError);
-    }
   }
 
   console.log("Editor brief created successfully from document:", data);

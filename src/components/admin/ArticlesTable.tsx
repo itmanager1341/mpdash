@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ interface ArticlesTableProps {
   onUpdate: (id: string, updates: any) => void;
   onRefresh: () => void;
   activeFilter: ArticleFilter;
+  selectedArticles: Set<string>;
+  onSelectionChange: (newSelection: Set<string>, showWordCount: boolean) => void;
 }
 
 const ARTICLES_PER_PAGE = 20;
@@ -34,9 +37,10 @@ export function ArticlesTable({
   onDelete, 
   onUpdate, 
   onRefresh,
-  activeFilter 
+  activeFilter,
+  selectedArticles,
+  onSelectionChange
 }: ArticlesTableProps) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
   const [processingChunks, setProcessingChunks] = useState<Set<string>>(new Set());
@@ -53,6 +57,8 @@ export function ArticlesTable({
         return !article.wordpress_id;
       case 'missing-author':
         return !article.primary_author_id;
+      case 'no-word-count':
+        return !article.word_count || article.word_count === 0;
       case 'embedded':
         return article.embedding;
       case 'not-embedded':
@@ -87,20 +93,20 @@ export function ArticlesTable({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(currentArticles.map(article => article.id)));
+      onSelectionChange(new Set(currentArticles.map(article => article.id)), true);
     } else {
-      setSelectedIds(new Set());
+      onSelectionChange(new Set(), false);
     }
   };
 
   const handleSelectOne = (articleId: string, checked: boolean) => {
-    const newSelection = new Set(selectedIds);
+    const newSelection = new Set(selectedArticles);
     if (checked) {
       newSelection.add(articleId);
     } else {
       newSelection.delete(articleId);
     }
-    setSelectedIds(newSelection);
+    onSelectionChange(newSelection, newSelection.size > 0);
   };
 
   const handleSyncArticle = async (articleId: string) => {
@@ -159,9 +165,9 @@ export function ArticlesTable({
   };
 
   const handleBulkProcessChunks = async () => {
-    if (selectedIds.size === 0) return;
+    if (selectedArticles.size === 0) return;
     
-    const articleIds = Array.from(selectedIds);
+    const articleIds = Array.from(selectedArticles);
     setProcessingChunks(new Set(articleIds));
     
     try {
@@ -175,7 +181,7 @@ export function ArticlesTable({
       if (error) throw error;
 
       toast.success(`Bulk chunking completed - ${data.processed} articles processed`);
-      setSelectedIds(new Set());
+      onSelectionChange(new Set(), false);
       onRefresh();
     } catch (error) {
       console.error('Bulk chunking error:', error);
@@ -190,8 +196,8 @@ export function ArticlesTable({
     setCurrentPage(1);
   };
 
-  const isAllSelected = currentArticles.length > 0 && currentArticles.every(article => selectedIds.has(article.id));
-  const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
+  const isAllSelected = currentArticles.length > 0 && currentArticles.every(article => selectedArticles.has(article.id));
+  const isIndeterminate = selectedArticles.size > 0 && !isAllSelected;
 
   // Reset page when filter changes
   useEffect(() => {
@@ -217,6 +223,7 @@ export function ArticlesTable({
       'drafts': 'draft articles', 
       'missing-wp-id': 'articles missing WordPress ID',
       'missing-author': 'articles missing author',
+      'no-word-count': 'articles missing word count',
       'embedded': 'articles with embeddings',
       'not-embedded': 'articles without embeddings',
       'chunked': 'articles with chunks',
@@ -253,8 +260,8 @@ export function ArticlesTable({
       </div>
 
       <SimplifiedBulkOperations
-        selectedIds={selectedIds}
-        onClearSelection={() => setSelectedIds(new Set())}
+        selectedIds={selectedArticles}
+        onClearSelection={() => onSelectionChange(new Set(), false)}
         onRefresh={onRefresh}
         articles={articles}
         onBulkProcessChunks={handleBulkProcessChunks}
@@ -295,7 +302,7 @@ export function ArticlesTable({
                 <TableRow key={article.id}>
                   <TableCell>
                     <Checkbox
-                      checked={selectedIds.has(article.id)}
+                      checked={selectedArticles.has(article.id)}
                       onCheckedChange={(checked) => handleSelectOne(article.id, checked as boolean)}
                     />
                   </TableCell>
