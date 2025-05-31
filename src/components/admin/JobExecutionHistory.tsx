@@ -1,33 +1,45 @@
-
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, RefreshCw, Database, Calendar } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AlertCircle, CheckCircle2, RefreshCw, Database, Calendar, FileSync } from "lucide-react";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScheduledJobSettings } from "@/types/database";
 import { Json } from "@/integrations/supabase/types";
+import { SyncOperationDetails } from "./SyncOperationDetails";
 
 const JobExecutionHistory = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [jobHistory, setJobHistory] = useState<ScheduledJobSettings[]>([]);
+  const [syncOperations, setSyncOperations] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pgCronStatus, setPgCronStatus] = useState<{isAvailable: boolean, error?: string} | null>(null);
 
-  // Fetch job execution history
-  const fetchJobHistory = async () => {
+  // Fetch job execution history and sync operations
+  const fetchData = async () => {
     try {
+      // Fetch scheduled job settings
       const { data: jobSettings, error: settingsError } = await supabase
         .from('scheduled_job_settings')
         .select('*')
         .order('updated_at', { ascending: false });
       
       if (settingsError) throw settingsError;
-      
       setJobHistory(jobSettings || []);
+
+      // Fetch sync operations
+      const { data: syncOps, error: syncError } = await supabase
+        .from('sync_operations')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      if (syncError) throw syncError;
+      setSyncOperations(syncOps || []);
 
       // Check if pg_cron is installed and accessible
       try {
@@ -71,8 +83,8 @@ const JobExecutionHistory = () => {
       }
       
     } catch (error) {
-      console.error("Error fetching job history:", error);
-      toast.error("Failed to load job execution history");
+      console.error("Error fetching data:", error);
+      toast.error("Failed to load execution history");
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -81,13 +93,13 @@ const JobExecutionHistory = () => {
 
   // Initial fetch
   useEffect(() => {
-    fetchJobHistory();
+    fetchData();
   }, []);
 
   // Handle manual refresh
   const handleRefresh = () => {
     setIsRefreshing(true);
-    fetchJobHistory();
+    fetchData();
   };
 
   // Format date for display
@@ -166,9 +178,9 @@ const JobExecutionHistory = () => {
     <Card className="w-full">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <div>
-          <CardTitle>Job Execution History</CardTitle>
+          <CardTitle>Execution History</CardTitle>
           <CardDescription>
-            Recent scheduled job runs and their status
+            Recent scheduled jobs and sync operations
           </CardDescription>
         </div>
         <Button 
@@ -181,81 +193,118 @@ const JobExecutionHistory = () => {
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </Button>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Alert variant={diagnostics.severity as any}>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{diagnostics.title}</AlertTitle>
-          <AlertDescription>
-            {diagnostics.message}
-          </AlertDescription>
-        </Alert>
-        
-        {pgCronStatus && (
-          <div className="flex items-center space-x-2 text-sm">
-            <Database className="h-4 w-4" />
-            <span>Database Scheduler Status:</span>
-            {pgCronStatus.isAvailable ? (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                Available
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                Unavailable
-              </Badge>
-            )}
-          </div>
-        )}
+      <CardContent>
+        <Tabs defaultValue="sync-operations" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="sync-operations" className="flex items-center gap-2">
+              <FileSync className="h-4 w-4" />
+              Sync Operations
+            </TabsTrigger>
+            <TabsTrigger value="scheduled-jobs" className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Scheduled Jobs
+            </TabsTrigger>
+          </TabsList>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <p className="text-muted-foreground">Loading job history...</p>
-          </div>
-        ) : jobHistory.length === 0 ? (
-          <div className="text-center p-4 border border-dashed rounded-md">
-            <p className="text-muted-foreground">No job history found</p>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {jobHistory.map((job) => (
-              <div key={job.id} className="border rounded-md p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium">{job.job_name.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</h3>
-                  <Badge variant={job.is_enabled ? "outline" : "secondary"}>
-                    {job.is_enabled ? "Enabled" : "Disabled"}
+          <TabsContent value="sync-operations" className="space-y-4 mt-4">
+            {isLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <p className="text-muted-foreground">Loading sync operations...</p>
+              </div>
+            ) : syncOperations.length === 0 ? (
+              <div className="text-center p-4 border border-dashed rounded-md">
+                <p className="text-muted-foreground">No sync operations found</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {syncOperations.map((operation) => (
+                  <SyncOperationDetails
+                    key={operation.id}
+                    operation={operation}
+                    onRefresh={fetchData}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="scheduled-jobs" className="space-y-4 mt-4">
+            <Alert variant={diagnostics.severity as any}>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{diagnostics.title}</AlertTitle>
+              <AlertDescription>
+                {diagnostics.message}
+              </AlertDescription>
+            </Alert>
+            
+            {pgCronStatus && (
+              <div className="flex items-center space-x-2 text-sm">
+                <Database className="h-4 w-4" />
+                <span>Database Scheduler Status:</span>
+                {pgCronStatus.isAvailable ? (
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    Available
                   </Badge>
-                </div>
-                <div className="space-y-1 text-sm">
-                  <div className="flex items-center">
-                    <span className="text-muted-foreground min-w-[100px]">Schedule:</span>
-                    <span className="font-mono">{job.schedule}</span>
-                  </div>
-                  <div className="flex items-center">
-                    <span className="text-muted-foreground min-w-[100px]">Last Run:</span>
-                    <span className="flex items-center">
-                      {job.last_run ? (
-                        <>
-                          <CheckCircle2 className="h-4 w-4 text-green-500 mr-1" />
-                          {formatDate(job.last_run)}
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-4 w-4 text-amber-500 mr-1" />
-                          Never executed
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-start">
-                    <span className="text-muted-foreground min-w-[100px]">Parameters:</span>
-                    <div className="font-mono text-xs bg-muted p-2 rounded-md overflow-auto max-w-[300px]">
-                      {formatJobParameters(job.parameters)}
+                ) : (
+                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
+                    Unavailable
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            {isLoading ? (
+              <div className="flex items-center justify-center p-8">
+                <p className="text-muted-foreground">Loading job history...</p>
+              </div>
+            ) : jobHistory.length === 0 ? (
+              <div className="text-center p-4 border border-dashed rounded-md">
+                <p className="text-muted-foreground">No job history found</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {jobHistory.map((job) => (
+                  <div key={job.id} className="border rounded-md p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-medium">{job.job_name.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}</h3>
+                      <Badge variant={job.is_enabled ? "outline" : "secondary"}>
+                        {job.is_enabled ? "Enabled" : "Disabled"}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex items-center">
+                        <span className="text-muted-foreground min-w-[100px]">Schedule:</span>
+                        <span className="font-mono">{job.schedule}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="text-muted-foreground min-w-[100px]">Last Run:</span>
+                        <span className="flex items-center">
+                          {job.last_run ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4 text-green-500 mr-1" />
+                              {formatDate(job.last_run)}
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle className="h-4 w-4 text-amber-500 mr-1" />
+                              Never executed
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div className="flex items-start">
+                        <span className="text-muted-foreground min-w-[100px]">Parameters:</span>
+                        <div className="font-mono text-xs bg-muted p-2 rounded-md overflow-auto max-w-[300px]">
+                          {formatJobParameters(job.parameters)}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            )}
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );

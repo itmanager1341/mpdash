@@ -63,7 +63,19 @@ async function resolveDuplicateArticle(supabase: any, currentArticle: any, confl
       return { action: 'error', error: deleteError.message };
     }
     
-    return { action: 'merged', deletedArticleId: currentArticle.id, keptArticleId: conflictingArticle.id };
+    return { 
+      action: 'merged', 
+      deletedArticleId: currentArticle.id, 
+      keptArticleId: conflictingArticle.id,
+      mergeDetails: {
+        deletedTitle: currentArticle.title,
+        keptTitle: conflictingArticle.title,
+        titleSimilarity,
+        dateDiff,
+        wordpressId: wpPost.id,
+        mergedAt: new Date().toISOString()
+      }
+    };
   } else {
     // Articles are different - clear the WordPress ID from the conflicting article
     console.log(`Different articles with same WP ID - clearing WP ID from conflicting article ${conflictingArticle.id}`);
@@ -281,6 +293,23 @@ serve(async (req) => {
     console.log(`Date range: ${startDate || 'no start'} to ${endDate || 'no end'}`)
     console.log(`Operation ID: ${operationId}`)
 
+    // Create sync operation record
+    const { data: syncOperation, error: syncOpError } = await supabase
+      .from('sync_operations')
+      .insert({
+        operation_type: targetArticleIds ? 'selected_article_sync' : 'wordpress_import',
+        total_items: targetArticleIds ? targetArticleIds.length : 0,
+        status: 'running'
+      })
+      .select('id')
+      .single();
+
+    if (syncOpError) {
+      console.error('Failed to create sync operation:', syncOpError);
+    }
+
+    const syncOpId = syncOperation?.id;
+
     const auth = btoa(`${username}:${password}`)
 
     const syncResults = {
@@ -292,7 +321,9 @@ serve(async (req) => {
       merged: 0,
       conflicts_resolved: 0,
       errors: [],
-      matchDetails: []
+      matchDetails: [],
+      mergeDecisions: [],
+      errorDetails: []
     }
 
     let articlesToProcess = [];
@@ -370,6 +401,14 @@ serve(async (req) => {
 
     console.log(`Processing ${articlesToProcess.length} articles...`)
 
+    // Update total_items now that we know the count
+    if (syncOpId) {
+      await supabase
+        .from('sync_operations')
+        .update({ total_items: articlesToProcess.length })
+        .eq('id', syncOpId);
+    }
+
     for (let i = 0; i < articlesToProcess.length; i++) {
       // Check for cancellation every few articles
       if (operationId && i % 5 === 0 && await checkCancellation(supabase, operationId)) {
@@ -381,6 +420,14 @@ serve(async (req) => {
       
       try {
         syncResults.processed++
+        
+        // Update progress
+        if (syncOpId) {
+          await supabase
+            .from('sync_operations')
+            .update({ completed_items: syncResults.processed })
+            .eq('id', syncOpId);
+        }
         
         console.log(`\n--- Processing article ${syncResults.processed}/${articlesToProcess.length} ---`);
 
@@ -438,12 +485,29 @@ serve(async (req) => {
               
               if (resolution.action === 'merged') {
                 syncResults.merged++;
+                syncResults.mergeDecisions.push({
+                  id: `merge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'automatic_merge',
+                  deletedArticle: {
+                    id: resolution.deletedArticleId,
+                    title: resolution.mergeDetails.deletedTitle
+                  },
+                  keptArticle: {
+                    id: resolution.keptArticleId,
+                    title: resolution.mergeDetails.keptTitle
+                  },
+                  reason: `High similarity (${(resolution.mergeDetails.titleSimilarity * 100).toFixed(1)}%) and close dates (${resolution.mergeDetails.dateDiff.toFixed(1)} days apart)`,
+                  canUndo: true,
+                  mergedAt: resolution.mergeDetails.mergedAt,
+                  wordpressId: resolution.mergeDetails.wordpressId
+                });
+                
                 syncResults.matchDetails.push({
                   wordpress_id: wpPost.id,
                   article_id: resolution.keptArticleId,
                   deleted_duplicate_id: resolution.deletedArticleId,
                   match_type: 'merged_duplicate',
-                  confidence: 1.0,
+                  confidence: resolution.mergeDetails.titleSimilarity,
                   title: article.title
                 });
                 console.log(`✓ Merged duplicate article: ${article.title}`);
@@ -451,9 +515,15 @@ serve(async (req) => {
               } else if (resolution.action === 'conflict_resolved') {
                 syncResults.conflicts_resolved++;
                 console.log(`✓ Resolved WordPress ID conflict for: ${article.title}`);
-                // Continue with the update since we cleared the conflict
               } else if (resolution.action === 'error') {
                 syncResults.errors.push(`Article "${article.title}": ${resolution.error}`);
+                syncResults.errorDetails.push({
+                  articleId: article.id,
+                  articleTitle: article.title,
+                  errorType: 'merge_error',
+                  error: resolution.error,
+                  timestamp: new Date().toISOString()
+                });
                 continue;
               }
             }
@@ -550,8 +620,40 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Error processing article:`, error)
-        syncResults.errors.push(`Article "${article.title || article.id}": ${error.message}`)
+        const errorMsg = `Article "${article.title || article.id}": ${error.message}`;
+        syncResults.errors.push(errorMsg);
+        syncResults.errorDetails.push({
+          articleId: article.id,
+          articleTitle: article.title || 'Unknown',
+          errorType: 'processing_error',
+          error: error.message,
+          timestamp: new Date().toISOString(),
+          stack: error.stack
+        });
       }
+    }
+
+    // Update sync operation with final results
+    if (syncOpId) {
+      await supabase
+        .from('sync_operations')
+        .update({
+          status: 'completed',
+          completed_items: syncResults.processed,
+          results_summary: {
+            processed: syncResults.processed,
+            created: syncResults.created,
+            updated: syncResults.updated,
+            matched: syncResults.matched,
+            merged: syncResults.merged,
+            conflicts_resolved: syncResults.conflicts_resolved,
+            skipped: syncResults.skipped,
+            total_errors: syncResults.errors.length
+          },
+          error_details: syncResults.errorDetails,
+          merge_decisions: syncResults.mergeDecisions
+        })
+        .eq('id', syncOpId);
     }
 
     console.log(`\n=== Enhanced sync completed ===`);
@@ -568,7 +670,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         results: syncResults,
-        totalArticles: articlesToProcess.length
+        totalArticles: articlesToProcess.length,
+        syncOperationId: syncOpId
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

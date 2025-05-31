@@ -780,8 +780,11 @@ export type Database = {
         Row: {
           completed_items: number | null
           created_at: string
+          error_details: Json | null
           id: string
+          merge_decisions: Json | null
           operation_type: string
+          results_summary: Json | null
           status: string
           total_items: number | null
           updated_at: string
@@ -789,8 +792,11 @@ export type Database = {
         Insert: {
           completed_items?: number | null
           created_at?: string
+          error_details?: Json | null
           id?: string
+          merge_decisions?: Json | null
           operation_type: string
+          results_summary?: Json | null
           status?: string
           total_items?: number | null
           updated_at?: string
@@ -798,8 +804,11 @@ export type Database = {
         Update: {
           completed_items?: number | null
           created_at?: string
+          error_details?: Json | null
           id?: string
+          merge_decisions?: Json | null
           operation_type?: string
+          results_summary?: Json | null
           status?: string
           total_items?: number | null
           updated_at?: string
