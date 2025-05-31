@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -134,7 +133,7 @@ export function ArticlesTable({
   const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
 
   // Reset page when filter changes
-  useState(() => {
+  useEffect(() => {
     setCurrentPage(1);
   }, [activeFilter]);
 
