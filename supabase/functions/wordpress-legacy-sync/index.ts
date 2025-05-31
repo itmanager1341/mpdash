@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -89,13 +90,14 @@ async function resolveDuplicateArticle(supabase: any, currentArticle: any, confl
 async function searchWordPressPostByTitle(title: string, wordpressUrl: string, auth: string) {
   if (!title || title.length < 5) return null;
   
-  const searchQuery = encodeURIComponent(title.substring(0, 50));
-  const searchUrl = `${wordpressUrl}/wp-json/wp/v2/posts?search=${searchQuery}&per_page=5&_embed`;
+  console.log(`Searching WordPress for exact title: "${title}"`);
   
-  console.log(`Searching WordPress for: "${title}"`);
+  // First try exact title search
+  const exactSearchQuery = encodeURIComponent(title);
+  const exactSearchUrl = `${wordpressUrl}/wp-json/wp/v2/posts?search=${exactSearchQuery}&per_page=10&_embed`;
   
   try {
-    const response = await fetch(searchUrl, {
+    const response = await fetch(exactSearchUrl, {
       headers: {
         'Authorization': `Basic ${auth}`,
         'Content-Type': 'application/json'
@@ -103,22 +105,40 @@ async function searchWordPressPostByTitle(title: string, wordpressUrl: string, a
     });
 
     if (!response.ok) {
-      console.log(`WordPress search failed: ${response.status}`);
+      console.log(`WordPress search failed: ${response.status} ${response.statusText}`);
       return null;
     }
 
     const results = await response.json();
+    console.log(`WordPress search returned ${results.length} results`);
+    
     if (!results || results.length === 0) {
       console.log('No WordPress posts found');
       return null;
     }
 
-    // Find best title match
+    // Log all found results for debugging
+    results.forEach((post: any, index: number) => {
+      console.log(`Result ${index + 1}: "${post.title.rendered}" (ID: ${post.id})`);
+    });
+
+    // First check for exact match
+    let exactMatch = results.find((post: any) => 
+      post.title.rendered.toLowerCase().trim() === title.toLowerCase().trim()
+    );
+
+    if (exactMatch) {
+      console.log(`Found EXACT WordPress match: "${exactMatch.title.rendered}" (ID: ${exactMatch.id})`);
+      return { post: exactMatch, similarity: 1.0 };
+    }
+
+    // Find best similarity match with lower threshold
     let bestMatch = null;
-    let bestScore = 0.8;
+    let bestScore = 0.6; // Lowered from 0.8
 
     for (const post of results) {
       const similarity = calculateTitleSimilarity(title, post.title.rendered);
+      console.log(`Similarity for "${post.title.rendered}": ${similarity.toFixed(3)}`);
       if (similarity > bestScore) {
         bestScore = similarity;
         bestMatch = { post, similarity };
@@ -128,6 +148,8 @@ async function searchWordPressPostByTitle(title: string, wordpressUrl: string, a
     if (bestMatch) {
       console.log(`Found WordPress match: "${bestMatch.post.title.rendered}" (confidence: ${bestScore.toFixed(2)})`);
       return bestMatch;
+    } else {
+      console.log(`No matches above threshold (${0.6}) found`);
     }
 
     return null;
@@ -403,6 +425,7 @@ serve(async (req) => {
           if (!wpPost) {
             console.log(`No WordPress post found for: "${article.title}"`);
             syncResults.skipped++;
+            syncResults.errors.push(`No WordPress match found for "${article.title}"`);
             continue;
           }
 
@@ -568,3 +591,82 @@ serve(async (req) => {
     )
   }
 })
+
+// Simplified author handling - works directly with authors table
+async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any) {
+  console.log(`Processing author:`, {
+    wordpress_author_id: wpAuthorId,
+    author_data: wpAuthorData ? {
+      name: wpAuthorData.name,
+      slug: wpAuthorData.slug,
+      description: wpAuthorData.description
+    } : 'No author data'
+  });
+
+  if (!wpAuthorData || !wpAuthorId) {
+    console.log('No author data available');
+    return null;
+  }
+
+  // Check if author already exists by WordPress ID
+  const { data: existingAuthor } = await supabase
+    .from('authors')
+    .select('id, name')
+    .eq('wordpress_author_id', wpAuthorId)
+    .maybeSingle();
+
+  if (existingAuthor) {
+    console.log(`Found existing author by WordPress ID: ${existingAuthor.name} (${existingAuthor.id})`);
+    return existingAuthor.id;
+  }
+
+  // Try to find existing author by name (case-insensitive)
+  const { data: authorByName } = await supabase
+    .from('authors')
+    .select('id, name, wordpress_author_id')
+    .ilike('name', wpAuthorData.name)
+    .maybeSingle();
+
+  if (authorByName && !authorByName.wordpress_author_id) {
+    // Found existing author without WordPress ID - update it
+    console.log(`Found existing author by name, updating with WordPress info: ${authorByName.name} (${authorByName.id})`);
+    
+    const { error: updateError } = await supabase
+      .from('authors')
+      .update({
+        wordpress_author_id: wpAuthorId,
+        wordpress_author_name: wpAuthorData.name
+      })
+      .eq('id', authorByName.id);
+
+    if (updateError) {
+      console.error('Error updating author with WordPress info:', updateError);
+    }
+
+    return authorByName.id;
+  }
+
+  // Create new author
+  console.log(`Creating new author: ${wpAuthorData.name}`);
+  const { data: newAuthor, error: authorError } = await supabase
+    .from('authors')
+    .insert({
+      name: wpAuthorData.name,
+      author_type: 'external',
+      email: wpAuthorData.email || null,
+      bio: wpAuthorData.description || null,
+      wordpress_author_id: wpAuthorId,
+      wordpress_author_name: wpAuthorData.name,
+      is_active: true
+    })
+    .select('id')
+    .single();
+
+  if (authorError) {
+    console.error('Error creating author:', authorError);
+    return null;
+  }
+
+  console.log(`Created new author: ${wpAuthorData.name} (${newAuthor.id})`);
+  return newAuthor.id;
+}

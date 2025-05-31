@@ -3,29 +3,27 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Download, 
   RefreshCw, 
-  Search, 
   AlertTriangle,
-  Users
+  Users,
+  CheckCircle,
+  Clock
 } from "lucide-react";
 import { toast } from "sonner";
 import { ArticlesTable } from "@/components/admin/ArticlesTable";
 import { ArticleImportDialog } from "@/components/admin/ArticleImportDialog";
 
 export default function ArticlesManagement() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [showImportDialog, setShowImportDialog] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: articles, isLoading: articlesLoading } = useQuery({
-    queryKey: ['articles', searchTerm, statusFilter],
+    queryKey: ['articles'],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('articles')
         .select(`
           *,
@@ -37,15 +35,6 @@ export default function ArticlesManagement() {
         `)
         .order('created_at', { ascending: false });
 
-      if (searchTerm) {
-        query = query.ilike('title', `%${searchTerm}%`);
-      }
-
-      if (statusFilter !== 'all') {
-        query = query.eq('status', statusFilter);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
       return data;
     }
@@ -57,7 +46,7 @@ export default function ArticlesManagement() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('articles')
-        .select('id, wordpress_id, primary_author_id, source_url, status');
+        .select('id, wordpress_id, primary_author_id, source_url, status, embedding');
       
       if (error) throw error;
 
@@ -66,6 +55,8 @@ export default function ArticlesManagement() {
         missingWordPressId: data.filter(a => !a.wordpress_id).length,
         missingAuthor: data.filter(a => !a.primary_author_id).length,
         missingSourceUrl: data.filter(a => !a.source_url).length,
+        hasEmbedding: data.filter(a => a.embedding).length,
+        missingEmbedding: data.filter(a => !a.embedding).length,
         legacy: data.filter(a => !a.wordpress_id && !a.source_url).length
       };
 
@@ -153,7 +144,7 @@ export default function ArticlesManagement() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Total Articles</CardTitle>
@@ -206,6 +197,23 @@ export default function ArticlesManagement() {
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-medium flex items-center gap-1">
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                  Embedded
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">
+                  {dataQualityStats.hasEmbedding}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3 inline mr-1" />
+                  {dataQualityStats.missingEmbedding} not embedded
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
@@ -225,33 +233,6 @@ export default function ArticlesManagement() {
           </CardContent>
         </Card>
       )}
-
-      {/* Filters */}
-      <div className="flex gap-4 items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search articles..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 border rounded-md"
-        >
-          <option value="all">All Status</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
-          <option value="archived">Archived</option>
-        </select>
-        <Button variant="outline" onClick={handleRefresh}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
 
       <ArticlesTable
         articles={articles || []}

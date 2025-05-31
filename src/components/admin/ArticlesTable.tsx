@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -12,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SimplifiedBulkOperations } from "./SimplifiedBulkOperations";
-import { ExternalLink, Trash2, RefreshCw } from "lucide-react";
+import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -36,11 +37,25 @@ export function ArticlesTable({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const totalPages = Math.ceil(articles.length / ARTICLES_PER_PAGE);
+  // Filter articles based on search term
+  const filteredArticles = articles.filter(article => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    const titleMatch = article.title?.toLowerCase().includes(searchLower);
+    const authorMatch = article.authors?.name?.toLowerCase().includes(searchLower) || 
+                       article.wordpress_author_name?.toLowerCase().includes(searchLower);
+    const excerptMatch = article.excerpt?.toLowerCase().includes(searchLower);
+    
+    return titleMatch || authorMatch || excerptMatch;
+  });
+
+  const totalPages = Math.ceil(filteredArticles.length / ARTICLES_PER_PAGE);
   const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
   const endIndex = startIndex + ARTICLES_PER_PAGE;
-  const currentArticles = articles.slice(startIndex, endIndex);
+  const currentArticles = filteredArticles.slice(startIndex, endIndex);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -86,6 +101,11 @@ export function ArticlesTable({
     }
   };
 
+  const handleClearSearch = () => {
+    setSearchTerm("");
+    setCurrentPage(1);
+  };
+
   const isAllSelected = currentArticles.length > 0 && currentArticles.every(article => selectedIds.has(article.id));
   const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
 
@@ -102,6 +122,32 @@ export function ArticlesTable({
 
   return (
     <div className="space-y-4">
+      {/* Search Bar */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search articles by title, author, or content..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1); // Reset to first page when searching
+            }}
+            className="pl-10"
+          />
+        </div>
+        {searchTerm && (
+          <Button variant="outline" onClick={handleClearSearch}>
+            Clear
+          </Button>
+        )}
+        {searchTerm && (
+          <span className="text-sm text-muted-foreground">
+            {filteredArticles.length} of {articles.length} articles
+          </span>
+        )}
+      </div>
+
       <SimplifiedBulkOperations
         selectedIds={selectedIds}
         onClearSelection={() => setSelectedIds(new Set())}
@@ -125,14 +171,15 @@ export function ArticlesTable({
               <TableHead>Status</TableHead>
               <TableHead>Published</TableHead>
               <TableHead>WP ID</TableHead>
+              <TableHead>Embedded</TableHead>
               <TableHead className="w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {currentArticles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                  No articles found
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  {searchTerm ? 'No articles found matching your search' : 'No articles found'}
                 </TableCell>
               </TableRow>
             ) : (
@@ -202,6 +249,21 @@ export function ArticlesTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {article.embedding ? (
+                        <div className="flex items-center gap-1 text-green-600">
+                          <CheckCircle className="h-4 w-4" />
+                          <span className="text-xs">Yes</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-gray-500">
+                          <Clock className="h-4 w-4" />
+                          <span className="text-xs">No</span>
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -247,7 +309,8 @@ export function ArticlesTable({
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Showing {startIndex + 1} to {Math.min(endIndex, articles.length)} of {articles.length} articles
+            Showing {startIndex + 1} to {Math.min(endIndex, filteredArticles.length)} of {filteredArticles.length} articles
+            {searchTerm && ` (filtered from ${articles.length} total)`}
           </div>
           <div className="flex items-center gap-2">
             <Button
