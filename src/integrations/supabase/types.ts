@@ -201,8 +201,10 @@ export type Database = {
           article_date: string | null
           byline_text: string | null
           chunks_count: number | null
+          clean_content: string | null
           co_authors: string[] | null
           content_complexity_score: number | null
+          content_hash: string | null
           content_variants: Json | null
           created_at: string | null
           destinations: string[] | null
@@ -242,8 +244,10 @@ export type Database = {
           article_date?: string | null
           byline_text?: string | null
           chunks_count?: number | null
+          clean_content?: string | null
           co_authors?: string[] | null
           content_complexity_score?: number | null
+          content_hash?: string | null
           content_variants?: Json | null
           created_at?: string | null
           destinations?: string[] | null
@@ -283,8 +287,10 @@ export type Database = {
           article_date?: string | null
           byline_text?: string | null
           chunks_count?: number | null
+          clean_content?: string | null
           co_authors?: string[] | null
           content_complexity_score?: number | null
+          content_hash?: string | null
           content_variants?: Json | null
           created_at?: string | null
           destinations?: string[] | null
@@ -655,6 +661,8 @@ export type Database = {
       }
       news: {
         Row: {
+          clean_content: string | null
+          content_hash: string | null
           content_variants: Json | null
           destinations: string[] | null
           editorial_content: string | null
@@ -680,6 +688,8 @@ export type Database = {
           url: string
         }
         Insert: {
+          clean_content?: string | null
+          content_hash?: string | null
           content_variants?: Json | null
           destinations?: string[] | null
           editorial_content?: string | null
@@ -705,6 +715,8 @@ export type Database = {
           url: string
         }
         Update: {
+          clean_content?: string | null
+          content_hash?: string | null
           content_variants?: Json | null
           destinations?: string[] | null
           editorial_content?: string | null

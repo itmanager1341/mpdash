@@ -1,6 +1,6 @@
 
 import { supabase } from "@/integrations/supabase/client";
-import { extractWordCountFromArticle } from "./wordCountUtils";
+import { extractCleanContent, generateContentHash, calculateWordCount } from "./wordCountUtils";
 
 // Dynamic imports for better compatibility in Vite/Lovable environment
 let mammoth: any;
@@ -25,6 +25,9 @@ const initializePackages = async () => {
 export interface ProcessedDocument {
   title: string;
   content: string;
+  cleanContent: string;
+  contentHash: string;
+  wordCount: number;
   type: string;
   metadata: {
     originalFilename: string;
@@ -112,6 +115,11 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
       throw new Error(`No content could be extracted from ${file.name}. The file may be empty or corrupted.`);
     }
 
+    // Clean the content and calculate metrics
+    const cleanContent = extractedContent.trim();
+    const contentHash = generateContentHash(cleanContent);
+    const wordCount = calculateWordCount(cleanContent);
+
     // Upload file to storage (optional, for archival purposes)
     let storageUrl;
     try {
@@ -134,12 +142,16 @@ export async function processDocumentFile(file: File): Promise<ProcessedDocument
     console.log(`Successfully processed ${file.name}:`, {
       title,
       contentLength: extractedContent.length,
+      wordCount,
       storageUrl
     });
 
     return {
       title,
       content: extractedContent,
+      cleanContent,
+      contentHash,
+      wordCount,
       type: "article",
       metadata: {
         originalFilename: file.name,
@@ -170,25 +182,25 @@ export async function uploadDocumentToStorage(file: File): Promise<string> {
   return data.path;
 }
 
-// Updated draft creation to calculate and store word count separately
+// Updated draft creation to use clean_content field
 export async function createDraftFromDocument(document: ProcessedDocument): Promise<any> {
   const newDraft = {
-    title: document.title, // Use filename as-is
-    theme: document.title, // Use filename as theme too
-    summary: '', // Leave blank for user to fill
-    outline: document.content, // Put full content in outline for now
+    title: document.title,
+    theme: document.title,
+    summary: '',
+    outline: document.content,
     source_type: 'document',
     status: 'draft',
     content_variants: {
       editorial_content: {
-        headline: '', // Leave blank - no auto-generated marketing copy
-        summary: '', // Leave blank - no auto-generated marketing copy
-        full_content: document.content, // Full extracted content goes here
-        cta: '' // Leave blank
+        headline: '',
+        summary: '',
+        full_content: document.content,
+        cta: ''
       },
       metadata: {
-        seo_title: document.title, // Just use filename
-        seo_description: '', // Leave blank for user to fill
+        seo_title: document.title,
+        seo_description: '',
         tags: [],
         original_filename: document.metadata.originalFilename,
         storage_url: document.metadata.storageUrl
@@ -201,7 +213,7 @@ export async function createDraftFromDocument(document: ProcessedDocument): Prom
     updated_at: new Date().toISOString()
   };
 
-  console.log("Creating simplified editor brief from document:", newDraft);
+  console.log("Creating editor brief from document:", newDraft);
 
   const { data, error } = await supabase
     .from('editor_briefs')
@@ -216,4 +228,47 @@ export async function createDraftFromDocument(document: ProcessedDocument): Prom
 
   console.log("Editor brief created successfully from document:", data);
   return data;
+}
+
+// Function to extract and populate clean_content for existing articles
+export async function extractCleanContentForArticle(articleId: string): Promise<boolean> {
+  try {
+    // Fetch the article
+    const { data: article, error: fetchError } = await supabase
+      .from('articles')
+      .select('*')
+      .eq('id', articleId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching article:', fetchError);
+      return false;
+    }
+
+    // Extract clean content
+    const cleanContent = extractCleanContent(article);
+    const contentHash = generateContentHash(cleanContent);
+    const wordCount = calculateWordCount(cleanContent);
+
+    // Update the article with clean content, hash, and word count
+    const { error: updateError } = await supabase
+      .from('articles')
+      .update({
+        clean_content: cleanContent,
+        content_hash: contentHash,
+        word_count: wordCount
+      })
+      .eq('id', articleId);
+
+    if (updateError) {
+      console.error('Error updating article with clean content:', updateError);
+      return false;
+    }
+
+    console.log(`Successfully extracted clean content for article ${articleId}: ${wordCount} words`);
+    return true;
+  } catch (error) {
+    console.error('Error in extractCleanContentForArticle:', error);
+    return false;
+  }
 }

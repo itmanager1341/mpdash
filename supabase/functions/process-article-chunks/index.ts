@@ -133,15 +133,15 @@ Deno.serve(async (req) => {
     
     let query = supabase
       .from('articles')
-      .select('id, title, content_variants, word_count, is_chunked')
-      .eq('is_chunked', false)
-      .is('content_variants', 'not.null')
-      .gt('word_count', 0); // Only process articles that already have word count
+      .select('id, title, clean_content, content_variants, word_count, is_chunked')
+      .eq('is_chunked', false);
     
     if (articleIds && Array.isArray(articleIds)) {
       query = query.in('id', articleIds);
     } else {
-      query = query.limit(limit);
+      // Only process articles that have clean_content or word_count > 0
+      query = query.or('clean_content.not.is.null,word_count.gt.0')
+        .limit(limit);
     }
 
     const { data: articles, error } = await query;
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
     if (!articles || articles.length === 0) {
       console.log('⚠️ No articles found for chunking');
       return new Response(JSON.stringify({
-        message: 'No articles found for chunking. Articles need word count > 0.',
+        message: 'No articles found for chunking. Articles need clean_content or word_count > 0.',
         processed: 0
       }), { status: 200 });
     }
@@ -167,17 +167,27 @@ Deno.serve(async (req) => {
       console.log(`📝 Processing article: ${article.id} (word count: ${article.word_count})`);
       
       try {
-        // Parse content variants
-        const contentVariants = typeof article.content_variants === 'string' 
-          ? JSON.parse(article.content_variants) 
-          : article.content_variants;
-
-        const longContent = contentVariants?.long || '';
-        const summary = contentVariants?.summary || '';
+        let contentToProcess = '';
         
-        if (!longContent || longContent.trim().length < 50) {
-          console.warn(`⏭️ Skipping article ${article.id} - insufficient content`);
-          continue;
+        // Priority 1: Use clean_content if available
+        if (article.clean_content) {
+          contentToProcess = article.clean_content;
+          console.log(`Using clean_content for article ${article.id}: ${contentToProcess.length} characters`);
+        } else {
+          // Fallback: Extract from content_variants
+          const contentVariants = typeof article.content_variants === 'string' 
+            ? JSON.parse(article.content_variants) 
+            : article.content_variants;
+
+          const longContent = contentVariants?.long || '';
+          
+          if (!longContent || longContent.trim().length < 50) {
+            console.warn(`⏭️ Skipping article ${article.id} - insufficient content`);
+            continue;
+          }
+          
+          contentToProcess = longContent;
+          console.log(`Using content_variants.long for article ${article.id}: ${contentToProcess.length} characters`);
         }
 
         // Generate chunks for different content types
@@ -188,13 +198,8 @@ Deno.serve(async (req) => {
           allChunks.push(...intelligentChunk(article.title, 'title'));
         }
         
-        // Summary chunk (if exists and different from content)
-        if (summary && summary !== longContent) {
-          allChunks.push(...intelligentChunk(summary, 'summary'));
-        }
-        
         // Content chunks
-        allChunks.push(...intelligentChunk(longContent, 'content'));
+        allChunks.push(...intelligentChunk(contentToProcess, 'content'));
 
         console.log(`📊 Generated ${allChunks.length} chunks for article ${article.id}`);
 
@@ -222,8 +227,9 @@ Deno.serve(async (req) => {
               chunk_type: chunk.chunk_type,
               embedding: embedding,
               metadata: {
-                original_word_count: article.word_count, // Use existing word count
-                chunk_method: 'intelligent_sentence_boundary'
+                original_word_count: article.word_count,
+                chunk_method: 'intelligent_sentence_boundary_clean_content',
+                source_field: article.clean_content ? 'clean_content' : 'content_variants'
               }
             });
 
@@ -237,7 +243,8 @@ Deno.serve(async (req) => {
         results.push({
           article_id: article.id,
           chunks_created: processedChunks,
-          total_word_count: article.word_count // Use existing word count
+          total_word_count: article.word_count,
+          source_field: article.clean_content ? 'clean_content' : 'content_variants'
         });
 
         console.log(`✅ Successfully processed article ${article.id} with ${processedChunks} chunks`);
