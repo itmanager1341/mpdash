@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,14 +9,25 @@ import {
   AlertTriangle,
   Users,
   CheckCircle,
-  Clock
+  Clock,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 import { ArticlesTable } from "@/components/admin/ArticlesTable";
 import { ArticleImportDialog } from "@/components/admin/ArticleImportDialog";
 
+export type ArticleFilter = 
+  | 'all' 
+  | 'published' 
+  | 'drafts' 
+  | 'missing-wp-id' 
+  | 'missing-author' 
+  | 'embedded' 
+  | 'not-embedded';
+
 export default function ArticlesManagement() {
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<ArticleFilter>('all');
   const queryClient = useQueryClient();
 
   const { data: articles, isLoading: articlesLoading } = useQuery({
@@ -123,6 +133,18 @@ export default function ArticlesManagement() {
   const publishedArticles = articles?.filter(a => a.status === 'published').length || 0;
   const draftArticles = articles?.filter(a => a.status === 'draft').length || 0;
 
+  const getFilterTitle = () => {
+    switch (activeFilter) {
+      case 'published': return 'Published Articles';
+      case 'drafts': return 'Draft Articles';
+      case 'missing-wp-id': return 'Articles Missing WordPress ID';
+      case 'missing-author': return 'Articles Missing Author';
+      case 'embedded': return 'Articles with Embeddings';
+      case 'not-embedded': return 'Articles without Embeddings';
+      default: return 'All Articles';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -143,9 +165,31 @@ export default function ArticlesManagement() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Active Filter Indicator */}
+      {activeFilter !== 'all' && (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <span className="text-sm font-medium text-blue-700">
+            Showing: {getFilterTitle()}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setActiveFilter('all')}
+            className="h-6 w-6 p-0 text-blue-600 hover:text-blue-700"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Interactive Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-        <Card>
+        <Card 
+          className={`cursor-pointer transition-all hover:shadow-md ${
+            activeFilter === 'all' ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+          }`}
+          onClick={() => setActiveFilter('all')}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Total Articles</CardTitle>
           </CardHeader>
@@ -153,7 +197,13 @@ export default function ArticlesManagement() {
             <div className="text-2xl font-bold">{totalArticles}</div>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card 
+          className={`cursor-pointer transition-all hover:shadow-md ${
+            activeFilter === 'published' ? 'ring-2 ring-green-500 bg-green-50' : 'hover:bg-gray-50'
+          }`}
+          onClick={() => setActiveFilter('published')}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Published</CardTitle>
           </CardHeader>
@@ -161,7 +211,13 @@ export default function ArticlesManagement() {
             <div className="text-2xl font-bold text-green-600">{publishedArticles}</div>
           </CardContent>
         </Card>
-        <Card>
+
+        <Card 
+          className={`cursor-pointer transition-all hover:shadow-md ${
+            activeFilter === 'drafts' ? 'ring-2 ring-yellow-500 bg-yellow-50' : 'hover:bg-gray-50'
+          }`}
+          onClick={() => setActiveFilter('drafts')}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">Drafts</CardTitle>
           </CardHeader>
@@ -169,9 +225,15 @@ export default function ArticlesManagement() {
             <div className="text-2xl font-bold text-yellow-600">{draftArticles}</div>
           </CardContent>
         </Card>
+
         {dataQualityStats && (
           <>
-            <Card>
+            <Card 
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                activeFilter === 'missing-wp-id' ? 'ring-2 ring-red-500 bg-red-50' : 'hover:bg-gray-50'
+              }`}
+              onClick={() => setActiveFilter('missing-wp-id')}
+            >
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-1">
                   <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -184,7 +246,13 @@ export default function ArticlesManagement() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+
+            <Card 
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                activeFilter === 'missing-author' ? 'ring-2 ring-orange-500 bg-orange-50' : 'hover:bg-gray-50'
+              }`}
+              onClick={() => setActiveFilter('missing-author')}
+            >
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-1">
                   <Users className="h-4 w-4 text-orange-500" />
@@ -197,7 +265,13 @@ export default function ArticlesManagement() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
+
+            <Card 
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                activeFilter === 'embedded' ? 'ring-2 ring-green-500 bg-green-50' : 'hover:bg-gray-50'
+              }`}
+              onClick={() => setActiveFilter('embedded')}
+            >
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-1">
                   <CheckCircle className="h-4 w-4 text-green-500" />
@@ -208,7 +282,15 @@ export default function ArticlesManagement() {
                 <div className="text-2xl font-bold text-green-600">
                   {dataQualityStats.hasEmbedding}
                 </div>
-                <div className="text-xs text-muted-foreground">
+                <div 
+                  className={`text-xs cursor-pointer transition-colors ${
+                    activeFilter === 'not-embedded' ? 'text-blue-600 font-medium' : 'text-muted-foreground hover:text-gray-700'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveFilter('not-embedded');
+                  }}
+                >
                   <Clock className="h-3 w-3 inline mr-1" />
                   {dataQualityStats.missingEmbedding} not embedded
                 </div>
@@ -240,6 +322,7 @@ export default function ArticlesManagement() {
         onDelete={handleDeleteArticle}
         onUpdate={handleUpdateArticle}
         onRefresh={handleRefresh}
+        activeFilter={activeFilter}
       />
 
       <ArticleImportDialog

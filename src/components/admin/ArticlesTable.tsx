@@ -16,6 +16,7 @@ import { SimplifiedBulkOperations } from "./SimplifiedBulkOperations";
 import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { ArticleFilter } from "@/pages/ArticlesManagement";
 
 interface ArticlesTableProps {
   articles: any[];
@@ -23,6 +24,7 @@ interface ArticlesTableProps {
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: any) => void;
   onRefresh: () => void;
+  activeFilter: ArticleFilter;
 }
 
 const ARTICLES_PER_PAGE = 20;
@@ -32,15 +34,37 @@ export function ArticlesTable({
   isLoading, 
   onDelete, 
   onUpdate, 
-  onRefresh 
+  onRefresh,
+  activeFilter 
 }: ArticlesTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Filter articles based on search term
-  const filteredArticles = articles.filter(article => {
+  // Apply filter first, then search
+  const filteredByStatus = articles.filter(article => {
+    switch (activeFilter) {
+      case 'published':
+        return article.status === 'published';
+      case 'drafts':
+        return article.status === 'draft';
+      case 'missing-wp-id':
+        return !article.wordpress_id;
+      case 'missing-author':
+        return !article.primary_author_id;
+      case 'embedded':
+        return article.embedding;
+      case 'not-embedded':
+        return !article.embedding;
+      case 'all':
+      default:
+        return true;
+    }
+  });
+
+  // Then apply search filter
+  const filteredArticles = filteredByStatus.filter(article => {
     if (!searchTerm) return true;
     
     const searchLower = searchTerm.toLowerCase();
@@ -109,6 +133,11 @@ export function ArticlesTable({
   const isAllSelected = currentArticles.length > 0 && currentArticles.every(article => selectedIds.has(article.id));
   const isIndeterminate = selectedIds.size > 0 && !isAllSelected;
 
+  // Reset page when filter changes
+  useState(() => {
+    setCurrentPage(1);
+  }, [activeFilter]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -119,6 +148,21 @@ export function ArticlesTable({
       </div>
     );
   }
+
+  const getFilterDescription = () => {
+    if (activeFilter === 'all') return '';
+    
+    const filterLabels = {
+      'published': 'published articles',
+      'drafts': 'draft articles', 
+      'missing-wp-id': 'articles missing WordPress ID',
+      'missing-author': 'articles missing author',
+      'embedded': 'articles with embeddings',
+      'not-embedded': 'articles without embeddings'
+    };
+    
+    return ` (showing ${filterLabels[activeFilter]})`;
+  };
 
   return (
     <div className="space-y-4">
@@ -141,11 +185,9 @@ export function ArticlesTable({
             Clear
           </Button>
         )}
-        {searchTerm && (
-          <span className="text-sm text-muted-foreground">
-            {filteredArticles.length} of {articles.length} articles
-          </span>
-        )}
+        <span className="text-sm text-muted-foreground">
+          {filteredArticles.length} of {articles.length} articles{getFilterDescription()}
+        </span>
       </div>
 
       <SimplifiedBulkOperations
@@ -179,7 +221,8 @@ export function ArticlesTable({
             {currentArticles.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                  {searchTerm ? 'No articles found matching your search' : 'No articles found'}
+                  {searchTerm ? 'No articles found matching your search' : 
+                   activeFilter !== 'all' ? `No articles found for this filter` : 'No articles found'}
                 </TableCell>
               </TableRow>
             ) : (
@@ -310,7 +353,7 @@ export function ArticlesTable({
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
             Showing {startIndex + 1} to {Math.min(endIndex, filteredArticles.length)} of {filteredArticles.length} articles
-            {searchTerm && ` (filtered from ${articles.length} total)`}
+            {searchTerm && ` (filtered from ${filteredByStatus.length} ${activeFilter !== 'all' ? 'filtered ' : ''}articles)`}
           </div>
           <div className="flex items-center gap-2">
             <Button
