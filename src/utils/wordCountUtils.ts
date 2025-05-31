@@ -48,12 +48,7 @@ export function extractWordCountFromArticle(article: any): number {
 
 // Helper function to extract clean content from WordPress articles
 export function extractCleanContent(article: any): string {
-  // If clean_content already exists, return it
-  if (article.clean_content) {
-    return article.clean_content;
-  }
-  
-  // Extract from WordPress content
+  // PRIORITY 1: Extract from WordPress content if available (always prioritize this)
   if (article.content_variants) {
     const variants = typeof article.content_variants === 'string' 
       ? JSON.parse(article.content_variants) 
@@ -65,7 +60,12 @@ export function extractCleanContent(article: any): string {
     }
   }
   
-  // Fallback to excerpt or empty string
+  // PRIORITY 2: Use existing clean_content if WordPress content not available
+  if (article.clean_content) {
+    return article.clean_content;
+  }
+  
+  // PRIORITY 3: Fallback to excerpt or empty string
   return article.excerpt || '';
 }
 
