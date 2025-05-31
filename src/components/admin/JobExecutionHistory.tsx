@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, CheckCircle2, RefreshCw, Database, Calendar, FileSync } from "lucide-react";
+import { AlertCircle, CheckCircle2, RefreshCw, Database, Calendar, Workflow } from "lucide-react";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScheduledJobSettings } from "@/types/database";
@@ -197,7 +197,7 @@ const JobExecutionHistory = () => {
         <Tabs defaultValue="sync-operations" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="sync-operations" className="flex items-center gap-2">
-              <FileSync className="h-4 w-4" />
+              <Workflow className="h-4 w-4" />
               Sync Operations
             </TabsTrigger>
             <TabsTrigger value="scheduled-jobs" className="flex items-center gap-2">
