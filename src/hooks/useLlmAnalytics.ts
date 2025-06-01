@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { LlmUsageLog, UsageAnalytics } from "@/types/database";
+import { Json } from "@/integrations/supabase/types";
 
 export function useLlmAnalytics(timeRangeHours: number = 168) {
   const [analytics, setAnalytics] = useState<UsageAnalytics | null>(null);
@@ -94,7 +95,7 @@ export function useLlmAnalytics(timeRangeHours: number = 168) {
       totalTokens,
       totalCost,
       operationCount,
-      averageDuration,
+      averageDuration: avgDuration, // Fixed variable name from averageDuration to avgDuration
       successRate,
       functionBreakdown,
       modelBreakdown,

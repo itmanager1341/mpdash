@@ -1,3 +1,4 @@
+
 // Type definitions for custom Supabase functions and tables
 import { Json } from "@/integrations/supabase/types";
 import { DateRange } from "react-day-picker";
@@ -93,7 +94,7 @@ export interface LlmModelConfig {
   created_by: string;
 }
 
-// Interface for LLM usage logs
+// Interface for LLM usage logs - Updated to match Supabase schema
 export interface LlmUsageLog {
   id: string;
   function_name: string;
@@ -106,7 +107,7 @@ export interface LlmUsageLog {
   status: string;
   error_message: string | null;
   user_id: string | null;
-  operation_metadata: Record<string, any>;
+  operation_metadata: Json | null;
   created_at: string;
 }
 

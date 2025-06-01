@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +10,7 @@ import { Activity, DollarSign, Zap, Clock, TrendingUp, AlertTriangle, Download, 
 import { supabase } from "@/integrations/supabase/client";
 import { LlmUsageLog, UsageAnalytics } from "@/types/database";
 import { useToast } from "@/hooks/use-toast";
+import { Json } from "@/integrations/supabase/types";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
@@ -53,10 +53,13 @@ export default function EnhancedUsageAnalyticsTab() {
 
       if (error) throw error;
 
+      // Type assertion to handle the Json vs Record<string, any> difference
+      const typedLogs = logs as LlmUsageLog[];
+      
       // Calculate analytics
-      const analytics = calculateAnalytics(logs || []);
+      const analytics = calculateAnalytics(typedLogs || []);
       setAnalytics(analytics);
-      setRecentLogs((logs || []).slice(0, 20));
+      setRecentLogs((typedLogs || []).slice(0, 20));
 
     } catch (error) {
       console.error('Error fetching analytics:', error);
