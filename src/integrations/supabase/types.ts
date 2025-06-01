@@ -659,6 +659,54 @@ export type Database = {
         }
         Relationships: []
       }
+      llm_usage_logs: {
+        Row: {
+          completion_tokens: number
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          estimated_cost: number
+          function_name: string
+          id: string
+          model: string
+          operation_metadata: Json | null
+          prompt_tokens: number
+          status: string
+          total_tokens: number
+          user_id: string | null
+        }
+        Insert: {
+          completion_tokens?: number
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          estimated_cost?: number
+          function_name: string
+          id?: string
+          model: string
+          operation_metadata?: Json | null
+          prompt_tokens?: number
+          status?: string
+          total_tokens?: number
+          user_id?: string | null
+        }
+        Update: {
+          completion_tokens?: number
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          estimated_cost?: number
+          function_name?: string
+          id?: string
+          model?: string
+          operation_metadata?: Json | null
+          prompt_tokens?: number
+          status?: string
+          total_tokens?: number
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       news: {
         Row: {
           clean_content: string | null
@@ -1025,6 +1073,22 @@ export type Database = {
       l2_normalize: {
         Args: { "": string } | { "": unknown } | { "": unknown }
         Returns: unknown
+      }
+      log_llm_usage: {
+        Args: {
+          p_function_name: string
+          p_model: string
+          p_prompt_tokens?: number
+          p_completion_tokens?: number
+          p_total_tokens?: number
+          p_estimated_cost?: number
+          p_duration_ms?: number
+          p_status?: string
+          p_error_message?: string
+          p_user_id?: string
+          p_operation_metadata?: Json
+        }
+        Returns: string
       }
       search_content_chunks: {
         Args: {

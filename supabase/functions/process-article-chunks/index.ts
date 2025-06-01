@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2?dts';
 
 // Configuration constants
@@ -88,8 +87,10 @@ function intelligentChunk(text: string, chunkType: 'title' | 'content' | 'summar
   return chunks;
 }
 
-// Generate embedding for text
-async function generateEmbedding(text: string, openaiKey: string): Promise<number[] | null> {
+// Generate embedding for text and log usage
+async function generateEmbedding(text: string, openaiKey: string, supabase: any): Promise<number[] | null> {
+  const startTime = Date.now();
+  
   try {
     const response = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
@@ -105,13 +106,58 @@ async function generateEmbedding(text: string, openaiKey: string): Promise<numbe
 
     if (!response.ok) {
       console.error('OpenAI API error:', response.status, await response.text());
+      
+      // Log failed embedding attempt
+      await supabase.rpc('log_llm_usage', {
+        p_function_name: 'process-article-chunks',
+        p_model: EMBEDDING_MODEL,
+        p_status: 'error',
+        p_error_message: `OpenAI API error: ${response.status}`,
+        p_duration_ms: Date.now() - startTime,
+        p_operation_metadata: { text_length: text.length }
+      });
+      
       return null;
     }
 
     const result = await response.json();
-    return result.data?.[0]?.embedding || null;
+    const embedding = result.data?.[0]?.embedding || null;
+    
+    if (embedding) {
+      // Log successful embedding
+      const tokens = Math.ceil(text.length / 4); // Rough token estimation
+      const cost = (tokens / 1000000) * 0.00002; // text-embedding-3-small pricing
+      
+      await supabase.rpc('log_llm_usage', {
+        p_function_name: 'process-article-chunks',
+        p_model: EMBEDDING_MODEL,
+        p_prompt_tokens: tokens,
+        p_completion_tokens: 0,
+        p_total_tokens: tokens,
+        p_estimated_cost: cost,
+        p_duration_ms: Date.now() - startTime,
+        p_status: 'success',
+        p_operation_metadata: { 
+          text_length: text.length,
+          embedding_dimensions: result.data?.[0]?.embedding?.length || 0
+        }
+      });
+    }
+    
+    return embedding;
   } catch (error) {
     console.error('Error generating embedding:', error);
+    
+    // Log error
+    await supabase.rpc('log_llm_usage', {
+      p_function_name: 'process-article-chunks',
+      p_model: EMBEDDING_MODEL,
+      p_status: 'error',
+      p_error_message: error.message,
+      p_duration_ms: Date.now() - startTime,
+      p_operation_metadata: { text_length: text.length }
+    });
+    
     return null;
   }
 }
@@ -243,8 +289,8 @@ Deno.serve(async (req) => {
         for (let i = 0; i < allChunks.length; i++) {
           const chunk = allChunks[i];
           
-          // Generate embedding
-          const embedding = await generateEmbedding(chunk.content, OPENAI_API_KEY);
+          // Generate embedding with logging
+          const embedding = await generateEmbedding(chunk.content, OPENAI_API_KEY, supabase);
           
           if (!embedding) {
             console.warn(`⚠️ Failed to generate embedding for chunk ${i} of article ${article.id}`);

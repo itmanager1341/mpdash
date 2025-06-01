@@ -96,15 +96,45 @@ export interface LlmModelConfig {
 // Interface for LLM usage logs
 export interface LlmUsageLog {
   id: string;
-  model: string;
   function_name: string;
+  model: string;
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
   estimated_cost: number;
-  duration_ms: number;
-  created_at: string;
+  duration_ms: number | null;
+  status: string;
+  error_message: string | null;
   user_id: string | null;
+  operation_metadata: Record<string, any>;
+  created_at: string;
+}
+
+// Interface for usage analytics
+export interface UsageAnalytics {
+  totalTokens: number;
+  totalCost: number;
+  operationCount: number;
+  averageDuration: number;
+  successRate: number;
+  functionBreakdown: Array<{
+    function_name: string;
+    tokens: number;
+    cost: number;
+    operations: number;
+  }>;
+  modelBreakdown: Array<{
+    model: string;
+    tokens: number;
+    cost: number;
+    operations: number;
+  }>;
+  dailyUsage: Array<{
+    date: string;
+    tokens: number;
+    cost: number;
+    operations: number;
+  }>;
 }
 
 // Interface for keyword clusters
