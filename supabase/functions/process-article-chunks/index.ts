@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2?dts';
 
 // Configuration constants
@@ -5,6 +6,12 @@ const CHUNK_SIZE = 500; // Target words per chunk
 const CHUNK_OVERLAP = 50; // Words to overlap between chunks
 const MIN_CHUNK_SIZE = 100; // Minimum words for a valid chunk
 const EMBEDDING_MODEL = 'text-embedding-3-small';
+
+// CORS headers for web requests
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 interface ChunkResult {
   content: string;
@@ -112,6 +119,11 @@ async function generateEmbedding(text: string, openaiKey: string): Promise<numbe
 Deno.serve(async (req) => {
   console.log('--- process-article-chunks function STARTED ---');
   
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+  
   // Environment variables
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -121,14 +133,32 @@ Deno.serve(async (req) => {
     console.error('❌ Missing required environment variables');
     return new Response(JSON.stringify({
       error: 'Missing environment variables'
-    }), { status: 500 });
+    }), { 
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Parse request body
-    const { articleIds, limit = 5 } = await req.json();
+    // Parse request body with error handling
+    let requestBody = {};
+    try {
+      const contentType = req.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const text = await req.text();
+        if (text && text.trim().length > 0) {
+          requestBody = JSON.parse(text);
+        }
+      }
+    } catch (parseError) {
+      console.warn('⚠️ Failed to parse request body, using defaults:', parseError);
+      // Continue with empty requestBody - we'll use defaults
+    }
+
+    // Extract parameters with defaults
+    const { articleIds, limit = 5 } = requestBody as { articleIds?: string[], limit?: number };
     
     let query = supabase
       .from('articles')
@@ -147,7 +177,10 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error('❌ Error fetching articles:', error);
-      return new Response(JSON.stringify({ error: 'Error fetching articles' }), { status: 500 });
+      return new Response(JSON.stringify({ error: 'Error fetching articles' }), { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     if (!articles || articles.length === 0) {
@@ -155,7 +188,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         message: 'No articles found for chunking. Articles need clean_content or word_count > 0.',
         processed: 0
-      }), { status: 200 });
+      }), { 
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     console.log(`📦 Processing ${articles.length} article(s) for chunking`);
@@ -239,6 +275,16 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Mark article as chunked
+        const { error: updateError } = await supabase
+          .from('articles')
+          .update({ is_chunked: true })
+          .eq('id', article.id);
+
+        if (updateError) {
+          console.error(`❌ Error marking article ${article.id} as chunked:`, updateError);
+        }
+
         results.push({
           article_id: article.id,
           chunks_created: processedChunks,
@@ -262,7 +308,7 @@ Deno.serve(async (req) => {
       failed: results.filter(r => r.error).length,
       results: results
     }), {
-      headers: { 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
@@ -270,6 +316,9 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       error: 'Internal server error',
       details: error.message
-    }), { status: 500 });
+    }), { 
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });
