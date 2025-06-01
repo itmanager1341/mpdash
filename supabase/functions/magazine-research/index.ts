@@ -8,11 +8,48 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Function to log LLM usage to database
+async function logLlmUsage(supabase: any, params: {
+  model: string;
+  usage?: any;
+  status: string;
+  error?: string;
+  startTime: number;
+  metadata?: any;
+}) {
+  try {
+    const duration = Date.now() - params.startTime;
+    const promptTokens = params.usage?.prompt_tokens || 0;
+    const completionTokens = params.usage?.completion_tokens || 0;
+    const totalTokens = params.usage?.total_tokens || 0;
+    
+    // Rough cost estimation for Perplexity API (approximate pricing)
+    const estimatedCost = totalTokens * 0.001; // $1 per 1M tokens estimate
+    
+    await supabase.rpc('log_llm_usage', {
+      p_function_name: 'magazine-research',
+      p_model: params.model,
+      p_prompt_tokens: promptTokens,
+      p_completion_tokens: completionTokens,
+      p_total_tokens: totalTokens,
+      p_estimated_cost: estimatedCost,
+      p_duration_ms: duration,
+      p_status: params.status,
+      p_error_message: params.error || null,
+      p_operation_metadata: params.metadata || {}
+    });
+  } catch (logError) {
+    console.error('Failed to log LLM usage:', logError);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const startTime = Date.now();
 
   try {
     // Create a Supabase client with the Admin key
@@ -22,6 +59,14 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
     
     if (!perplexityKey) {
+      await logLlmUsage(supabase, {
+        model: 'unknown',
+        status: 'error',
+        error: 'Perplexity API key not configured',
+        startTime,
+        metadata: { error_type: 'missing_api_key' }
+      });
+      
       return new Response(
         JSON.stringify({ error: 'Perplexity API key not configured' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -33,11 +78,19 @@ serve(async (req) => {
       topic, 
       clusters = [], 
       keywords = [], 
-      depth = "standard"  // Can be "quick", "standard", or "deep"
+      depth = "standard"
     } = await req.json();
     
     // Validate required params
     if (!topic) {
+      await logLlmUsage(supabase, {
+        model: 'unknown',
+        status: 'error',
+        error: 'Topic is required',
+        startTime,
+        metadata: { error_type: 'missing_topic' }
+      });
+      
       return new Response(
         JSON.stringify({ error: 'Topic is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -56,7 +109,6 @@ serve(async (req) => {
       if (clusterError) {
         console.error("Error fetching clusters:", clusterError);
       } else if (clusterData) {
-        // Add cluster keywords to context
         clusterData.forEach(cluster => {
           if (cluster.keywords) {
             contextKeywords = [...contextKeywords, ...cluster.keywords];
@@ -87,58 +139,128 @@ Please provide a comprehensive research summary with the following:
       model = "llama-3.1-sonar-large-128k-online";
     }
 
-    // Call Perplexity API
-    const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${perplexityKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          {
-            role: "system",
-            content: "You are a specialized mortgage industry researcher. Provide well-structured, fact-based research for financial publications. Include specific data points, statistics, and expert perspectives when available."
-          },
-          {
-            role: "user",
-            content: query
+    // Call Perplexity API with logging
+    try {
+      const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${perplexityKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: "system",
+              content: "You are a specialized mortgage industry researcher. Provide well-structured, fact-based research for financial publications. Include specific data points, statistics, and expert perspectives when available."
+            },
+            {
+              role: "user",
+              content: query
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+          return_related_questions: true,
+          search_domain_filter: ["perplexity.ai", "wsj.com", "bloomberg.com", "mortgagenewsdaily.com"],
+          search_recency_filter: "month"
+        })
+      });
+
+      if (!perplexityResponse.ok) {
+        const errorText = await perplexityResponse.text();
+        
+        await logLlmUsage(supabase, {
+          model,
+          status: 'error',
+          error: `Perplexity API error: ${perplexityResponse.status} - ${errorText}`,
+          startTime,
+          metadata: {
+            topic,
+            keywords: contextKeywords,
+            depth,
+            clusters_count: clusters.length
           }
-        ],
-        temperature: 0.3, // Lower temperature for more factual responses
-        max_tokens: 2048,
-        return_related_questions: true,
-        // Fix: Use domain names for search_domain_filter instead of broad categories
-        search_domain_filter: ["perplexity.ai", "wsj.com", "bloomberg.com", "mortgagenewsdaily.com"],
-        search_recency_filter: "month" // Focus on recent information
-      })
-    });
+        });
+        
+        throw new Error(`Perplexity API error: ${perplexityResponse.status} - ${errorText}`);
+      }
+      
+      const perplexityData = await perplexityResponse.json();
+      
+      // Log successful API call
+      await logLlmUsage(supabase, {
+        model: perplexityData.model || model,
+        usage: perplexityData.usage,
+        status: 'success',
+        startTime,
+        metadata: {
+          topic,
+          keywords: contextKeywords,
+          keywords_count: contextKeywords.length,
+          depth,
+          clusters_count: clusters.length,
+          response_length: perplexityData.choices[0].message.content.length,
+          related_questions_count: perplexityData.choices[0].message.related_questions?.length || 0
+        }
+      });
+      
+      // Extract the research results
+      const researchResults = {
+        topic: topic,
+        research: perplexityData.choices[0].message.content,
+        related_questions: perplexityData.choices[0].message.related_questions || [],
+        keywords: contextKeywords,
+        created_at: new Date().toISOString(),
+        model_used: model
+      };
 
-    if (!perplexityResponse.ok) {
-      const errorText = await perplexityResponse.text();
-      throw new Error(`Perplexity API error: ${perplexityResponse.status} - ${errorText}`);
+      return new Response(
+        JSON.stringify({ success: true, data: researchResults }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+      
+    } catch (apiError) {
+      console.error('Perplexity API call failed:', apiError);
+      
+      await logLlmUsage(supabase, {
+        model,
+        status: 'error',
+        error: apiError instanceof Error ? apiError.message : String(apiError),
+        startTime,
+        metadata: {
+          topic,
+          keywords: contextKeywords,
+          depth,
+          clusters_count: clusters.length,
+          error_type: 'api_call_failed'
+        }
+      });
+      
+      throw apiError;
     }
-    
-    const perplexityData = await perplexityResponse.json();
-    
-    // Extract the research results
-    const researchResults = {
-      topic: topic,
-      research: perplexityData.choices[0].message.content,
-      related_questions: perplexityData.choices[0].message.related_questions || [],
-      keywords: contextKeywords,
-      created_at: new Date().toISOString(),
-      model_used: model
-    };
-
-    return new Response(
-      JSON.stringify({ success: true, data: researchResults }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
     
   } catch (error) {
     console.error('Error in magazine-research function:', error);
+    
+    // Log general function error if we have supabase available
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      await logLlmUsage(supabase, {
+        model: 'unknown',
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        startTime,
+        metadata: {
+          error_type: 'general_function_error'
+        }
+      });
+    } catch (logError) {
+      console.error('Failed to log error:', logError);
+    }
     
     return new Response(
       JSON.stringify({ 

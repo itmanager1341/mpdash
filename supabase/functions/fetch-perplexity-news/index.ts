@@ -1,10 +1,7 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.1';
-
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const perplexityApiKey = Deno.env.get("PERPLEXITY_API_KEY");
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,20 +36,55 @@ interface NewsArticle {
   is_competitor_covered?: boolean;
 }
 
+// Function to log LLM usage to database
+async function logLlmUsage(supabase: any, params: {
+  model: string;
+  usage?: any;
+  status: string;
+  error?: string;
+  startTime: number;
+  metadata?: any;
+}) {
+  try {
+    const duration = Date.now() - params.startTime;
+    const promptTokens = params.usage?.prompt_tokens || 0;
+    const completionTokens = params.usage?.completion_tokens || 0;
+    const totalTokens = params.usage?.total_tokens || 0;
+    
+    // Rough cost estimation for Perplexity API (approximate pricing)
+    const estimatedCost = totalTokens * 0.001; // $1 per 1M tokens estimate
+    
+    await supabase.rpc('log_llm_usage', {
+      p_function_name: 'fetch-perplexity-news',
+      p_model: params.model,
+      p_prompt_tokens: promptTokens,
+      p_completion_tokens: completionTokens,
+      p_total_tokens: totalTokens,
+      p_estimated_cost: estimatedCost,
+      p_duration_ms: duration,
+      p_status: params.status,
+      p_error_message: params.error || null,
+      p_operation_metadata: params.metadata || {}
+    });
+  } catch (logError) {
+    console.error('Failed to log LLM usage:', logError);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  const perplexityKey = Deno.env.get('PERPLEXITY_API_KEY') || '';
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
   try {
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error("Missing Supabase URL or service key configuration");
-    }
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    if (!perplexityApiKey) {
+    if (!perplexityKey) {
       // Check if the API key is stored in the api_keys table instead
       const { data: apiKeyData, error: apiKeyError } = await supabase
         .from('api_keys')
@@ -72,7 +104,6 @@ serve(async (req) => {
         });
       }
 
-      // We can't access the actual key from here because it's stored as a secret
       return new Response(JSON.stringify({ 
         error: "Perplexity API key is configured but not accessible from this function",
         details: "The API key needs to be added as an Edge Function Secret with the name PERPLEXITY_API_KEY"
@@ -90,7 +121,7 @@ serve(async (req) => {
     const limit = requestData.limit || 10;
     const modelOverride = requestData.modelOverride;
     
-    // Validate keywords - ensure we have at least one
+    // Validate keywords
     if (!Array.isArray(keywords) || keywords.length === 0) {
       return new Response(JSON.stringify({ 
         error: "No valid search keywords provided",
@@ -102,7 +133,6 @@ serve(async (req) => {
     }
     
     let prompt: string;
-    // Always use a supported model - llama-3.1 models are currently supported by Perplexity
     let model = modelOverride || "llama-3.1-sonar-small-128k-online";
     let searchSettings: any = {
       search_domain_filter: "auto",
@@ -124,7 +154,6 @@ serve(async (req) => {
         
       if (error || !promptData) {
         console.error("Error fetching prompt:", error);
-        // Fall back to default prompt
         prompt = getDefaultJsonPrompt(keywords);
       } else {
         // Extract metadata if present
@@ -143,27 +172,22 @@ serve(async (req) => {
           }
         }
         
-        // Remove metadata from prompt text
         prompt = promptData.prompt_text.replace(/\/\*\n[\s\S]*?\n\*\/\n/, '');
         
-        // Add JSON formatting instruction if not present
         if (!prompt.includes("RESPONSE FORMAT: JSON") && !prompt.includes("format JSON")) {
           prompt = addJsonFormatInstructions(prompt);
         }
         
-        // Check if the model specified is a Perplexity model and convert to the right format
         if (promptData.model) {
-          // Handle different model formats
           if (promptData.model === "perplexity/sonar-medium-online" || 
               promptData.model === "sonar-medium-online") {
-            model = "llama-3.1-sonar-small-128k-online"; // Use a supported model
+            model = "llama-3.1-sonar-small-128k-online";
           } else if (promptData.model === "perplexity/sonar-small-online" || 
                     promptData.model === "sonar-small-online") {
             model = "llama-3.1-sonar-small-128k-online";
           } else if (promptData.model.startsWith("llama-3.1")) {
-            model = promptData.model; // Already using the correct format
+            model = promptData.model;
           } else {
-            // Default to small model if unrecognized
             model = "llama-3.1-sonar-small-128k-online";
           }
         }
@@ -173,14 +197,12 @@ serve(async (req) => {
         includeSourcesMap = promptData.include_sources_map;
       }
     } else {
-      // Default prompt with strict JSON format requirements
       prompt = getDefaultJsonPrompt(keywords);
     }
     
-    // Build a context object for additional information
+    // Build context object for additional information
     let context = {};
     
-    // Fetch keyword clusters if requested
     if (includeClusterContext) {
       const { data: clusters, error } = await supabase
         .from('keyword_clusters')
@@ -192,12 +214,9 @@ serve(async (req) => {
           keyword_clusters: clusters
         };
         
-        // If the prompt is using the structured format, add cluster info
         if (prompt.includes("Topical Relevance") && clusters.length > 0) {
-          // The clusters are already in the prompt in the structured format
           console.log("Using structured prompt with embedded cluster data");
         } else if (searchSettings.selected_themes) {
-          // Filter clusters based on selected themes
           const relevantClusters = clusters.filter((c: any) => 
             searchSettings.selected_themes.primary?.includes(c.primary_theme) || 
             searchSettings.selected_themes.sub?.includes(c.sub_theme)
@@ -213,7 +232,6 @@ serve(async (req) => {
       }
     }
     
-    // Fetch additional context data if requested
     if (includeTrackingSummary) {
       const { data: tracking, error } = await supabase
         .from('keyword_tracking')
@@ -242,28 +260,22 @@ serve(async (req) => {
     
     // Add topic to prompt if there's no [QUERY] placeholder
     if (!prompt.includes("[QUERY]")) {
-      // If using multiple keywords, create a formatted list
       const keywordStr = keywords.length === 1 
         ? keywords[0] 
         : keywords.map((k: string, i: number) => `${i+1}. ${k}`).join('\n');
       
-      // Check if prompt is using the structured format
       if (prompt.includes("SEARCH & FILTER RULES:")) {
-        // Already structured - keywords will be used for search
         console.log("Using structured prompt format with keywords:", keywords);
       } else {
-        // Add keywords to standard prompt
         prompt += `\n\nKEYWORDS: ${keywordStr}`;
       }
     } else {
-      // Replace [QUERY] with joined keywords
       prompt = prompt.replace("[QUERY]", keywords.join(", "));
     }
     
     console.log("Using model:", model);
     console.log("Search settings:", JSON.stringify(searchSettings));
     
-    // Fix search settings keys for Perplexity API
     const apiPayload: any = {
       model: model,
       messages: [
@@ -283,13 +295,10 @@ serve(async (req) => {
       presence_penalty: 0
     };
     
-    // Handle recency filter standardization
     if (searchSettings.recency_filter) {
-      // Convert "48h" to "day" since Perplexity only accepts standard values
       const recencyValue = searchSettings.recency_filter === "48h" ? "day" : 
                            searchSettings.recency_filter === "24h" ? "day" : 
                            searchSettings.recency_filter;
-      // Use only supported values: hour, day, week, month, year
       apiPayload.search_recency_filter = 
         ["hour", "day", "week", "month", "year"].includes(recencyValue) ? 
         recencyValue : "day";
@@ -297,19 +306,16 @@ serve(async (req) => {
       apiPayload.search_recency_filter = "day";
     }
     
-    // Handle domain filter
     if (searchSettings.domain_filter && searchSettings.domain_filter !== "auto") {
-      // If it's a custom domain list, pass it as is
       apiPayload.search_domain_filter = searchSettings.domain_filter;
     }
-    // If auto or not specified, omit the parameter to use Perplexity default
-    
-    // Call Perplexity API
+
+    // Call Perplexity API with logging
     try {
       const response = await fetch('https://api.perplexity.ai/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${perplexityApiKey}`,
+          'Authorization': `Bearer ${perplexityKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(apiPayload),
@@ -318,31 +324,55 @@ serve(async (req) => {
       if (!response.ok) {
         const errorResponse = await response.text();
         console.error("Perplexity API error:", errorResponse);
+        
+        // Log the failed API call
+        await logLlmUsage(supabase, {
+          model,
+          status: 'error',
+          error: `Perplexity API error (${response.status}): ${errorResponse}`,
+          startTime,
+          metadata: {
+            keywords,
+            prompt_length: prompt.length,
+            api_payload: apiPayload
+          }
+        });
+        
         throw new Error(`Perplexity API error (${response.status}): ${errorResponse}`);
       }
 
       const data: ChatCompletionResponse = await response.json();
       const result = data.choices[0].message.content;
       
-      // Log the raw response for debugging
+      // Log successful API call
+      await logLlmUsage(supabase, {
+        model: data.model || model,
+        usage: data.usage,
+        status: 'success',
+        startTime,
+        metadata: {
+          keywords,
+          prompt_length: prompt.length,
+          response_length: result.length,
+          articles_requested: limit,
+          min_score: minScore
+        }
+      });
+      
       console.log("Raw response:", result);
       
-      // Try to extract and parse JSON from the response
       let articles = extractAndParseArticles(result);
       
-      // Filter by minimum score if present
       if (minScore > 0 && Array.isArray(articles)) {
         articles = articles.filter(a => 
           !a.relevance_score || a.relevance_score >= minScore
         );
       }
       
-      // Limit number of results
       if (limit > 0 && Array.isArray(articles) && articles.length > limit) {
         articles = articles.slice(0, limit);
       }
 
-      // Format articles to ensure consistent structure
       let formattedArticles: NewsArticle[] = [];
       
       if (Array.isArray(articles)) {
@@ -352,7 +382,6 @@ serve(async (req) => {
         formattedArticles = generateFallbackArticles("Failed to parse API response to valid JSON format");
       }
       
-      // If we got no articles but the call was successful, add a placeholder with debugging info
       if (formattedArticles.length === 0) {
         formattedArticles = generateFallbackArticles("No relevant news articles found");
         console.log("No articles found in search response. Raw response:", result);
@@ -363,7 +392,6 @@ serve(async (req) => {
         model: data.model,
         usage: data.usage,
         keywords: keywords,
-        // Include debug info
         debug: {
           rawResponseLength: result.length,
           rawResponseSnippet: result.substring(0, 200) + "...",
@@ -376,14 +404,23 @@ serve(async (req) => {
     } catch (apiError) {
       console.error("Perplexity API call failed:", apiError);
       
-      // Return a fallback response with error information
-      // This avoids returning a non-2xx status code which causes the chain to break
+      // Log the failed API call
+      await logLlmUsage(supabase, {
+        model,
+        status: 'error',
+        error: apiError instanceof Error ? apiError.message : String(apiError),
+        startTime,
+        metadata: {
+          keywords,
+          prompt_length: prompt.length
+        }
+      });
+      
       return new Response(JSON.stringify({
         articles: generateFallbackArticles(`Failed to retrieve articles: ${apiError instanceof Error ? apiError.message : String(apiError)}`),
         error: apiError instanceof Error ? apiError.message : String(apiError),
         keywords: keywords
       }), {
-        // Return 200 status despite error to prevent cascade failures
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -392,13 +429,22 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error in fetch-perplexity-news:", error);
     
-    // Return a fallback response with error information
+    // Log the general error
+    await logLlmUsage(supabase, {
+      model: 'unknown',
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      startTime,
+      metadata: {
+        error_type: 'general_function_error'
+      }
+    });
+    
     return new Response(JSON.stringify({ 
       articles: generateFallbackArticles(`An error occurred while processing the request: ${error instanceof Error ? error.message : 'Unknown error'}`),
       error: error instanceof Error ? error.message : 'Unknown error occurred',
       stack: error instanceof Error ? error.stack : null
     }), {
-      // Return 200 status despite error to prevent cascade failures
       status: 200, 
       headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
@@ -467,12 +513,10 @@ function extractAndParseArticles(response: string): any[] {
       if (Array.isArray(parsed)) {
         return parsed;
       }
-      // If we get here, the response is valid JSON but not in the expected format
     } catch (e) {
       // Not valid JSON, continue to other methods
     }
     
-    // Method 2: Look for JSON code blocks in markdown
     const jsonBlockMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (jsonBlockMatch) {
       try {
@@ -488,7 +532,6 @@ function extractAndParseArticles(response: string): any[] {
       }
     }
     
-    // Method 3: Try to find any JSON object in the response
     const jsonObjectMatch = response.match(/(\{[\s\S]*\})/);
     if (jsonObjectMatch) {
       try {
@@ -501,16 +544,13 @@ function extractAndParseArticles(response: string): any[] {
       }
     }
     
-    // Method 4: If response looks like markdown with structured data, try to extract it
     if (response.includes('##') || response.includes('**Title:')) {
-      // Try to extract structured data from markdown
       const articles = extractArticlesFromMarkdown(response);
       if (articles.length > 0) {
         return articles;
       }
     }
     
-    // If all methods fail, return an empty array
     return [];
   } catch (e) {
     console.error("Error extracting articles:", e);
@@ -521,7 +561,6 @@ function extractAndParseArticles(response: string): any[] {
 function extractArticlesFromMarkdown(markdown: string): any[] {
   const articles = [];
   
-  // Look for patterns like "**Title:**" or "- **Title:**" or "## Title" in markdown
   const sections = markdown.split(/(?:^|\n)(?:##|\*\*|-)(?=[^#\*\n])/gm);
   
   for (const section of sections) {
@@ -538,7 +577,7 @@ function extractArticlesFromMarkdown(markdown: string): any[] {
         url: urlMatch ? urlMatch[0].replace(/(?:URL:|Link:)\s*/i, '').trim() : "https://example.com",
         summary: summaryMatch ? summaryMatch[1].trim() : "",
         source: sourceMatch ? sourceMatch[1].trim() : new URL(urlMatch ? urlMatch[0] : "https://example.com").hostname.replace('www.', ''),
-        relevance_score: 0.7, // Default score
+        relevance_score: 0.7,
         matched_clusters: [],
         is_competitor_covered: false
       };
@@ -551,7 +590,6 @@ function extractArticlesFromMarkdown(markdown: string): any[] {
 }
 
 function normalizeArticle(article: any): NewsArticle {
-  // Normalize fields to ensure consistent structure
   return {
     title: article.title || article.headline || "Untitled Article",
     url: article.url || "#",

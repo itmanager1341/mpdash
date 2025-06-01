@@ -1,15 +1,12 @@
 
-// Follow this setup guide to integrate the Deno runtime into your application:
-// https://deno.land/manual/examples/supabase
-
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Get the Perplexity API key from environment variables
 const perplexityApiKey = Deno.env.get("PERPLEXITY_API_KEY");
 
 interface RequestBody {
@@ -23,13 +20,48 @@ interface ResponseBody {
   error?: string;
 }
 
+// Function to log LLM usage to database
+async function logLlmUsage(supabase: any, params: {
+  model: string;
+  usage?: any;
+  status: string;
+  error?: string;
+  startTime: number;
+  metadata?: any;
+}) {
+  try {
+    const duration = Date.now() - params.startTime;
+    const promptTokens = params.usage?.prompt_tokens || 0;
+    const completionTokens = params.usage?.completion_tokens || 0;
+    const totalTokens = params.usage?.total_tokens || 0;
+    
+    // Rough cost estimation for Perplexity API (approximate pricing)
+    const estimatedCost = totalTokens * 0.001; // $1 per 1M tokens estimate
+    
+    await supabase.rpc('log_llm_usage', {
+      p_function_name: 'analyze-news-clusters',
+      p_model: params.model,
+      p_prompt_tokens: promptTokens,
+      p_completion_tokens: completionTokens,
+      p_total_tokens: totalTokens,
+      p_estimated_cost: estimatedCost,
+      p_duration_ms: duration,
+      p_status: params.status,
+      p_error_message: params.error || null,
+      p_operation_metadata: params.metadata || {}
+    });
+  } catch (logError) {
+    console.error('Failed to log LLM usage:', logError);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Create a Supabase client for the function
+  const startTime = Date.now();
   const supabaseClient = createClient(
     Deno.env.get("SUPABASE_URL") || "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
@@ -48,6 +80,14 @@ serve(async (req) => {
       .limit(max_items);
       
     if (fetchError) {
+      await logLlmUsage(supabaseClient, {
+        model: 'unknown',
+        status: 'error',
+        error: `Error fetching news items: ${fetchError.message}`,
+        startTime,
+        metadata: { max_items, error_type: 'fetch_error' }
+      });
+      
       throw new Error(`Error fetching news items: ${fetchError.message}`);
     }
     
@@ -73,6 +113,14 @@ serve(async (req) => {
       .select('primary_theme, sub_theme, keywords');
     
     if (clustersError) {
+      await logLlmUsage(supabaseClient, {
+        model: 'unknown',
+        status: 'error',
+        error: `Error fetching clusters: ${clustersError.message}`,
+        startTime,
+        metadata: { news_items_count: newsItems.length, error_type: 'clusters_fetch_error' }
+      });
+      
       throw new Error(`Error fetching clusters: ${clustersError.message}`);
     }
 
@@ -92,6 +140,8 @@ serve(async (req) => {
       
       // Process each item in the batch
       const batchPromises = batch.map(async (item) => {
+        const itemStartTime = Date.now();
+        
         try {
           // Create a prompt for the Perplexity API
           const newsContent = `${item.headline}\n\n${item.summary || ''}`;
@@ -166,11 +216,38 @@ serve(async (req) => {
           });
           
           if (!response.ok) {
+            await logLlmUsage(supabaseClient, {
+              model: "llama-3.1-sonar-small-128k-online",
+              status: 'error',
+              error: `Perplexity API error: ${response.status}`,
+              startTime: itemStartTime,
+              metadata: {
+                news_item_id: item.id,
+                headline: item.headline,
+                content_length: newsContent.length
+              }
+            });
+            
             throw new Error(`Perplexity API error: ${response.status}`);
           }
           
           const result = await response.json();
           const responseContent = result.choices?.[0]?.message?.content;
+          
+          // Log successful API call
+          await logLlmUsage(supabaseClient, {
+            model: result.model || "llama-3.1-sonar-small-128k-online",
+            usage: result.usage,
+            status: 'success',
+            startTime: itemStartTime,
+            metadata: {
+              news_item_id: item.id,
+              headline: item.headline,
+              content_length: newsContent.length,
+              clusters_available: clusters.length,
+              response_length: responseContent?.length || 0
+            }
+          });
           
           if (!responseContent) {
             throw new Error("Empty response from Perplexity API");
@@ -227,6 +304,20 @@ serve(async (req) => {
           
         } catch (itemError) {
           console.error(`Error processing news item ${item.id}:`, itemError);
+          
+          // Log individual item error
+          await logLlmUsage(supabaseClient, {
+            model: "llama-3.1-sonar-small-128k-online",
+            status: 'error',
+            error: itemError instanceof Error ? itemError.message : String(itemError),
+            startTime: itemStartTime,
+            metadata: {
+              news_item_id: item.id,
+              headline: item.headline,
+              error_type: 'item_processing_error'
+            }
+          });
+          
           return false;
         }
       });
@@ -254,6 +345,17 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error analyzing news clusters:", error);
     
+    // Log general function error
+    await logLlmUsage(supabaseClient, {
+      model: 'unknown',
+      status: 'error',
+      error: error.message || "Unknown error occurred",
+      startTime,
+      metadata: {
+        error_type: 'general_function_error'
+      }
+    });
+    
     return new Response(
       JSON.stringify({
         success: false,
@@ -266,59 +368,3 @@ serve(async (req) => {
     );
   }
 });
-
-// Helper to create a Supabase client
-function createClient(supabaseUrl: string, supabaseKey: string) {
-  return {
-    from: (table: string) => ({
-      select: (columns: string = "*") => ({
-        is: (column: string, value: any) => ({
-          limit: (count: number) => {
-            return fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&${column}=is.${value}&limit=${count}`, {
-              headers: {
-                Authorization: `Bearer ${supabaseKey}`,
-                apikey: supabaseKey
-              },
-            }).then(async (response) => {
-              const data = await response.json();
-              return { data, error: null };
-            }).catch(error => {
-              return { data: null, error };
-            });
-          }
-        }),
-        limit: (count: number) => {
-          return fetch(`${supabaseUrl}/rest/v1/${table}?select=${columns}&limit=${count}`, {
-            headers: {
-              Authorization: `Bearer ${supabaseKey}`,
-              apikey: supabaseKey
-            },
-          }).then(async (response) => {
-            const data = await response.json();
-            return { data, error: null };
-          }).catch(error => {
-            return { data: null, error };
-          });
-        }
-      }),
-      update: (data: any) => ({
-        eq: (column: string, value: any) => {
-          return fetch(`${supabaseUrl}/rest/v1/${table}?${column}=eq.${value}`, {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${supabaseKey}`,
-              apikey: supabaseKey,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify(data)
-          }).then(() => {
-            return { error: null };
-          }).catch(error => {
-            return { error };
-          });
-        }
-      })
-    })
-  };
-}
