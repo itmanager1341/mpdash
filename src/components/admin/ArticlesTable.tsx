@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -29,10 +36,14 @@ interface ArticlesTableProps {
   onSelectionChange: (newSelection: Set<string>, showWordCount: boolean) => void;
 }
 
-const ARTICLES_PER_PAGE = 20;
-
 type SortField = 'title' | 'author' | 'status' | 'published_at' | 'word_count' | 'wordpress_id' | 'is_chunked';
 type SortDirection = 'asc' | 'desc';
+
+const PAGE_SIZE_OPTIONS = [
+  { value: 20, label: "20 per page" },
+  { value: 50, label: "50 per page" },
+  { value: 100, label: "100 per page" },
+];
 
 export function ArticlesTable({ 
   articles, 
@@ -45,6 +56,7 @@ export function ArticlesTable({
   onSelectionChange
 }: ArticlesTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [articlesPerPage, setArticlesPerPage] = useState(20);
   const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
   const [processingChunks, setProcessingChunks] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -133,9 +145,9 @@ export function ArticlesTable({
   });
 
   const filteredArticles = sortedArticles;
-  const totalPages = Math.ceil(filteredArticles.length / ARTICLES_PER_PAGE);
-  const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
-  const endIndex = startIndex + ARTICLES_PER_PAGE;
+  const totalPages = Math.ceil(filteredArticles.length / articlesPerPage);
+  const startIndex = (currentPage - 1) * articlesPerPage;
+  const endIndex = startIndex + articlesPerPage;
   const currentArticles = filteredArticles.slice(startIndex, endIndex);
 
   const handleSort = (field: string) => {
@@ -147,6 +159,12 @@ export function ArticlesTable({
       setSortDirection('asc');
     }
     setCurrentPage(1); // Reset to first page when sorting changes
+  };
+
+  const handlePageSizeChange = (newPageSize: string) => {
+    const pageSize = parseInt(newPageSize);
+    setArticlesPerPage(pageSize);
+    setCurrentPage(1); // Reset to first page when page size changes
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -555,26 +573,43 @@ export function ArticlesTable({
             Showing {startIndex + 1} to {Math.min(endIndex, filteredArticles.length)} of {filteredArticles.length} articles
             {searchTerm && ` (filtered from ${filteredByStatus.length} ${activeFilter !== 'all' ? 'filtered ' : ''}articles)`}
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-sm">
-              Page {currentPage} of {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-            >
-              Next
-            </Button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Show:</span>
+              <Select value={articlesPerPage.toString()} onValueChange={handlePageSizeChange}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value.toString()}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </div>
       )}
