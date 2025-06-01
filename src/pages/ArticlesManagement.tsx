@@ -14,8 +14,6 @@ import {
   FileText,
   Edit3,
   UserX,
-  Zap,
-  ZapOff,
   Package,
   PackageX,
   Calculator
@@ -31,8 +29,6 @@ export type ArticleFilter =
   | 'drafts' 
   | 'missing-wp-id' 
   | 'missing-author' 
-  | 'embedded' 
-  | 'not-embedded'
   | 'chunked'
   | 'not-chunked'
   | 'no-word-count';
@@ -64,13 +60,13 @@ export default function ArticlesManagement() {
     }
   });
 
-  // Data quality stats
+  // Data quality stats - removed embedding-related stats
   const { data: dataQualityStats } = useQuery({
     queryKey: ['data-quality-stats'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('articles')
-        .select('id, wordpress_id, primary_author_id, source_url, status, embedding');
+        .select('id, wordpress_id, primary_author_id, source_url, status, is_chunked');
       
       if (error) throw error;
 
@@ -79,8 +75,8 @@ export default function ArticlesManagement() {
         missingWordPressId: data.filter(a => !a.wordpress_id).length,
         missingAuthor: data.filter(a => !a.primary_author_id).length,
         missingSourceUrl: data.filter(a => !a.source_url).length,
-        hasEmbedding: data.filter(a => a.embedding).length,
-        missingEmbedding: data.filter(a => !a.embedding).length,
+        chunked: data.filter(a => a.is_chunked).length,
+        notChunked: data.filter(a => !a.is_chunked).length,
         legacy: data.filter(a => !a.wordpress_id && !a.source_url).length
       };
 
@@ -152,7 +148,7 @@ export default function ArticlesManagement() {
   const publishedArticles = articles?.filter(a => a.status === 'published').length || 0;
   const draftArticles = articles?.filter(a => a.status === 'draft').length || 0;
 
-  // Updated filter options to include word count filter
+  // Updated filter options to remove embedding filters
   const filterOptions = [
     { value: 'all', label: 'All Articles', icon: FileText },
     { value: 'published', label: 'Published', icon: CheckCircle },
@@ -160,8 +156,6 @@ export default function ArticlesManagement() {
     { value: 'missing-wp-id', label: 'Missing WP ID', icon: AlertTriangle },
     { value: 'missing-author', label: 'Missing Author', icon: UserX },
     { value: 'no-word-count', label: 'No Word Count', icon: Calculator },
-    { value: 'embedded', label: 'With Embeddings', icon: Zap },
-    { value: 'not-embedded', label: 'No Embeddings', icon: ZapOff },
     { value: 'chunked', label: 'Chunked', icon: Package },
     { value: 'not-chunked', label: 'Not Chunked', icon: PackageX },
   ];
@@ -173,8 +167,6 @@ export default function ArticlesManagement() {
       case 'missing-wp-id': return 'Articles Missing WordPress ID';
       case 'missing-author': return 'Articles Missing Author';
       case 'no-word-count': return 'Articles Missing Word Count';
-      case 'embedded': return 'Articles with Embeddings';
-      case 'not-embedded': return 'Articles without Embeddings';
       case 'chunked': return 'Chunked Articles';
       case 'not-chunked': return 'Not Chunked Articles';
       default: return 'All Articles';
@@ -218,7 +210,7 @@ export default function ArticlesManagement() {
         </div>
       )}
 
-      {/* Interactive Stats Cards - Updated with word count stats */}
+      {/* Interactive Stats Cards - removed embedding stats */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card 
           className={`cursor-pointer transition-all hover:shadow-md ${
@@ -304,36 +296,36 @@ export default function ArticlesManagement() {
 
             <Card 
               className={`cursor-pointer transition-all hover:shadow-md ${
-                activeFilter === 'embedded' ? 'ring-2 ring-green-500 bg-green-50' : 'hover:bg-gray-50'
+                activeFilter === 'chunked' ? 'ring-2 ring-green-500 bg-green-50' : 'hover:bg-gray-50'
               }`}
-              onClick={() => setActiveFilter('embedded')}
+              onClick={() => setActiveFilter('chunked')}
             >
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  Embedded
+                  <Package className="h-4 w-4 text-green-500" />
+                  Chunked
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">
-                  {dataQualityStats.hasEmbedding}
+                  {dataQualityStats.chunked}
                 </div>
                 <div 
                   className={`text-xs cursor-pointer transition-colors ${
-                    activeFilter === 'not-embedded' ? 'text-blue-600 font-medium' : 'text-muted-foreground hover:text-gray-700'
+                    activeFilter === 'not-chunked' ? 'text-blue-600 font-medium' : 'text-muted-foreground hover:text-gray-700'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setActiveFilter('not-embedded');
+                    setActiveFilter('not-chunked');
                   }}
                 >
                   <Clock className="h-3 w-3 inline mr-1" />
-                  {dataQualityStats.missingEmbedding} not embedded
+                  {dataQualityStats.notChunked} not chunked
                 </div>
               </CardContent>
             </Card>
 
-            {/* New Word Count Card */}
+            {/* Word Count Card */}
             <Card 
               className={`cursor-pointer transition-all hover:shadow-md ${
                 activeFilter === 'no-word-count' ? 'ring-2 ring-yellow-500 bg-yellow-50' : 'hover:bg-gray-50'

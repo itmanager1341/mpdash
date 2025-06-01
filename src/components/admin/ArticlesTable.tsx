@@ -31,7 +31,7 @@ interface ArticlesTableProps {
 
 const ARTICLES_PER_PAGE = 20;
 
-type SortField = 'title' | 'author' | 'status' | 'published_at' | 'word_count' | 'wordpress_id' | 'embedding' | 'is_chunked';
+type SortField = 'title' | 'author' | 'status' | 'published_at' | 'word_count' | 'wordpress_id' | 'is_chunked';
 type SortDirection = 'asc' | 'desc';
 
 export function ArticlesTable({ 
@@ -51,7 +51,7 @@ export function ArticlesTable({
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
-  // Apply filter first, then search
+  // Apply filter first, then search - removed embedding filters
   const filteredByStatus = articles.filter(article => {
     switch (activeFilter) {
       case 'published':
@@ -64,10 +64,6 @@ export function ArticlesTable({
         return !article.primary_author_id;
       case 'no-word-count':
         return !article.word_count || article.word_count === 0;
-      case 'embedded':
-        return article.embedding;
-      case 'not-embedded':
-        return !article.embedding;
       case 'chunked':
         return article.is_chunked;
       case 'not-chunked':
@@ -122,10 +118,6 @@ export function ArticlesTable({
       case 'wordpress_id':
         aValue = a.wordpress_id || 0;
         bValue = b.wordpress_id || 0;
-        break;
-      case 'embedding':
-        aValue = a.embedding ? 1 : 0;
-        bValue = b.embedding ? 1 : 0;
         break;
       case 'is_chunked':
         aValue = a.is_chunked ? 1 : 0;
@@ -290,8 +282,6 @@ export function ArticlesTable({
       'missing-wp-id': 'articles missing WordPress ID',
       'missing-author': 'articles missing author',
       'no-word-count': 'articles missing word count',
-      'embedded': 'articles with embeddings',
-      'not-embedded': 'articles without embeddings',
       'chunked': 'articles with chunks',
       'not-chunked': 'articles without chunks'
     };
@@ -394,14 +384,6 @@ export function ArticlesTable({
                 WP ID
               </SortableTableHead>
               <SortableTableHead
-                sortKey="embedding"
-                currentSort={sortField}
-                sortDirection={sortDirection}
-                onSort={handleSort}
-              >
-                Embedded
-              </SortableTableHead>
-              <SortableTableHead
                 sortKey="is_chunked"
                 currentSort={sortField}
                 sortDirection={sortDirection}
@@ -415,7 +397,7 @@ export function ArticlesTable({
           <TableBody>
             {currentArticles.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   {searchTerm ? 'No articles found matching your search' : 
                    activeFilter !== 'all' ? `No articles found for this filter` : 'No articles found'}
                 </TableCell>
@@ -496,21 +478,6 @@ export function ArticlesTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      {article.embedding ? (
-                        <div className="flex items-center gap-1 text-green-600">
-                          <CheckCircle className="h-4 w-4" />
-                          <span className="text-xs">Yes</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1 text-gray-500">
-                          <Clock className="h-4 w-4" />
-                          <span className="text-xs">No</span>
-                        </div>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
                       {article.is_chunked ? (
                         <div className="flex items-center gap-1 text-green-600">
                           <Package className="h-4 w-4" />
@@ -520,7 +487,6 @@ export function ArticlesTable({
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 text-gray-500">
-                          <Clock className="h-4 w-4" />
                           <span className="text-xs">No chunks</span>
                         </div>
                       )}
