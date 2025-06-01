@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SortableTableHead } from "./SortableTableHead";
 import { SimplifiedBulkOperations } from "./SimplifiedBulkOperations";
 import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock, Zap, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +31,9 @@ interface ArticlesTableProps {
 
 const ARTICLES_PER_PAGE = 20;
 
+type SortField = 'title' | 'author' | 'status' | 'published_at' | 'word_count' | 'wordpress_id' | 'embedding' | 'is_chunked';
+type SortDirection = 'asc' | 'desc';
+
 export function ArticlesTable({ 
   articles, 
   isLoading, 
@@ -44,6 +48,8 @@ export function ArticlesTable({
   const [syncingArticleId, setSyncingArticleId] = useState<string | null>(null);
   const [processingChunks, setProcessingChunks] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Apply filter first, then search
   const filteredByStatus = articles.filter(article => {
@@ -73,7 +79,7 @@ export function ArticlesTable({
   });
 
   // Then apply search filter
-  const filteredArticles = filteredByStatus.filter(article => {
+  const searchFiltered = filteredByStatus.filter(article => {
     if (!searchTerm) return true;
     
     const searchLower = searchTerm.toLowerCase();
@@ -85,10 +91,71 @@ export function ArticlesTable({
     return titleMatch || authorMatch || excerptMatch;
   });
 
+  // Apply sorting
+  const sortedArticles = [...searchFiltered].sort((a, b) => {
+    if (!sortField) return 0;
+
+    let aValue: any;
+    let bValue: any;
+
+    switch (sortField) {
+      case 'title':
+        aValue = a.title?.toLowerCase() || '';
+        bValue = b.title?.toLowerCase() || '';
+        break;
+      case 'author':
+        aValue = (a.authors?.name || a.wordpress_author_name || '').toLowerCase();
+        bValue = (b.authors?.name || b.wordpress_author_name || '').toLowerCase();
+        break;
+      case 'status':
+        aValue = a.status || '';
+        bValue = b.status || '';
+        break;
+      case 'published_at':
+        aValue = a.published_at ? new Date(a.published_at).getTime() : 0;
+        bValue = b.published_at ? new Date(b.published_at).getTime() : 0;
+        break;
+      case 'word_count':
+        aValue = a.word_count || 0;
+        bValue = b.word_count || 0;
+        break;
+      case 'wordpress_id':
+        aValue = a.wordpress_id || 0;
+        bValue = b.wordpress_id || 0;
+        break;
+      case 'embedding':
+        aValue = a.embedding ? 1 : 0;
+        bValue = b.embedding ? 1 : 0;
+        break;
+      case 'is_chunked':
+        aValue = a.is_chunked ? 1 : 0;
+        bValue = b.is_chunked ? 1 : 0;
+        break;
+      default:
+        return 0;
+    }
+
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const filteredArticles = sortedArticles;
   const totalPages = Math.ceil(filteredArticles.length / ARTICLES_PER_PAGE);
   const startIndex = (currentPage - 1) * ARTICLES_PER_PAGE;
   const endIndex = startIndex + ARTICLES_PER_PAGE;
   const currentArticles = filteredArticles.slice(startIndex, endIndex);
+
+  const handleSort = (field: string) => {
+    const typedField = field as SortField;
+    if (sortField === typedField) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(typedField);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting changes
+  };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -278,14 +345,70 @@ export function ArticlesTable({
                   className={isIndeterminate ? "data-[state=indeterminate]:bg-blue-600" : ""}
                 />
               </TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead>Author</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Published</TableHead>
-              <TableHead>Word Count</TableHead>
-              <TableHead>WP ID</TableHead>
-              <TableHead>Embedded</TableHead>
-              <TableHead>Chunked</TableHead>
+              <SortableTableHead
+                sortKey="title"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Title
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="author"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Author
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="status"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Status
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="published_at"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Published
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="word_count"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Word Count
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="wordpress_id"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                WP ID
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="embedding"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Embedded
+              </SortableTableHead>
+              <SortableTableHead
+                sortKey="is_chunked"
+                currentSort={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              >
+                Chunked
+              </SortableTableHead>
               <TableHead className="w-40">Actions</TableHead>
             </TableRow>
           </TableHeader>
