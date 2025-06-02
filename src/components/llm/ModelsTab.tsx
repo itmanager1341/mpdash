@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,10 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 interface ModelProvider {
   name: string;
-  models: Model[];
+  models: EnhancedModel[];
 }
 
-interface Model {
+interface EnhancedModel {
   id: string;
   name: string;
   provider: string;
@@ -26,13 +25,19 @@ interface Model {
   maxTokens: number;
   isAvailable: boolean;
   defaultSettings: Record<string, any>;
+  costPer1MTokens?: {
+    input: number;
+    output: number;
+  };
+  avgResponseTime?: string;
+  recommendedFor?: string[];
 }
 
 export default function ModelsTab() {
   const [selectedProvider, setSelectedProvider] = useState("all");
   const [isAddingConfig, setIsAddingConfig] = useState(false);
   const [showTesting, setShowTesting] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<Model | null>(null);
+  const [selectedModel, setSelectedModel] = useState<EnhancedModel | null>(null);
   
   // Enhanced model data with cost and performance information
   const providers: ModelProvider[] = [
@@ -131,12 +136,12 @@ export default function ModelsTab() {
     }
   });
 
-  const handleModelSelect = (model: Model) => {
+  const handleModelSelect = (model: EnhancedModel) => {
     setSelectedModel(model);
     setShowTesting(true);
   };
 
-  const handleConfigureModel = (model: Model) => {
+  const handleConfigureModel = (model: EnhancedModel) => {
     setSelectedModel(model);
     setIsAddingConfig(true);
   };
