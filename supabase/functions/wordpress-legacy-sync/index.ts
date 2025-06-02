@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -109,32 +108,40 @@ async function checkWordPressIdConflict(supabase: any, wpId: number, currentArti
   return existingArticle;
 }
 
-// Enhanced author handling with fallback lookup
+// Enhanced author handling with improved fallback lookup and better logging
 async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any, wpPost: any) {
   if (!wpAuthorId) {
     console.log('No WordPress author ID provided');
     return null;
   }
 
-  // Try to get author data from embedded response first
+  console.log(`\n=== Author Resolution for WordPress Author ID ${wpAuthorId} ===`);
+
+  // FIRST: Always check database for existing author by WordPress ID
+  console.log(`Step 1: Checking database for existing author with wordpress_author_id=${wpAuthorId}...`);
+  const { data: existingAuthor, error: existingAuthorError } = await supabase
+    .from('authors')
+    .select('id, name, wordpress_author_id')
+    .eq('wordpress_author_id', wpAuthorId)
+    .maybeSingle();
+
+  if (existingAuthorError) {
+    console.error('Error checking for existing author:', existingAuthorError);
+  }
+
+  if (existingAuthor) {
+    console.log(`✓ Found existing author in database: ${existingAuthor.name} (ID: ${existingAuthor.id})`);
+    return existingAuthor.id;
+  }
+
+  console.log(`No existing author found for WordPress ID ${wpAuthorId}`);
+
+  // SECOND: Try to get author data from embedded response or API
   let authorData = wpAuthorData;
   
-  // If no embedded author data, try to find existing author by WordPress ID
   if (!authorData) {
-    console.log(`No embedded author data for WordPress author ID ${wpAuthorId}, checking existing authors...`);
+    console.log(`Step 2: No embedded author data, attempting WordPress API lookup...`);
     
-    const { data: existingAuthor } = await supabase
-      .from('authors')
-      .select('id, name, wordpress_author_id')
-      .eq('wordpress_author_id', wpAuthorId)
-      .maybeSingle();
-
-    if (existingAuthor) {
-      console.log(`Found existing author: ${existingAuthor.name} for WordPress ID ${wpAuthorId}`);
-      return existingAuthor.id;
-    }
-    
-    // Try to fetch author info directly from WordPress API if we have the credentials
     const wordpressUrl = Deno.env.get('WORDPRESS_URL');
     const username = Deno.env.get('WORDPRESS_USERNAME');
     const password = Deno.env.get('WORDPRESS_PASSWORD');
@@ -151,32 +158,27 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
         
         if (authorResponse.ok) {
           authorData = await authorResponse.json();
-          console.log(`Fetched author data from WordPress API: ${authorData.name}`);
+          console.log(`✓ Fetched author data from WordPress API: ${authorData.name}`);
+        } else {
+          console.log(`WordPress API returned ${authorResponse.status} for author ${wpAuthorId}`);
         }
       } catch (error) {
         console.error(`Failed to fetch author ${wpAuthorId} from WordPress API:`, error);
       }
+    } else {
+      console.log('WordPress credentials not available for API lookup');
     }
+  } else {
+    console.log(`✓ Using embedded author data: ${authorData.name}`);
   }
 
   if (!authorData || !authorData.name) {
-    console.log(`No author data available for WordPress author ID ${wpAuthorId}`);
+    console.log(`❌ No author data available for WordPress author ID ${wpAuthorId}`);
     return null;
   }
 
-  // Check if author already exists by WordPress ID
-  const { data: existingAuthor } = await supabase
-    .from('authors')
-    .select('id, name')
-    .eq('wordpress_author_id', wpAuthorId)
-    .maybeSingle();
-
-  if (existingAuthor) {
-    console.log(`Using existing author: ${existingAuthor.name}`);
-    return existingAuthor.id;
-  }
-
-  // Check if author exists by name and update with WordPress ID
+  // THIRD: Check if author exists by name and update with WordPress ID
+  console.log(`Step 3: Checking for author by name: "${authorData.name}"`);
   const { data: authorByName } = await supabase
     .from('authors')
     .select('id, name, wordpress_author_id')
@@ -184,7 +186,7 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
     .maybeSingle();
 
   if (authorByName && !authorByName.wordpress_author_id) {
-    console.log(`Updating existing author ${authorByName.name} with WordPress ID ${wpAuthorId}`);
+    console.log(`✓ Found author by name, updating with WordPress ID: ${authorByName.name}`);
     const { error: updateError } = await supabase
       .from('authors')
       .update({
@@ -194,12 +196,15 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
       .eq('id', authorByName.id);
 
     if (!updateError) {
+      console.log(`✓ Successfully updated author ${authorByName.name} with WordPress ID ${wpAuthorId}`);
       return authorByName.id;
+    } else {
+      console.error('Error updating author with WordPress ID:', updateError);
     }
   }
 
-  // Create new author
-  console.log(`Creating new author: ${authorData.name}`);
+  // FOURTH: Create new author if none exists
+  console.log(`Step 4: Creating new author: ${authorData.name}`);
   const { data: newAuthor, error: authorError } = await supabase
     .from('authors')
     .insert({
@@ -219,8 +224,32 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
     return null;
   }
 
-  console.log(`Created new author: ${authorData.name} with ID ${newAuthor.id}`);
+  console.log(`✓ Created new author: ${authorData.name} with ID ${newAuthor.id}`);
   return newAuthor.id;
+}
+
+// Enhanced function to ensure author assignment for all articles
+async function ensureAuthorAssignment(supabase: any, articleData: any, wpPost: any) {
+  // Always attempt author assignment if wordpress_author_id is present
+  if (articleData.wordpress_author_id) {
+    console.log(`\n--- Author Assignment for Article "${articleData.title}" ---`);
+    console.log(`WordPress Author ID: ${articleData.wordpress_author_id}`);
+    
+    const authorData = wpPost._embedded?.author?.[0];
+    const authorId = await handleAuthor(supabase, articleData.wordpress_author_id, authorData, wpPost);
+    
+    if (authorId) {
+      articleData.primary_author_id = authorId;
+      articleData.wordpress_author_name = authorData?.name || 'Unknown';
+      console.log(`✓ Author assigned: ${articleData.wordpress_author_name} (ID: ${authorId})`);
+    } else {
+      console.log(`❌ Failed to assign author for WordPress Author ID ${articleData.wordpress_author_id}`);
+    }
+  } else {
+    console.log('No WordPress author ID available for assignment');
+  }
+  
+  return articleData;
 }
 
 // Add delay for API rate limiting
@@ -409,14 +438,6 @@ serve(async (req) => {
           }
         }
 
-        // Handle author with enhanced fallback logic
-        const authorData = wpPost._embedded?.author?.[0];
-        let authorId = null;
-        if (wpPost.author) {
-          authorId = await handleAuthor(supabase, wpPost.author, authorData, wpPost);
-          console.log(`Author assignment result: ${authorId ? `ID ${authorId}` : 'No author assigned'}`);
-        }
-
         // Parse dates properly from WordPress post (CST timezone)
         const publishedDate = convertWordPressToCst(wpPost.date);
         const modifiedDate = wpPost.modified ? convertWordPressToCst(wpPost.modified) : publishedDate;
@@ -424,7 +445,7 @@ serve(async (req) => {
         console.log(`Using CST dates - published: ${publishedDate}, modified: ${modifiedDate}`);
 
         // Prepare article data with enhanced content processing
-        const articleData = {
+        let articleData = {
           wordpress_id: wpPost.id,
           title: decodeHtmlEntities(wpPost.title?.rendered || ''),
           content_variants: {
@@ -436,9 +457,7 @@ serve(async (req) => {
               tags: wpPost.tags
             }
           },
-          primary_author_id: authorId,
           wordpress_author_id: wpPost.author,
-          wordpress_author_name: authorData?.name || 'Unknown',
           wordpress_categories: wpPost.categories || [],
           wordpress_tags: wpPost.tags || [],
           published_at: publishedDate,
@@ -450,6 +469,9 @@ serve(async (req) => {
           excerpt: wpPost.excerpt?.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null,
           updated_at: modifiedDate
         }
+
+        // ENHANCED: Always ensure author assignment for all articles
+        articleData = await ensureAuthorAssignment(supabase, articleData, wpPost);
 
         // Process content immediately if enabled
         if (processingOptions.autoExtractContent) {
@@ -483,8 +505,10 @@ serve(async (req) => {
         } else {
           // Actual processing
           if (existingArticle && (duplicateHandling.mode === 'update' || duplicateHandling.mode === 'both')) {
-            // Update existing article
+            // Update existing article - ENSURE author assignment happens
             console.log(`Updating existing article: ${existingArticle.id}`);
+            console.log(`Author assignment: ${articleData.primary_author_id ? `ID ${articleData.primary_author_id}` : 'No author'}`);
+            
             const { error } = await supabase
               .from('articles')
               .update(articleData)
@@ -499,9 +523,15 @@ serve(async (req) => {
             syncResults.matched++
             articleId = existingArticle.id;
             console.log(`✓ Updated article: ${existingArticle.title}`)
+            
+            // Verify author assignment
+            if (articleData.primary_author_id) {
+              console.log(`✓ Author successfully assigned to existing article`);
+            }
           } else if (!existingArticle) {
             // Create new article
             console.log(`Creating new article: "${articleData.title}"`);
+            console.log(`Author assignment: ${articleData.primary_author_id ? `ID ${articleData.primary_author_id}` : 'No author'}`);
             
             const { data: insertedArticle, error } = await supabase
               .from('articles')
@@ -517,6 +547,11 @@ serve(async (req) => {
             syncResults.created++
             articleId = insertedArticle.id;
             console.log(`✓ Created new article: ${articleData.title}`)
+            
+            // Verify author assignment
+            if (articleData.primary_author_id) {
+              console.log(`✓ Author successfully assigned to new article`);
+            }
           } else {
             // Skip duplicate
             syncResults.skipped++;
