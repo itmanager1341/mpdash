@@ -69,3 +69,21 @@ interface PromptMetadata {
     };
   };
 }
+
+// Enhanced Model interface with cost and performance information
+interface Model {
+  id: string;
+  name: string;
+  provider: string;
+  description: string;
+  capabilities: string[];
+  maxTokens: number;
+  isAvailable: boolean;
+  defaultSettings: Record<string, any>;
+  costPer1MTokens?: {
+    input: number;
+    output: number;
+  };
+  avgResponseTime?: string;
+  recommendedFor?: string[];
+}

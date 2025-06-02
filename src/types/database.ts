@@ -1,4 +1,3 @@
-
 // Type definitions for custom Supabase functions and tables
 import { Json } from "@/integrations/supabase/types";
 import { DateRange } from "react-day-picker";
@@ -111,7 +110,7 @@ export interface LlmUsageLog {
   created_at: string;
 }
 
-// Interface for usage analytics
+// Interface for usage analytics - Enhanced with provider breakdown
 export interface UsageAnalytics {
   totalTokens: number;
   totalCost: number;
@@ -135,6 +134,14 @@ export interface UsageAnalytics {
     tokens: number;
     cost: number;
     operations: number;
+  }>;
+  providerBreakdown?: Array<{
+    provider: string;
+    tokens: number;
+    cost: number;
+    operations: number;
+    costPerOperation: number;
+    tokensPerDollar: number;
   }>;
 }
 
