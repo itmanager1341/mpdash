@@ -5,25 +5,94 @@ import { corsHeaders } from '../_shared/cors.ts'
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+// HTML entity decoding function
+function decodeHtmlEntities(text: string): string {
+  const entities: { [key: string]: string } = {
+    '&#8230;': '...',
+    '&hellip;': '...',
+    '&#8216;': "'",
+    '&#8217;': "'",
+    '&lsquo;': "'",
+    '&rsquo;': "'",
+    '&#8220;': '"',
+    '&#8221;': '"',
+    '&ldquo;': '"',
+    '&rdquo;': '"',
+    '&#8211;': '-',
+    '&#8212;': '--',
+    '&ndash;': '-',
+    '&mdash;': '--',
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&nbsp;': ' ',
+    '&#039;': "'",
+    '&quot;': '"'
+  };
+  
+  let decoded = text;
+  for (const [entity, replacement] of Object.entries(entities)) {
+    decoded = decoded.replace(new RegExp(entity, 'g'), replacement);
+  }
+  
+  return decoded;
+}
+
+// Enhanced title normalization function
+function normalizeTitle(title: string): string {
+  // First decode HTML entities
+  let normalized = decodeHtmlEntities(title);
+  
+  // Convert to lowercase and trim
+  normalized = normalized.toLowerCase().trim();
+  
+  // Replace various quote types with standard quotes
+  normalized = normalized.replace(/[''`]/g, "'");
+  normalized = normalized.replace(/[""]/g, '"');
+  
+  // Replace various dash types with standard dash
+  normalized = normalized.replace(/[–—]/g, '-');
+  
+  // Replace multiple spaces with single space
+  normalized = normalized.replace(/\s+/g, ' ');
+  
+  // Remove common punctuation that might differ
+  normalized = normalized.replace(/[^\w\s'-]/g, '');
+  
+  return normalized;
+}
+
 // Enhanced similarity scoring for title matching
 function calculateTitleSimilarity(title1: string, title2: string): number {
-  const normalize = (str: string) => str.toLowerCase().trim().replace(/[^\w\s]/g, '');
-  const norm1 = normalize(title1);
-  const norm2 = normalize(title2);
+  const norm1 = normalizeTitle(title1);
+  const norm2 = normalizeTitle(title2);
   
-  // Exact match
-  if (norm1 === norm2) return 1.0;
+  console.log(`Comparing normalized titles:`);
+  console.log(`  Original 1: "${title1}" -> Normalized: "${norm1}"`);
+  console.log(`  Original 2: "${title2}" -> Normalized: "${norm2}"`);
   
-  // Check if one contains the other
-  if (norm1.includes(norm2) || norm2.includes(norm1)) return 0.9;
+  // Exact match after normalization
+  if (norm1 === norm2) {
+    console.log(`  Result: EXACT MATCH (1.0)`);
+    return 1.0;
+  }
+  
+  // Check if one contains the other after normalization
+  if (norm1.includes(norm2) || norm2.includes(norm1)) {
+    console.log(`  Result: SUBSTRING MATCH (0.95)`);
+    return 0.95;
+  }
   
   // Word overlap scoring
-  const words1 = new Set(norm1.split(/\s+/));
-  const words2 = new Set(norm2.split(/\s+/));
+  const words1 = new Set(norm1.split(/\s+/).filter(w => w.length > 2));
+  const words2 = new Set(norm2.split(/\s+/).filter(w => w.length > 2));
   const intersection = new Set([...words1].filter(x => words2.has(x)));
   const union = new Set([...words1, ...words2]);
   
-  return intersection.size / union.size;
+  const similarity = intersection.size / union.size;
+  console.log(`  Result: WORD OVERLAP (${similarity.toFixed(3)}) - ${intersection.size}/${union.size} words match`);
+  
+  return similarity;
 }
 
 // Check for existing WordPress ID conflicts
@@ -101,7 +170,7 @@ async function resolveDuplicateArticle(supabase: any, currentArticle: any, confl
 async function searchWordPressPostByTitle(title: string, wordpressUrl: string, auth: string) {
   if (!title || title.length < 5) return null;
   
-  console.log(`Searching WordPress for exact title: "${title}"`);
+  console.log(`Searching WordPress for title: "${title}"`);
   
   // First try exact title search
   const exactSearchQuery = encodeURIComponent(title);
@@ -133,23 +202,12 @@ async function searchWordPressPostByTitle(title: string, wordpressUrl: string, a
       console.log(`Result ${index + 1}: "${post.title.rendered}" (ID: ${post.id})`);
     });
 
-    // First check for exact match
-    let exactMatch = results.find((post: any) => 
-      post.title.rendered.toLowerCase().trim() === title.toLowerCase().trim()
-    );
-
-    if (exactMatch) {
-      console.log(`Found EXACT WordPress match: "${exactMatch.title.rendered}" (ID: ${exactMatch.id})`);
-      return { post: exactMatch, similarity: 1.0 };
-    }
-
-    // Find best similarity match with lower threshold
+    // First check for exact match using enhanced normalization
     let bestMatch = null;
-    let bestScore = 0.6; // Lowered from 0.8
+    let bestScore = 0.7; // Lowered threshold for better matching
 
     for (const post of results) {
       const similarity = calculateTitleSimilarity(title, post.title.rendered);
-      console.log(`Similarity for "${post.title.rendered}": ${similarity.toFixed(3)}`);
       if (similarity > bestScore) {
         bestScore = similarity;
         bestMatch = { post, similarity };
@@ -157,10 +215,10 @@ async function searchWordPressPostByTitle(title: string, wordpressUrl: string, a
     }
 
     if (bestMatch) {
-      console.log(`Found WordPress match: "${bestMatch.post.title.rendered}" (confidence: ${bestScore.toFixed(2)})`);
+      console.log(`Found WordPress match: "${bestMatch.post.title.rendered}" (confidence: ${bestScore.toFixed(3)})`);
       return bestMatch;
     } else {
-      console.log(`No matches above threshold (${0.6}) found`);
+      console.log(`No matches above threshold (${0.7}) found`);
     }
 
     return null;
@@ -288,7 +346,7 @@ serve(async (req) => {
       operationId = null
     } = await req.json().catch(() => ({}))
 
-    console.log(`Starting enhanced WordPress sync`)
+    console.log(`Starting enhanced WordPress sync with improved title matching`)
     console.log(`Target articles: ${targetArticleIds ? targetArticleIds.length : 'all'}`)
     console.log(`Date range: ${startDate || 'no start'} to ${endDate || 'no end'}`)
     console.log(`Operation ID: ${operationId}`)
@@ -460,11 +518,11 @@ serve(async (req) => {
           }
 
           if (!wpPost) {
-            // Search by title
+            // Search by title with enhanced matching
             const searchResult = await searchWordPressPostByTitle(article.title, wordpressUrl, auth);
             if (searchResult) {
               wpPost = searchResult.post;
-              console.log(`Found WordPress post by title search: ${wpPost.id}`);
+              console.log(`Found WordPress post by enhanced title search: ${wpPost.id} (similarity: ${searchResult.similarity.toFixed(3)})`);
             }
           }
 
