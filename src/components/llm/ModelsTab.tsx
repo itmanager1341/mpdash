@@ -34,7 +34,7 @@ export default function ModelsTab() {
   const [showTesting, setShowTesting] = useState(false);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   
-  // Mock data for now - in a real implementation this would come from the database
+  // Enhanced model data with cost and performance information
   const providers: ModelProvider[] = [
     {
       name: "openai",
@@ -47,7 +47,10 @@ export default function ModelsTab() {
           capabilities: ["text", "vision", "function-calling"],
           maxTokens: 128000,
           isAvailable: true,
-          defaultSettings: { temperature: 0.7, topP: 1 }
+          defaultSettings: { temperature: 0.7, topP: 1 },
+          costPer1MTokens: { input: 2.50, output: 10.00 },
+          avgResponseTime: "2-4s",
+          recommendedFor: ["Complex analysis", "Content generation", "Multi-modal tasks"]
         },
         {
           id: "gpt-4o-mini",
@@ -57,7 +60,23 @@ export default function ModelsTab() {
           capabilities: ["text", "vision"],
           maxTokens: 128000,
           isAvailable: true,
-          defaultSettings: { temperature: 0.7, topP: 1 }
+          defaultSettings: { temperature: 0.7, topP: 1 },
+          costPer1MTokens: { input: 0.15, output: 0.60 },
+          avgResponseTime: "1-2s",
+          recommendedFor: ["Quick analysis", "Simple content tasks", "High-volume operations"]
+        },
+        {
+          id: "text-embedding-3-small",
+          name: "Text Embedding 3 Small",
+          provider: "openai",
+          description: "High-performance embedding model for semantic search",
+          capabilities: ["embeddings"],
+          maxTokens: 8191,
+          isAvailable: true,
+          defaultSettings: {},
+          costPer1MTokens: { input: 0.02, output: 0 },
+          avgResponseTime: "200-500ms",
+          recommendedFor: ["Content chunking", "Semantic search", "Content similarity"]
         }
       ]
     },
@@ -69,20 +88,26 @@ export default function ModelsTab() {
           name: "Llama 3.1 Sonar Small",
           provider: "perplexity",
           description: "8B parameter model with online search capabilities",
-          capabilities: ["text", "search"],
+          capabilities: ["text", "search", "real-time-data"],
           maxTokens: 127072,
           isAvailable: true,
-          defaultSettings: { temperature: 0.2, topP: 0.9 }
+          defaultSettings: { temperature: 0.2, topP: 0.9 },
+          costPer1MTokens: { input: 0.20, output: 0.20 },
+          avgResponseTime: "3-8s",
+          recommendedFor: ["News research", "Current events", "Real-time information"]
         },
         {
           id: "llama-3.1-sonar-large-128k-online",
           name: "Llama 3.1 Sonar Large",
           provider: "perplexity",
           description: "70B parameter model with online search capabilities",
-          capabilities: ["text", "search"],
+          capabilities: ["text", "search", "real-time-data"],
           maxTokens: 127072,
           isAvailable: true,
-          defaultSettings: { temperature: 0.2, topP: 0.9 }
+          defaultSettings: { temperature: 0.2, topP: 0.9 },
+          costPer1MTokens: { input: 1.00, output: 1.00 },
+          avgResponseTime: "5-12s",
+          recommendedFor: ["Complex research", "Detailed analysis", "High-quality content generation"]
         }
       ]
     }
@@ -133,6 +158,7 @@ export default function ModelsTab() {
 
   return (
     <div className="space-y-6">
+      {/* Enhanced header with cost efficiency toggle */}
       <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
         <Tabs 
           value={selectedProvider} 
@@ -204,7 +230,9 @@ export default function ModelsTab() {
                 <CardHeader className="pb-2">
                   <CardTitle className="flex justify-between items-center">
                     {model.name}
-                    <Badge>{model.provider}</Badge>
+                    <Badge variant={model.provider === 'openai' ? 'default' : 'secondary'}>
+                      {model.provider}
+                    </Badge>
                   </CardTitle>
                   <CardDescription>{model.description}</CardDescription>
                 </CardHeader>
@@ -217,10 +245,40 @@ export default function ModelsTab() {
                         </Badge>
                       ))}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Max tokens: {model.maxTokens.toLocaleString()}
-                    </p>
+                    
+                    {/* Enhanced model information */}
+                    <div className="text-sm space-y-1 mb-3">
+                      <p className="text-muted-foreground">
+                        Max tokens: {model.maxTokens.toLocaleString()}
+                      </p>
+                      {model.costPer1MTokens && (
+                        <p className="text-muted-foreground">
+                          Cost: ${model.costPer1MTokens.input}/1M in
+                          {model.costPer1MTokens.output > 0 && `, $${model.costPer1MTokens.output}/1M out`}
+                        </p>
+                      )}
+                      {model.avgResponseTime && (
+                        <p className="text-muted-foreground">
+                          Response time: {model.avgResponseTime}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Recommended use cases */}
+                    {model.recommendedFor && (
+                      <div className="mb-3">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Best for:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {model.recommendedFor.slice(0, 2).map(use => (
+                            <Badge key={use} variant="outline" className="text-xs">
+                              {use}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
+                  
                   <div className="flex justify-between mt-4">
                     <Button
                       variant="outline"

@@ -87,7 +87,7 @@ function intelligentChunk(text: string, chunkType: 'title' | 'content' | 'summar
   return chunks;
 }
 
-// Generate embedding for text and log usage
+// Enhanced embedding generation with accurate cost calculation
 async function generateEmbedding(text: string, openaiKey: string, supabase: any): Promise<number[] | null> {
   const startTime = Date.now();
   
@@ -114,7 +114,7 @@ async function generateEmbedding(text: string, openaiKey: string, supabase: any)
         p_status: 'error',
         p_error_message: `OpenAI API error: ${response.status}`,
         p_duration_ms: Date.now() - startTime,
-        p_operation_metadata: { text_length: text.length }
+        p_operation_metadata: { text_length: text.length, provider: 'openai' }
       });
       
       return null;
@@ -124,9 +124,9 @@ async function generateEmbedding(text: string, openaiKey: string, supabase: any)
     const embedding = result.data?.[0]?.embedding || null;
     
     if (embedding) {
-      // Log successful embedding
-      const tokens = Math.ceil(text.length / 4); // Rough token estimation
-      const cost = (tokens / 1000000) * 0.00002; // text-embedding-3-small pricing
+      // Accurate token calculation and cost for text-embedding-3-small
+      const tokens = result.usage?.total_tokens || Math.ceil(text.length / 4);
+      const cost = (tokens / 1000000) * 0.02; // $0.02 per 1M tokens (corrected from $0.00002)
       
       await supabase.rpc('log_llm_usage', {
         p_function_name: 'process-article-chunks',
@@ -139,7 +139,10 @@ async function generateEmbedding(text: string, openaiKey: string, supabase: any)
         p_status: 'success',
         p_operation_metadata: { 
           text_length: text.length,
-          embedding_dimensions: result.data?.[0]?.embedding?.length || 0
+          embedding_dimensions: result.data?.[0]?.embedding?.length || 0,
+          provider: 'openai',
+          tokens_per_second: Math.round(tokens / ((Date.now() - startTime) / 1000)),
+          cost_per_token: cost / tokens
         }
       });
     }
@@ -148,14 +151,14 @@ async function generateEmbedding(text: string, openaiKey: string, supabase: any)
   } catch (error) {
     console.error('Error generating embedding:', error);
     
-    // Log error
+    // Log error with provider information
     await supabase.rpc('log_llm_usage', {
       p_function_name: 'process-article-chunks',
       p_model: EMBEDDING_MODEL,
       p_status: 'error',
       p_error_message: error.message,
       p_duration_ms: Date.now() - startTime,
-      p_operation_metadata: { text_length: text.length }
+      p_operation_metadata: { text_length: text.length, provider: 'openai' }
     });
     
     return null;
