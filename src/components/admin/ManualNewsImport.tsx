@@ -101,13 +101,74 @@ export default function ManualNewsImport() {
     }
   };
 
+  const runWordPressSync = async (targetArticleIds?: string[]) => {
+    setIsImporting(true);
+    const syncType = targetArticleIds ? "manual article sync" : "WordPress sync";
+    toast.info(`Starting ${syncType}...`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
+        body: { 
+          maxArticles: 50,
+          legacyMode: true,
+          targetArticleIds: targetArticleIds || null,
+          duplicateHandling: {
+            mode: 'update', // This is the key fix - update instead of skip
+            dryRun: false
+          },
+          processingOptions: {
+            autoExtractContent: true,
+            autoCalculateWordCount: true,
+            autoChunkArticles: false
+          }
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setLastResult({
+        success: data.success,
+        message: data.success ? 
+          `${syncType} completed! Processed: ${data.results?.processed}, Updated: ${data.results?.updated}, Created: ${data.results?.created}` :
+          `${syncType} failed`,
+        details: {
+          articles_found: data.results?.processed || 0,
+          articles_inserted: data.results?.created || 0,
+          articles_skipped: data.results?.skipped || 0,
+          debug: data.results
+        }
+      });
+      setDebugData(data);
+
+      if (data.success) {
+        toast.success(
+          `${syncType} successful! Processed ${data.results?.processed} articles, updated ${data.results?.updated}, created ${data.results?.created}.`
+        );
+      } else {
+        toast.error(`${syncType} failed`);
+      }
+    } catch (err) {
+      console.error(`Error running ${syncType}:`, err);
+      toast.error(`Failed to run ${syncType}`);
+      
+      setLastResult({
+        success: false,
+        message: err instanceof Error ? err.message : "Unknown error occurred"
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Manual News Import</CardTitle>
+          <CardTitle>Manual News Import & WordPress Sync</CardTitle>
           <CardDescription>
-            Manually trigger the news import process to fetch the latest articles
+            Manually trigger news import or WordPress article sync processes
           </CardDescription>
         </CardHeader>
         
@@ -116,7 +177,7 @@ export default function ManualNewsImport() {
             <Info className="h-4 w-4" />
             <AlertTitle>Information</AlertTitle>
             <AlertDescription>
-              Use this feature if scheduled imports are not working or if you want to immediately import new articles.
+              Use these features if scheduled imports are not working or if you want to immediately import/sync content.
             </AlertDescription>
           </Alert>
           
@@ -125,7 +186,7 @@ export default function ManualNewsImport() {
               <Separator />
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-sm font-medium">Last Import Results:</h4>
+                  <h4 className="text-sm font-medium">Last Operation Results:</h4>
                   <Button 
                     variant="outline" 
                     size="sm" 
@@ -179,7 +240,7 @@ export default function ManualNewsImport() {
                               onClick={() => setIsDebugOpen(true)}
                             >
                               <Bug className="h-3 w-3 mr-1" />
-                              View API Response Details
+                              View Response Details
                             </Button>
                           </div>
                         )}
@@ -192,7 +253,7 @@ export default function ManualNewsImport() {
           )}
         </CardContent>
         
-        <CardFooter>
+        <CardFooter className="flex flex-col gap-2">
           <Button 
             onClick={runNewsImport} 
             disabled={isImporting}
@@ -210,6 +271,25 @@ export default function ManualNewsImport() {
               </>
             )}
           </Button>
+          
+          <Button 
+            onClick={() => runWordPressSync()} 
+            disabled={isImporting}
+            variant="outline"
+            className="w-full"
+          >
+            {isImporting ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Sync WordPress Articles
+              </>
+            )}
+          </Button>
         </CardFooter>
       </Card>
       
@@ -218,7 +298,7 @@ export default function ManualNewsImport() {
           <DialogHeader>
             <DialogTitle>Debug Information</DialogTitle>
             <DialogDescription>
-              Detailed information about the import process
+              Detailed information about the import/sync process
             </DialogDescription>
           </DialogHeader>
           
@@ -227,7 +307,7 @@ export default function ManualNewsImport() {
               <TabsTrigger value="full">Full Response</TabsTrigger>
               <TabsTrigger value="articles">Articles</TabsTrigger>
               {debugData?.details?.debug && (
-                <TabsTrigger value="apiResponse">API Response</TabsTrigger>
+                <TabsTrigger value="response">Sync Response</TabsTrigger>
               )}
             </TabsList>
             
@@ -267,27 +347,15 @@ export default function ManualNewsImport() {
             </TabsContent>
             
             {debugData?.details?.debug && (
-              <TabsContent value="apiResponse" className="flex-1">
+              <TabsContent value="response" className="flex-1">
                 <ScrollArea className="h-full rounded-md border p-4">
                   <div className="space-y-4">
                     <div>
-                      <h4 className="font-medium">Raw Response Snippet</h4>
+                      <h4 className="font-medium">Sync Results</h4>
                       <pre className="text-xs whitespace-pre-wrap p-2 bg-muted rounded-md mt-1">
-                        {debugData.details.debug.rawResponseSnippet || 'No raw response available'}
+                        {JSON.stringify(debugData.details.debug, null, 2)}
                       </pre>
                     </div>
-                    {debugData.details.debug.rawResponseLength && (
-                      <div>
-                        <h4 className="font-medium">Response Length</h4>
-                        <p className="text-sm">{debugData.details.debug.rawResponseLength} characters</p>
-                      </div>
-                    )}
-                    {debugData.details.debug.parsingMethod && (
-                      <div>
-                        <h4 className="font-medium">Parsing Method</h4>
-                        <p className="text-sm">{debugData.details.debug.parsingMethod}</p>
-                      </div>
-                    )}
                   </div>
                 </ScrollArea>
               </TabsContent>
