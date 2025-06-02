@@ -7,6 +7,7 @@ import UserManagement from "@/components/admin/UserManagement";
 import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
 import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
 import CronStatusChecker from "@/components/admin/CronStatusChecker";
+import AuthorMappingTool from "@/components/admin/AuthorMappingTool";
 
 const AdminSettings = () => {
   const [activeTab, setActiveTab] = useState("api-keys");
@@ -25,6 +26,7 @@ const AdminSettings = () => {
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="scheduled-tasks">Scheduled Tasks</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="author-mapping">Author Mapping</TabsTrigger>
           <TabsTrigger value="jobs-monitor">Jobs Monitor</TabsTrigger>
         </TabsList>
         
@@ -38,6 +40,10 @@ const AdminSettings = () => {
         
         <TabsContent value="users" className="space-y-8">
           <UserManagement />
+        </TabsContent>
+        
+        <TabsContent value="author-mapping" className="space-y-8">
+          <AuthorMappingTool />
         </TabsContent>
         
         <TabsContent value="jobs-monitor" className="space-y-8">

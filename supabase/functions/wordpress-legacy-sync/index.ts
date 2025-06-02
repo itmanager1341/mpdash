@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -81,173 +82,34 @@ function convertWordPressToCst(wpDate: string): string {
   }
 }
 
-// Enhanced simple author assignment function with detailed logging
-async function assignAuthorFromWordPress(wpPost: any, supabase: any): Promise<{ authorId: string | null; authorName: string | null }> {
-  const wpAuthorId = wpPost.author;
-  if (!wpAuthorId) {
-    console.log('❌ No WordPress author ID provided in post data');
-    return { authorId: null, authorName: null };
-  }
-
-  console.log(`\n=== DETAILED AUTHOR ASSIGNMENT DEBUG ===`);
-  console.log(`WordPress Author ID: ${wpAuthorId} (type: ${typeof wpAuthorId})`);
-  console.log(`Full wpPost author data:`, JSON.stringify({ 
-    author: wpPost.author, 
-    _embedded: wpPost._embedded?.author ? 'present' : 'missing'
-  }, null, 2));
-
-  // Step 1: Check database for existing author by WordPress ID with enhanced logging
-  console.log(`🔍 Checking database for wordpress_author_id=${wpAuthorId}...`);
+// SIMPLIFIED: Map WordPress author ID to our system author using existing data
+async function mapWordPressAuthor(wpAuthorId: number, supabase: any): Promise<{ authorId: string | null; authorName: string | null }> {
+  console.log(`\n🔍 SIMPLE AUTHOR MAPPING for WordPress ID: ${wpAuthorId}`);
   
-  // Try both string and number versions to handle type mismatches
-  const { data: existingAuthor, error: existingAuthorError } = await supabase
-    .from('authors')
-    .select('id, name, wordpress_author_id')
-    .or(`wordpress_author_id.eq.${wpAuthorId},wordpress_author_id.eq."${wpAuthorId}"`)
-    .maybeSingle();
-
-  console.log(`Database lookup result:`, {
-    found: !!existingAuthor,
-    error: existingAuthorError,
-    authorData: existingAuthor
-  });
-
-  if (existingAuthorError) {
-    console.error('❌ Database lookup error:', existingAuthorError);
-    return { authorId: null, authorName: null };
-  }
-
-  if (existingAuthor) {
-    console.log(`✅ Found existing author in database:`);
-    console.log(`  - Author ID: ${existingAuthor.id}`);
-    console.log(`  - Author Name: "${existingAuthor.name}"`);
-    console.log(`  - WordPress Author ID: ${existingAuthor.wordpress_author_id}`);
-    return { authorId: existingAuthor.id, authorName: existingAuthor.name };
-  }
-
-  console.log(`ℹ️ No existing author found for WordPress ID ${wpAuthorId}`);
-
-  // Step 2: Get author data from WordPress with enhanced logging
-  let authorData = null;
-  
-  console.log(`🔍 Checking for embedded author data...`);
-  console.log(`Embedded data structure:`, JSON.stringify(wpPost._embedded, null, 2));
-  
-  // Try embedded data first (from _embed parameter)
-  if (wpPost._embedded?.author?.[0]) {
-    authorData = wpPost._embedded.author[0];
-    console.log(`✅ Found embedded author data:`);
-    console.log(`  - Name: "${authorData.name}"`);
-    console.log(`  - ID: ${authorData.id}`);
-    console.log(`  - Email: ${authorData.email || 'not provided'}`);
-  } else {
-    // Fallback to WordPress API call
-    console.log(`⚠️ No embedded author data found, attempting WordPress API lookup...`);
-    const wordpressUrl = Deno.env.get('WORDPRESS_URL');
-    const username = Deno.env.get('WORDPRESS_USERNAME');
-    const password = Deno.env.get('WORDPRESS_PASSWORD');
-    
-    if (wordpressUrl && username && password) {
-      try {
-        const auth = btoa(`${username}:${password}`);
-        const authorApiUrl = `${wordpressUrl}/wp-json/wp/v2/users/${wpAuthorId}`;
-        console.log(`🌐 Fetching from: ${authorApiUrl}`);
-        
-        const authorResponse = await fetch(authorApiUrl, {
-          headers: {
-            'Authorization': `Basic ${auth}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        console.log(`WordPress API response status: ${authorResponse.status}`);
-        
-        if (authorResponse.ok) {
-          authorData = await authorResponse.json();
-          console.log(`✅ Fetched author data from WordPress API:`);
-          console.log(`  - Name: "${authorData.name}"`);
-          console.log(`  - ID: ${authorData.id}`);
-        } else {
-          const errorText = await authorResponse.text();
-          console.log(`❌ WordPress API error: ${authorResponse.status} - ${errorText}`);
-        }
-      } catch (error) {
-        console.error(`❌ Failed to fetch author from WordPress API:`, error);
-      }
-    } else {
-      console.log(`❌ WordPress credentials not configured for API fallback`);
-    }
-  }
-
-  if (!authorData || !authorData.name) {
-    console.log(`❌ No author data available for WordPress author ID ${wpAuthorId}`);
-    return { authorId: null, authorName: null };
-  }
-
-  console.log(`📝 Processing author data: "${authorData.name}"`);
-
-  // Step 3: Check if author exists by name and update with WordPress ID
-  console.log(`🔍 Checking for existing author by name: "${authorData.name}"`);
-  const { data: authorByName, error: nameSearchError } = await supabase
-    .from('authors')
-    .select('id, name, wordpress_author_id')
-    .ilike('name', authorData.name)
-    .maybeSingle();
-
-  console.log(`Name-based lookup result:`, {
-    found: !!authorByName,
-    error: nameSearchError,
-    authorData: authorByName
-  });
-
-  if (authorByName && !authorByName.wordpress_author_id) {
-    console.log(`✅ Found author by name, updating with WordPress ID...`);
-    const { error: updateError } = await supabase
+  try {
+    // Look up author by WordPress ID in our authors table
+    const { data: author, error } = await supabase
       .from('authors')
-      .update({
-        wordpress_author_id: parseInt(wpAuthorId.toString()),
-        wordpress_author_name: authorData.name
-      })
-      .eq('id', authorByName.id);
+      .select('id, name, wordpress_author_id, wordpress_author_name')
+      .eq('wordpress_author_id', wpAuthorId)
+      .maybeSingle();
 
-    if (!updateError) {
-      console.log(`✅ Successfully updated author "${authorByName.name}" with WordPress ID ${wpAuthorId}`);
-      return { authorId: authorByName.id, authorName: authorByName.name };
-    } else {
-      console.error('❌ Error updating author with WordPress ID:', updateError);
+    if (error) {
+      console.error('❌ Database lookup error:', error);
+      return { authorId: null, authorName: null };
     }
-  } else if (authorByName && authorByName.wordpress_author_id) {
-    console.log(`ℹ️ Author by name already has WordPress ID: ${authorByName.wordpress_author_id}`);
-    return { authorId: authorByName.id, authorName: authorByName.name };
-  }
 
-  // Step 4: Create new author if none exists
-  console.log(`🆕 Creating new author: "${authorData.name}"`);
-  const newAuthorData = {
-    name: authorData.name,
-    author_type: 'external',
-    email: authorData.email || null,
-    bio: authorData.description || null,
-    wordpress_author_id: parseInt(wpAuthorId.toString()),
-    wordpress_author_name: authorData.name,
-    is_active: true
-  };
-
-  console.log(`New author data to insert:`, newAuthorData);
-
-  const { data: newAuthor, error: authorError } = await supabase
-    .from('authors')
-    .insert(newAuthorData)
-    .select('id, name')
-    .single();
-
-  if (authorError) {
-    console.error('❌ Error creating author:', authorError);
+    if (author) {
+      console.log(`✅ Found mapped author: "${author.name}" (ID: ${author.id})`);
+      return { authorId: author.id, authorName: author.name };
+    } else {
+      console.log(`⚠️ No author mapping found for WordPress ID ${wpAuthorId}`);
+      return { authorId: null, authorName: null };
+    }
+  } catch (error) {
+    console.error('❌ Error in author mapping:', error);
     return { authorId: null, authorName: null };
   }
-
-  console.log(`✅ Created new author: "${newAuthor.name}" with ID ${newAuthor.id}`);
-  return { authorId: newAuthor.id, authorName: newAuthor.name };
 }
 
 // Add delay for API rate limiting
@@ -255,7 +117,7 @@ async function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Missing function - check for existing article by WordPress ID
+// Check for existing article by WordPress ID
 async function checkWordPressIdConflict(supabase: any, wordpressId: number): Promise<any> {
   console.log(`🔍 Checking for existing article with WordPress ID: ${wordpressId}`);
   
@@ -278,6 +140,64 @@ async function checkWordPressIdConflict(supabase: any, wordpressId: number): Pro
   }
 
   return existingArticle;
+}
+
+// Bulk update function to fix existing unmapped articles
+async function bulkUpdateUnmappedArticles(supabase: any): Promise<{ updated: number; errors: string[] }> {
+  console.log('\n🔧 Starting bulk update of unmapped articles...');
+  
+  // Find articles with WordPress author ID but no primary author ID
+  const { data: unmappedArticles, error: fetchError } = await supabase
+    .from('articles')
+    .select('id, wordpress_author_id, title')
+    .not('wordpress_author_id', 'is', null)
+    .is('primary_author_id', null)
+    .limit(100); // Process in batches
+
+  if (fetchError) {
+    console.error('❌ Error fetching unmapped articles:', fetchError);
+    return { updated: 0, errors: [fetchError.message] };
+  }
+
+  if (!unmappedArticles || unmappedArticles.length === 0) {
+    console.log('ℹ️ No unmapped articles found');
+    return { updated: 0, errors: [] };
+  }
+
+  console.log(`📊 Found ${unmappedArticles.length} unmapped articles to process`);
+  
+  let updated = 0;
+  const errors: string[] = [];
+
+  for (const article of unmappedArticles) {
+    try {
+      const { authorId, authorName } = await mapWordPressAuthor(article.wordpress_author_id, supabase);
+      
+      if (authorId) {
+        const { error: updateError } = await supabase
+          .from('articles')
+          .update({ 
+            primary_author_id: authorId,
+            wordpress_author_name: authorName 
+          })
+          .eq('id', article.id);
+
+        if (updateError) {
+          errors.push(`Failed to update article "${article.title}": ${updateError.message}`);
+        } else {
+          updated++;
+          console.log(`✅ Updated article "${article.title}" with author "${authorName}"`);
+        }
+      } else {
+        console.log(`⚠️ Skipping article "${article.title}" - no author mapping found`);
+      }
+    } catch (error) {
+      errors.push(`Error processing article "${article.title}": ${error.message}`);
+    }
+  }
+
+  console.log(`🎯 Bulk update complete: ${updated} articles updated, ${errors.length} errors`);
+  return { updated, errors };
 }
 
 serve(async (req) => {
@@ -313,15 +233,37 @@ serve(async (req) => {
         batchSize: 20
       },
       duplicateHandling = {
-        mode: 'update',  // Changed default to 'update' for better sync behavior
+        mode: 'update',
         dryRun: false
-      }
+      },
+      bulkUpdateUnmapped = false // New option to trigger bulk update
     } = await req.json().catch(() => ({}))
 
-    console.log(`Starting ${duplicateHandling.dryRun ? 'dry run' : 'legacy mode'} WordPress sync`)
+    console.log(`Starting ${duplicateHandling.dryRun ? 'dry run' : 'sync'} WordPress sync`)
     console.log(`Duplicate handling mode: ${duplicateHandling.mode}`)
     console.log(`Processing options:`, processingOptions)
     console.log(`Legacy mode enabled: ${legacyMode}`)
+
+    // Handle bulk update of unmapped articles if requested
+    if (bulkUpdateUnmapped) {
+      console.log('🔧 Bulk update mode requested');
+      const bulkResult = await bulkUpdateUnmappedArticles(supabase);
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          operation: 'bulk_update',
+          results: {
+            updated: bulkResult.updated,
+            errors: bulkResult.errors
+          }
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      )
+    }
 
     // Create sync operation record
     const { data: syncOperation, error: syncOpError } = await supabase
@@ -353,6 +295,7 @@ serve(async (req) => {
       contentExtracted: 0,
       wordCountsCalculated: 0,
       articlesChunked: 0,
+      authorsMapped: 0,
       errors: [],
       matchDetails: [],
       mergeDecisions: [],
@@ -463,7 +406,7 @@ serve(async (req) => {
       articlesToProcess = allArticles;
     }
 
-    console.log(`Processing ${articlesToProcess.length} articles using unified approach...`)
+    console.log(`Processing ${articlesToProcess.length} articles using simplified mapping...`)
 
     // Update total_items now that we know the count
     if (syncOpId) {
@@ -495,7 +438,7 @@ serve(async (req) => {
         console.log(`WordPress ID: ${wpPost.id}`);
         console.log(`Author ID: ${wpPost.author}`);
 
-        // Check for existing article by WordPress ID (NOW WITH WORKING FUNCTION)
+        // Check for existing article by WordPress ID
         const existingArticle = await checkWordPressIdConflict(supabase, wpPost.id);
         
         if (existingArticle) {
@@ -520,16 +463,20 @@ serve(async (req) => {
         
         console.log(`📅 Using CST dates - published: ${publishedDate}, modified: ${modifiedDate}`);
 
-        // ENHANCED AUTHOR ASSIGNMENT with detailed logging
-        console.log(`\n🔄 Starting author assignment for article "${wpPost.title?.rendered}"`);
-        const { authorId, authorName } = await assignAuthorFromWordPress(wpPost, supabase);
+        // SIMPLIFIED AUTHOR MAPPING using our existing data
+        console.log(`\n🔄 Starting simplified author mapping for article "${wpPost.title?.rendered}"`);
+        const { authorId, authorName } = await mapWordPressAuthor(wpPost.author, supabase);
         
-        console.log(`\n📊 AUTHOR ASSIGNMENT RESULT:`);
-        console.log(`  - Author ID: ${authorId || 'NOT ASSIGNED'}`);
-        console.log(`  - Author Name: "${authorName || 'NOT ASSIGNED'}"`);
+        if (authorId) {
+          syncResults.authorsMapped++;
+        }
+        
+        console.log(`\n📊 AUTHOR MAPPING RESULT:`);
+        console.log(`  - Author ID: ${authorId || 'NOT MAPPED'}`);
+        console.log(`  - Author Name: "${authorName || 'NOT MAPPED'}"`);
         console.log(`  - WordPress Author ID: ${wpPost.author}`);
 
-        // Prepare article data with enhanced author assignment verification
+        // Prepare article data with simplified author assignment
         let articleData = {
           wordpress_id: wpPost.id,
           title: decodeHtmlEntities(wpPost.title?.rendered || ''),
@@ -557,8 +504,7 @@ serve(async (req) => {
           updated_at: modifiedDate
         }
 
-        // Enhanced verification logging
-        console.log(`\n📝 ARTICLE DATA AUTHOR FIELDS:`);
+        console.log(`\n📝 FINAL ARTICLE DATA AUTHOR FIELDS:`);
         console.log(`  - primary_author_id: ${articleData.primary_author_id || 'NULL'}`);
         console.log(`  - wordpress_author_name: "${articleData.wordpress_author_name}"`);
         console.log(`  - wordpress_author_id: ${articleData.wordpress_author_id}`);
@@ -627,7 +573,7 @@ serve(async (req) => {
             console.log(`  - Author ID now: ${verifyArticle?.primary_author_id || 'STILL NULL'}`);
             console.log(`  - Author name now: "${verifyArticle?.wordpress_author_name || 'STILL EMPTY'}"`);
             
-            if (verifyArticle?.primary_author_id && verifyArticle?.wordpress_author_name !== 'Unknown') {
+            if (verifyArticle?.primary_author_id) {
               console.log(`✅ VERIFICATION SUCCESS: Author successfully assigned!`);
             } else {
               console.log(`❌ VERIFICATION FAILED: Author assignment did not work`);
@@ -652,7 +598,7 @@ serve(async (req) => {
             console.log(`✓ Created new article: ${articleData.title}`)
             
             // Verification
-            if (articleData.primary_author_id && articleData.wordpress_author_name !== 'Unknown') {
+            if (articleData.primary_author_id) {
               console.log(`✓ VERIFICATION: Author successfully assigned: ${articleData.wordpress_author_name} (ID: ${articleData.primary_author_id})`);
             } else {
               console.log(`❌ VERIFICATION: Author assignment incomplete`);
@@ -737,6 +683,7 @@ serve(async (req) => {
             contentExtracted: syncResults.contentExtracted,
             wordCountsCalculated: syncResults.wordCountsCalculated,
             articlesChunked: syncResults.articlesChunked,
+            authorsMapped: syncResults.authorsMapped,
             total_errors: syncResults.errors.length,
             dry_run: duplicateHandling.dryRun,
             legacy_mode: legacyMode
@@ -747,13 +694,14 @@ serve(async (req) => {
         .eq('id', syncOpId);
     }
 
-    const operation = duplicateHandling.dryRun ? 'dry run analysis' : 'unified sync';
+    const operation = duplicateHandling.dryRun ? 'dry run analysis' : 'simplified sync';
     console.log(`\n=== ${operation} completed ===`);
     console.log(`Processed: ${syncResults.processed}`);
     console.log(`Created: ${syncResults.created}`);
     console.log(`Updated: ${syncResults.updated}`);
     console.log(`Skipped duplicates: ${syncResults.skipped}`);
     console.log(`Duplicates found: ${syncResults.duplicatesFound}`);
+    console.log(`Authors mapped: ${syncResults.authorsMapped}`);
     console.log(`Content extracted: ${syncResults.contentExtracted}`);
     console.log(`Word counts calculated: ${syncResults.wordCountsCalculated}`);
     console.log(`Articles chunked: ${syncResults.articlesChunked}`);
@@ -773,7 +721,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Unified WordPress sync error:', error)
+    console.error('Simplified WordPress sync error:', error)
     return new Response(
       JSON.stringify({ 
         error: error.message,
