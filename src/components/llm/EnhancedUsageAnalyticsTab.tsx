@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -539,8 +540,8 @@ export default function EnhancedUsageAnalyticsTab() {
                   <Bar dataKey="tokens" fill="#8884d8" name="Tokens" />
                   <Bar dataKey="operations" fill="#82ca9d" name="Operations" />
                 </BarChart>
-              </CardContent>
-            </Card>
+              </ResponsiveContainer>
+            </CardContent>
           </Card>
         </TabsContent>
 
