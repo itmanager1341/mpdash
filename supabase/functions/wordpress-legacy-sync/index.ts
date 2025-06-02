@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
@@ -82,71 +81,68 @@ function convertWordPressToCst(wpDate: string): string {
   }
 }
 
-// Enhanced title normalization function
-function normalizeTitle(title: string): string {
-  let normalized = decodeHtmlEntities(title);
-  normalized = normalized.toLowerCase().trim();
-  normalized = normalized.replace(/[''`]/g, "'");
-  normalized = normalized.replace(/[""]/g, '"');
-  normalized = normalized.replace(/[–—]/g, '-');
-  normalized = normalized.replace(/\s+/g, ' ');
-  normalized = normalized.replace(/[^\w\s'-]/g, '');
-  return normalized;
-}
-
-// Check for existing WordPress ID conflicts
-async function checkWordPressIdConflict(supabase: any, wpId: number, currentArticleId: string | null = null) {
-  let query = supabase
-    .from('articles')
-    .select('id, title, published_at')
-    .eq('wordpress_id', wpId);
-    
-  if (currentArticleId) {
-    query = query.neq('id', currentArticleId);
-  }
-  
-  const { data: existingArticle } = await query.maybeSingle();
-  return existingArticle;
-}
-
-// Unified simple author assignment function
+// Enhanced simple author assignment function with detailed logging
 async function assignAuthorFromWordPress(wpPost: any, supabase: any): Promise<{ authorId: string | null; authorName: string | null }> {
   const wpAuthorId = wpPost.author;
   if (!wpAuthorId) {
-    console.log('No WordPress author ID provided');
+    console.log('❌ No WordPress author ID provided in post data');
     return { authorId: null, authorName: null };
   }
 
-  console.log(`\n=== Unified Author Assignment for WordPress Author ID ${wpAuthorId} ===`);
+  console.log(`\n=== DETAILED AUTHOR ASSIGNMENT DEBUG ===`);
+  console.log(`WordPress Author ID: ${wpAuthorId} (type: ${typeof wpAuthorId})`);
+  console.log(`Full wpPost author data:`, JSON.stringify({ 
+    author: wpPost.author, 
+    _embedded: wpPost._embedded?.author ? 'present' : 'missing'
+  }, null, 2));
 
-  // Step 1: Check database for existing author by WordPress ID
-  console.log(`Checking database for wordpress_author_id=${wpAuthorId}...`);
+  // Step 1: Check database for existing author by WordPress ID with enhanced logging
+  console.log(`🔍 Checking database for wordpress_author_id=${wpAuthorId}...`);
+  
+  // Try both string and number versions to handle type mismatches
   const { data: existingAuthor, error: existingAuthorError } = await supabase
     .from('authors')
     .select('id, name, wordpress_author_id')
-    .eq('wordpress_author_id', wpAuthorId)
+    .or(`wordpress_author_id.eq.${wpAuthorId},wordpress_author_id.eq."${wpAuthorId}"`)
     .maybeSingle();
 
+  console.log(`Database lookup result:`, {
+    found: !!existingAuthor,
+    error: existingAuthorError,
+    authorData: existingAuthor
+  });
+
   if (existingAuthorError) {
-    console.error('Database lookup error:', existingAuthorError);
+    console.error('❌ Database lookup error:', existingAuthorError);
     return { authorId: null, authorName: null };
   }
 
   if (existingAuthor) {
-    console.log(`✓ Found existing author: "${existingAuthor.name}" (ID: ${existingAuthor.id})`);
+    console.log(`✅ Found existing author in database:`);
+    console.log(`  - Author ID: ${existingAuthor.id}`);
+    console.log(`  - Author Name: "${existingAuthor.name}"`);
+    console.log(`  - WordPress Author ID: ${existingAuthor.wordpress_author_id}`);
     return { authorId: existingAuthor.id, authorName: existingAuthor.name };
   }
 
-  // Step 2: Get author data from WordPress (either embedded or API call)
+  console.log(`ℹ️ No existing author found for WordPress ID ${wpAuthorId}`);
+
+  // Step 2: Get author data from WordPress with enhanced logging
   let authorData = null;
+  
+  console.log(`🔍 Checking for embedded author data...`);
+  console.log(`Embedded data structure:`, JSON.stringify(wpPost._embedded, null, 2));
   
   // Try embedded data first (from _embed parameter)
   if (wpPost._embedded?.author?.[0]) {
     authorData = wpPost._embedded.author[0];
-    console.log(`✓ Using embedded author data: ${authorData.name}`);
+    console.log(`✅ Found embedded author data:`);
+    console.log(`  - Name: "${authorData.name}"`);
+    console.log(`  - ID: ${authorData.id}`);
+    console.log(`  - Email: ${authorData.email || 'not provided'}`);
   } else {
     // Fallback to WordPress API call
-    console.log(`No embedded author data, attempting WordPress API lookup...`);
+    console.log(`⚠️ No embedded author data found, attempting WordPress API lookup...`);
     const wordpressUrl = Deno.env.get('WORDPRESS_URL');
     const username = Deno.env.get('WORDPRESS_USERNAME');
     const password = Deno.env.get('WORDPRESS_PASSWORD');
@@ -154,22 +150,32 @@ async function assignAuthorFromWordPress(wpPost: any, supabase: any): Promise<{ 
     if (wordpressUrl && username && password) {
       try {
         const auth = btoa(`${username}:${password}`);
-        const authorResponse = await fetch(`${wordpressUrl}/wp-json/wp/v2/users/${wpAuthorId}`, {
+        const authorApiUrl = `${wordpressUrl}/wp-json/wp/v2/users/${wpAuthorId}`;
+        console.log(`🌐 Fetching from: ${authorApiUrl}`);
+        
+        const authorResponse = await fetch(authorApiUrl, {
           headers: {
             'Authorization': `Basic ${auth}`,
             'Content-Type': 'application/json'
           }
         });
         
+        console.log(`WordPress API response status: ${authorResponse.status}`);
+        
         if (authorResponse.ok) {
           authorData = await authorResponse.json();
-          console.log(`✓ Fetched author data from WordPress API: ${authorData.name}`);
+          console.log(`✅ Fetched author data from WordPress API:`);
+          console.log(`  - Name: "${authorData.name}"`);
+          console.log(`  - ID: ${authorData.id}`);
         } else {
-          console.log(`WordPress API returned ${authorResponse.status} for author ${wpAuthorId}`);
+          const errorText = await authorResponse.text();
+          console.log(`❌ WordPress API error: ${authorResponse.status} - ${errorText}`);
         }
       } catch (error) {
-        console.error(`Failed to fetch author ${wpAuthorId} from WordPress API:`, error);
+        console.error(`❌ Failed to fetch author from WordPress API:`, error);
       }
+    } else {
+      console.log(`❌ WordPress credentials not configured for API fallback`);
     }
   }
 
@@ -178,54 +184,69 @@ async function assignAuthorFromWordPress(wpPost: any, supabase: any): Promise<{ 
     return { authorId: null, authorName: null };
   }
 
+  console.log(`📝 Processing author data: "${authorData.name}"`);
+
   // Step 3: Check if author exists by name and update with WordPress ID
-  console.log(`Checking for author by name: "${authorData.name}"`);
-  const { data: authorByName } = await supabase
+  console.log(`🔍 Checking for existing author by name: "${authorData.name}"`);
+  const { data: authorByName, error: nameSearchError } = await supabase
     .from('authors')
     .select('id, name, wordpress_author_id')
     .ilike('name', authorData.name)
     .maybeSingle();
 
+  console.log(`Name-based lookup result:`, {
+    found: !!authorByName,
+    error: nameSearchError,
+    authorData: authorByName
+  });
+
   if (authorByName && !authorByName.wordpress_author_id) {
-    console.log(`✓ Found author by name, updating with WordPress ID: ${authorByName.name}`);
+    console.log(`✅ Found author by name, updating with WordPress ID...`);
     const { error: updateError } = await supabase
       .from('authors')
       .update({
-        wordpress_author_id: wpAuthorId,
+        wordpress_author_id: parseInt(wpAuthorId.toString()),
         wordpress_author_name: authorData.name
       })
       .eq('id', authorByName.id);
 
     if (!updateError) {
-      console.log(`✓ Successfully updated author ${authorByName.name} with WordPress ID ${wpAuthorId}`);
+      console.log(`✅ Successfully updated author "${authorByName.name}" with WordPress ID ${wpAuthorId}`);
       return { authorId: authorByName.id, authorName: authorByName.name };
     } else {
-      console.error('Error updating author with WordPress ID:', updateError);
+      console.error('❌ Error updating author with WordPress ID:', updateError);
     }
+  } else if (authorByName && authorByName.wordpress_author_id) {
+    console.log(`ℹ️ Author by name already has WordPress ID: ${authorByName.wordpress_author_id}`);
+    return { authorId: authorByName.id, authorName: authorByName.name };
   }
 
   // Step 4: Create new author if none exists
-  console.log(`Creating new author: ${authorData.name}`);
+  console.log(`🆕 Creating new author: "${authorData.name}"`);
+  const newAuthorData = {
+    name: authorData.name,
+    author_type: 'external',
+    email: authorData.email || null,
+    bio: authorData.description || null,
+    wordpress_author_id: parseInt(wpAuthorId.toString()),
+    wordpress_author_name: authorData.name,
+    is_active: true
+  };
+
+  console.log(`New author data to insert:`, newAuthorData);
+
   const { data: newAuthor, error: authorError } = await supabase
     .from('authors')
-    .insert({
-      name: authorData.name,
-      author_type: 'external',
-      email: authorData.email || null,
-      bio: authorData.description || null,
-      wordpress_author_id: wpAuthorId,
-      wordpress_author_name: authorData.name,
-      is_active: true
-    })
+    .insert(newAuthorData)
     .select('id, name')
     .single();
 
   if (authorError) {
-    console.error('Error creating author:', authorError);
+    console.error('❌ Error creating author:', authorError);
     return { authorId: null, authorName: null };
   }
 
-  console.log(`✓ Created new author: ${newAuthor.name} with ID ${newAuthor.id}`);
+  console.log(`✅ Created new author: "${newAuthor.name}" with ID ${newAuthor.id}`);
   return { authorId: newAuthor.id, authorName: newAuthor.name };
 }
 
@@ -267,7 +288,7 @@ serve(async (req) => {
         batchSize: 20
       },
       duplicateHandling = {
-        mode: 'skip',
+        mode: 'update',  // Changed default to 'update' for better sync behavior
         dryRun: false
       }
     } = await req.json().catch(() => ({}))
@@ -471,10 +492,16 @@ serve(async (req) => {
         
         console.log(`Using CST dates - published: ${publishedDate}, modified: ${modifiedDate}`);
 
-        // UNIFIED AUTHOR ASSIGNMENT - Same logic for both import and sync
+        // ENHANCED AUTHOR ASSIGNMENT with detailed logging
+        console.log(`\n🔄 Starting author assignment for article "${wpPost.title?.rendered}"`);
         const { authorId, authorName } = await assignAuthorFromWordPress(wpPost, supabase);
+        
+        console.log(`\n📊 AUTHOR ASSIGNMENT RESULT:`);
+        console.log(`  - Author ID: ${authorId || 'NOT ASSIGNED'}`);
+        console.log(`  - Author Name: "${authorName || 'NOT ASSIGNED'}"`);
+        console.log(`  - WordPress Author ID: ${wpPost.author}`);
 
-        // Prepare article data with unified author assignment
+        // Prepare article data with enhanced author assignment verification
         let articleData = {
           wordpress_id: wpPost.id,
           title: decodeHtmlEntities(wpPost.title?.rendered || ''),
@@ -487,7 +514,7 @@ serve(async (req) => {
               tags: wpPost.tags
             }
           },
-          wordpress_author_id: wpPost.author,
+          wordpress_author_id: parseInt(wpPost.author.toString()),
           primary_author_id: authorId,
           wordpress_author_name: authorName || 'Unknown',
           wordpress_categories: wpPost.categories || [],
@@ -502,10 +529,11 @@ serve(async (req) => {
           updated_at: modifiedDate
         }
 
-        // Verify unified author assignment
-        console.log(`Unified author assignment result:`);
-        console.log(`  - primary_author_id: ${articleData.primary_author_id || 'NOT SET'}`);
+        // Enhanced verification logging
+        console.log(`\n📝 ARTICLE DATA AUTHOR FIELDS:`);
+        console.log(`  - primary_author_id: ${articleData.primary_author_id || 'NULL'}`);
         console.log(`  - wordpress_author_name: "${articleData.wordpress_author_name}"`);
+        console.log(`  - wordpress_author_id: ${articleData.wordpress_author_id}`);
 
         // Process content immediately if enabled
         if (processingOptions.autoExtractContent) {
