@@ -4,13 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { 
   Dialog, 
   DialogContent, 
   DialogHeader, 
   DialogTitle 
 } from "@/components/ui/dialog";
-import { RefreshCw, AlertCircle, CheckCircle, Settings, Zap } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle, Settings, Zap, Info } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -33,8 +34,12 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
   const [autoCalculateWordCount, setAutoCalculateWordCount] = useState(true);
   const [autoChunkArticles, setAutoChunkArticles] = useState(false);
   
+  // Duplicate handling options
+  const [duplicateHandling, setDuplicateHandling] = useState('skip'); // 'skip', 'update', 'both'
+  const [dryRun, setDryRun] = useState(false);
+  
   // Performance options
-  const [apiDelay, setApiDelay] = useState(100); // milliseconds between API calls
+  const [apiDelay, setApiDelay] = useState(100);
   const [batchSize, setBatchSize] = useState(20);
   
   const [importProgress, setImportProgress] = useState<{
@@ -47,16 +52,29 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     wordCountsCalculated: number;
     articlesChunked: number;
     errors: string[];
+    duplicatesFound: number;
   } | null>(null);
 
+  // Date validation
+  const validateDates = () => {
+    if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+      toast.error("Start date cannot be after end date");
+      return false;
+    }
+    return true;
+  };
+
   const handleImport = async () => {
+    if (!validateDates()) return;
+
     setIsImporting(true);
     setImportProgress({ 
-      status: 'starting', 
+      status: dryRun ? 'dry_run_starting' : 'starting', 
       articlesFound: 0, 
       articlesImported: 0, 
       articlesUpdated: 0,
       duplicatesSkipped: 0,
+      duplicatesFound: 0,
       contentExtracted: 0,
       wordCountsCalculated: 0,
       articlesChunked: 0,
@@ -64,7 +82,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     });
 
     try {
-      console.log('Starting enhanced WordPress sync with processing pipeline...');
+      console.log(`Starting ${dryRun ? 'dry run' : 'enhanced'} WordPress sync with processing pipeline...`);
       
       const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
         body: { 
@@ -79,6 +97,10 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
           performanceOptions: {
             apiDelay,
             batchSize
+          },
+          duplicateHandling: {
+            mode: duplicateHandling,
+            dryRun
           }
         }
       });
@@ -90,39 +112,49 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
 
       if (data.success) {
         setImportProgress({
-          status: 'completed',
+          status: dryRun ? 'dry_run_completed' : 'completed',
           articlesFound: data.totalArticles,
           articlesImported: data.results.created || 0,
           articlesUpdated: data.results.updated || 0,
           duplicatesSkipped: data.results.skipped || 0,
+          duplicatesFound: data.results.duplicatesFound || 0,
           contentExtracted: data.results.contentExtracted || 0,
           wordCountsCalculated: data.results.wordCountsCalculated || 0,
           articlesChunked: data.results.articlesChunked || 0,
           errors: data.results.errors || []
         });
         
-        const total = (data.results.created || 0) + (data.results.updated || 0);
-        let message = `WordPress sync completed! ${total} articles processed`;
-        
-        if (autoExtractContent || autoCalculateWordCount || autoChunkArticles) {
-          const processed = [];
-          if (autoExtractContent && data.results.contentExtracted > 0) {
-            processed.push(`${data.results.contentExtracted} content extracted`);
-          }
-          if (autoCalculateWordCount && data.results.wordCountsCalculated > 0) {
-            processed.push(`${data.results.wordCountsCalculated} word counts calculated`);
-          }
-          if (autoChunkArticles && data.results.articlesChunked > 0) {
-            processed.push(`${data.results.articlesChunked} articles chunked`);
+        if (dryRun) {
+          const duplicateText = data.results.duplicatesFound > 0 ? ` (${data.results.duplicatesFound} duplicates found)` : '';
+          toast.success(`Dry run completed! Found ${data.totalArticles} articles to process${duplicateText}`);
+        } else {
+          const total = (data.results.created || 0) + (data.results.updated || 0);
+          let message = `WordPress sync completed! ${total} articles processed`;
+          
+          if (data.results.skipped > 0) {
+            message += `, ${data.results.skipped} duplicates skipped`;
           }
           
-          if (processed.length > 0) {
-            message += ` (${processed.join(', ')})`;
+          if (autoExtractContent || autoCalculateWordCount || autoChunkArticles) {
+            const processed = [];
+            if (autoExtractContent && data.results.contentExtracted > 0) {
+              processed.push(`${data.results.contentExtracted} content extracted`);
+            }
+            if (autoCalculateWordCount && data.results.wordCountsCalculated > 0) {
+              processed.push(`${data.results.wordCountsCalculated} word counts calculated`);
+            }
+            if (autoChunkArticles && data.results.articlesChunked > 0) {
+              processed.push(`${data.results.articlesChunked} articles chunked`);
+            }
+            
+            if (processed.length > 0) {
+              message += ` (${processed.join(', ')})`;
+            }
           }
+          
+          toast.success(message);
+          onImportComplete();
         }
-        
-        toast.success(message);
-        onImportComplete();
       } else {
         throw new Error(data.error || 'WordPress sync failed');
       }
@@ -145,6 +177,8 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
       setAutoExtractContent(true);
       setAutoCalculateWordCount(true);
       setAutoChunkArticles(false);
+      setDuplicateHandling('skip');
+      setDryRun(false);
       setApiDelay(100);
       setBatchSize(20);
     }
@@ -162,10 +196,10 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
         
         <div className="space-y-4">
           <Alert>
-            <AlertCircle className="h-4 w-4" />
+            <Info className="h-4 w-4" />
             <AlertDescription>
-              Enhanced import with content processing pipeline. Configure sync parameters and 
-              processing options to minimize WPEngine impact while maximizing automation.
+              Enhanced import with smart duplicate handling and content processing pipeline. 
+              Configure sync parameters to minimize WPEngine impact while maximizing automation.
             </AlertDescription>
           </Alert>
 
@@ -186,9 +220,6 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     onChange={(e) => setMaxArticles(parseInt(e.target.value) || 100)}
                     disabled={isImporting}
                   />
-                  <p className="text-xs text-gray-500">
-                    Limit the number of articles to import (1-1000).
-                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -214,6 +245,59 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     />
                   </div>
                 </div>
+
+                {startDate && endDate && new Date(startDate) > new Date(endDate) && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-red-600">
+                      Start date cannot be after end date. Please adjust your date range.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Duplicate Handling */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium">Duplicate Handling</h4>
+                
+                <RadioGroup value={duplicateHandling} onValueChange={setDuplicateHandling} disabled={isImporting}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="skip" id="skip" />
+                    <Label htmlFor="skip" className="text-sm">
+                      Skip duplicates (recommended)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="update" id="update" />
+                    <Label htmlFor="update" className="text-sm">
+                      Update existing articles
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="both" id="both" />
+                    <Label htmlFor="both" className="text-sm">
+                      Import new + update existing
+                    </Label>
+                  </div>
+                </RadioGroup>
+
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="dry-run"
+                    checked={dryRun}
+                    onCheckedChange={(checked) => setDryRun(checked === true)}
+                    disabled={isImporting}
+                  />
+                  <Label htmlFor="dry-run" className="text-sm">
+                    Dry run (preview only, no changes)
+                  </Label>
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Dry run mode shows what would happen without making actual changes.
+                </p>
               </div>
 
               <Separator />
@@ -262,10 +346,6 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     </Label>
                   </div>
                 </div>
-
-                <p className="text-xs text-gray-500">
-                  Enabling auto-processing creates a complete pipeline from import to chunk-ready articles.
-                </p>
               </div>
 
               <Separator />
@@ -304,10 +384,6 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     />
                   </div>
                 </div>
-
-                <p className="text-xs text-gray-500">
-                  Higher delays and smaller batches reduce WPEngine load but increase total time.
-                </p>
               </div>
             </div>
           )}
@@ -315,23 +391,38 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
           {importProgress && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                {importProgress.status === 'completed' ? (
+                {importProgress.status === 'completed' || importProgress.status === 'dry_run_completed' ? (
                   <CheckCircle className="h-4 w-4 text-green-600" />
                 ) : (
                   <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 )}
                 <span className="text-sm font-medium">
                   {importProgress.status === 'starting' && 'Starting enhanced WordPress sync...'}
+                  {importProgress.status === 'dry_run_starting' && 'Starting dry run analysis...'}
                   {importProgress.status === 'completed' && 'Enhanced sync completed!'}
+                  {importProgress.status === 'dry_run_completed' && 'Dry run analysis completed!'}
                 </span>
               </div>
               
-              {importProgress.status === 'completed' && (
+              {(importProgress.status === 'completed' || importProgress.status === 'dry_run_completed') && (
                 <div className="bg-gray-50 p-3 rounded-lg text-sm space-y-1">
                   <div>Articles found: {importProgress.articlesFound}</div>
-                  <div className="text-green-600">New articles: {importProgress.articlesImported}</div>
-                  <div className="text-blue-600">Updated articles: {importProgress.articlesUpdated}</div>
-                  <div className="text-yellow-600">Articles skipped: {importProgress.duplicatesSkipped}</div>
+                  {importProgress.status === 'dry_run_completed' ? (
+                    <>
+                      <div className="text-blue-600">Would import: {importProgress.articlesImported}</div>
+                      <div className="text-orange-600">Would update: {importProgress.articlesUpdated}</div>
+                      <div className="text-yellow-600">Would skip: {importProgress.duplicatesSkipped}</div>
+                      {importProgress.duplicatesFound > 0 && (
+                        <div className="text-purple-600">Duplicates found: {importProgress.duplicatesFound}</div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-green-600">New articles: {importProgress.articlesImported}</div>
+                      <div className="text-blue-600">Updated articles: {importProgress.articlesUpdated}</div>
+                      <div className="text-yellow-600">Articles skipped: {importProgress.duplicatesSkipped}</div>
+                    </>
+                  )}
                   
                   {(importProgress.contentExtracted > 0 || importProgress.wordCountsCalculated > 0 || importProgress.articlesChunked > 0) && (
                     <>
@@ -363,21 +454,21 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={handleClose} disabled={isImporting}>
-              {importProgress?.status === 'completed' ? 'Close' : 'Cancel'}
+              {importProgress?.status === 'completed' || importProgress?.status === 'dry_run_completed' ? 'Close' : 'Cancel'}
             </Button>
             <Button 
               onClick={handleImport} 
-              disabled={isImporting}
+              disabled={isImporting || (startDate && endDate && new Date(startDate) > new Date(endDate))}
             >
               {isImporting ? (
                 <>
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Processing...
+                  {dryRun ? 'Analyzing...' : 'Processing...'}
                 </>
               ) : (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Start Enhanced Sync
+                  {dryRun ? 'Run Analysis' : 'Start Enhanced Sync'}
                 </>
               )}
             </Button>
