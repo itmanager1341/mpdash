@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AuthorSelector } from "@/components/editorial/AuthorSelector";
 import { toast } from "sonner";
 
 interface ArticleEditDialogProps {
@@ -31,7 +32,7 @@ export function ArticleEditDialog({ open, onOpenChange, article, onSave }: Artic
   const [formData, setFormData] = useState({
     wordpress_id: article?.wordpress_id || '',
     source_url: article?.source_url || '',
-    wordpress_author_id: article?.wordpress_author_id || '',
+    primary_author_id: article?.primary_author_id || '',
     wordpress_author_name: article?.wordpress_author_name || '',
     status: article?.status || 'draft',
     published_at: article?.published_at ? article.published_at.split('T')[0] : ''
@@ -61,7 +62,7 @@ export function ArticleEditDialog({ open, onOpenChange, article, onSave }: Artic
       const updates = {
         wordpress_id: formData.wordpress_id ? Number(formData.wordpress_id) : null,
         source_url: formData.source_url || null,
-        wordpress_author_id: formData.wordpress_author_id ? Number(formData.wordpress_author_id) : null,
+        primary_author_id: formData.primary_author_id || null,
         wordpress_author_name: formData.wordpress_author_name || null,
         status: formData.status,
         published_at: formData.published_at ? new Date(formData.published_at).toISOString() : null
@@ -81,6 +82,13 @@ export function ArticleEditDialog({ open, onOpenChange, article, onSave }: Artic
     setFormData(prev => ({
       ...prev,
       [field]: value
+    }));
+  };
+
+  const handleAuthorChange = (authorId: string | undefined) => {
+    setFormData(prev => ({
+      ...prev,
+      primary_author_id: authorId || ''
     }));
   };
 
@@ -123,17 +131,15 @@ export function ArticleEditDialog({ open, onOpenChange, article, onSave }: Artic
           </div>
           
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="wordpress_author_id" className="text-right">
-              WP Author ID
+            <Label className="text-right">
+              Author
             </Label>
-            <Input
-              id="wordpress_author_id"
-              type="number"
-              value={formData.wordpress_author_id}
-              onChange={(e) => handleInputChange('wordpress_author_id', e.target.value)}
-              className="col-span-3"
-              placeholder="WordPress author ID"
-            />
+            <div className="col-span-3">
+              <AuthorSelector
+                selectedAuthorId={formData.primary_author_id}
+                onAuthorChange={handleAuthorChange}
+              />
+            </div>
           </div>
           
           <div className="grid grid-cols-4 items-center gap-4">
