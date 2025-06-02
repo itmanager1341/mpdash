@@ -230,7 +230,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     <Checkbox
                       id="auto-extract"
                       checked={autoExtractContent}
-                      onCheckedChange={setAutoExtractContent}
+                      onCheckedChange={(checked) => setAutoExtractContent(checked === true)}
                       disabled={isImporting}
                     />
                     <Label htmlFor="auto-extract" className="text-sm">
@@ -242,7 +242,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     <Checkbox
                       id="auto-word-count"
                       checked={autoCalculateWordCount}
-                      onCheckedChange={setAutoCalculateWordCount}
+                      onCheckedChange={(checked) => setAutoCalculateWordCount(checked === true)}
                       disabled={isImporting}
                     />
                     <Label htmlFor="auto-word-count" className="text-sm">
@@ -254,7 +254,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
                     <Checkbox
                       id="auto-chunk"
                       checked={autoChunkArticles}
-                      onCheckedChange={setAutoChunkArticles}
+                      onCheckedChange={(checked) => setAutoChunkArticles(checked === true)}
                       disabled={isImporting}
                     />
                     <Label htmlFor="auto-chunk" className="text-sm">
