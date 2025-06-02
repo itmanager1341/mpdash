@@ -255,6 +255,31 @@ async function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Missing function - check for existing article by WordPress ID
+async function checkWordPressIdConflict(supabase: any, wordpressId: number): Promise<any> {
+  console.log(`🔍 Checking for existing article with WordPress ID: ${wordpressId}`);
+  
+  const { data: existingArticle, error } = await supabase
+    .from('articles')
+    .select('id, title, wordpress_id, primary_author_id')
+    .eq('wordpress_id', wordpressId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('❌ Error checking for existing article:', error);
+    return null;
+  }
+
+  if (existingArticle) {
+    console.log(`✅ Found existing article: "${existingArticle.title}" (ID: ${existingArticle.id})`);
+    console.log(`   Current author ID: ${existingArticle.primary_author_id || 'NOT SET'}`);
+  } else {
+    console.log(`ℹ️ No existing article found for WordPress ID ${wordpressId}`);
+  }
+
+  return existingArticle;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -470,19 +495,22 @@ serve(async (req) => {
         console.log(`WordPress ID: ${wpPost.id}`);
         console.log(`Author ID: ${wpPost.author}`);
 
-        // Check for existing article by WordPress ID
+        // Check for existing article by WordPress ID (NOW WITH WORKING FUNCTION)
         const existingArticle = await checkWordPressIdConflict(supabase, wpPost.id);
         
         if (existingArticle) {
           syncResults.duplicatesFound++;
-          console.log(`Duplicate found: WordPress ID ${wpPost.id} already exists as article ${existingArticle.id}`);
+          console.log(`📋 DUPLICATE ANALYSIS:`);
+          console.log(`  - Existing article ID: ${existingArticle.id}`);
+          console.log(`  - Current author: ${existingArticle.primary_author_id || 'NONE'}`);
+          console.log(`  - Duplicate handling mode: ${duplicateHandling.mode}`);
           
           if (duplicateHandling.mode === 'skip') {
             syncResults.skipped++;
-            console.log(`Skipping duplicate: "${wpPost.title.rendered}"`);
+            console.log(`⏭️ Skipping duplicate: "${wpPost.title.rendered}"`);
             continue;
           } else if (duplicateHandling.mode === 'update' || duplicateHandling.mode === 'both') {
-            console.log(`Will update existing article: "${existingArticle.title}"`);
+            console.log(`🔄 Will update existing article: "${existingArticle.title}"`);
           }
         }
 
@@ -490,7 +518,7 @@ serve(async (req) => {
         const publishedDate = convertWordPressToCst(wpPost.date);
         const modifiedDate = wpPost.modified ? convertWordPressToCst(wpPost.modified) : publishedDate;
         
-        console.log(`Using CST dates - published: ${publishedDate}, modified: ${modifiedDate}`);
+        console.log(`📅 Using CST dates - published: ${publishedDate}, modified: ${modifiedDate}`);
 
         // ENHANCED AUTHOR ASSIGNMENT with detailed logging
         console.log(`\n🔄 Starting author assignment for article "${wpPost.title?.rendered}"`);
@@ -568,7 +596,9 @@ serve(async (req) => {
           // Actual processing
           if (existingArticle && (duplicateHandling.mode === 'update' || duplicateHandling.mode === 'both')) {
             // Update existing article
-            console.log(`Updating existing article: ${existingArticle.id}`);
+            console.log(`🔄 Updating existing article: ${existingArticle.id}`);
+            console.log(`📝 BEFORE UPDATE - Current author: ${existingArticle.primary_author_id || 'NONE'}`);
+            console.log(`📝 WILL SET author to: ${articleData.primary_author_id || 'NONE'}`);
             
             const { error } = await supabase
               .from('articles')
@@ -576,20 +606,31 @@ serve(async (req) => {
               .eq('id', existingArticle.id)
             
             if (error) {
-              console.error('Update error:', error);
+              console.error('❌ Update error:', error);
               throw error;
             }
             
             syncResults.updated++
             syncResults.matched++
             articleId = existingArticle.id;
-            console.log(`✓ Updated article: ${existingArticle.title}`)
+            console.log(`✅ Updated article: ${existingArticle.title}`)
             
-            // Verification
-            if (articleData.primary_author_id && articleData.wordpress_author_name !== 'Unknown') {
-              console.log(`✓ VERIFICATION: Author successfully assigned: ${articleData.wordpress_author_name} (ID: ${articleData.primary_author_id})`);
+            // POST-UPDATE VERIFICATION
+            const { data: verifyArticle } = await supabase
+              .from('articles')
+              .select('primary_author_id, wordpress_author_name')
+              .eq('id', existingArticle.id)
+              .single();
+            
+            console.log(`\n🔍 POST-UPDATE VERIFICATION:`);
+            console.log(`  - Article ID: ${existingArticle.id}`);
+            console.log(`  - Author ID now: ${verifyArticle?.primary_author_id || 'STILL NULL'}`);
+            console.log(`  - Author name now: "${verifyArticle?.wordpress_author_name || 'STILL EMPTY'}"`);
+            
+            if (verifyArticle?.primary_author_id && verifyArticle?.wordpress_author_name !== 'Unknown') {
+              console.log(`✅ VERIFICATION SUCCESS: Author successfully assigned!`);
             } else {
-              console.log(`❌ VERIFICATION: Author assignment incomplete`);
+              console.log(`❌ VERIFICATION FAILED: Author assignment did not work`);
             }
           } else if (!existingArticle) {
             // Create new article
