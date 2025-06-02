@@ -1,149 +1,153 @@
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead,  
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator
-} from "@/components/ui/dropdown-menu";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import { 
-  ChevronDown, 
-  Edit, 
-  PlusCircle, 
-  MoreVertical, 
-  AlertCircle,
-  TrendingUp,
-  TrendingDown,
-  ChevronRight
-} from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-interface KeywordTracking {
-  id: string;
-  keyword: string;
-  category?: string;
-  priority?: string;
-  status?: string;
-  article_count?: number;
-  last_searched_date?: string;
-  created_at: string;
-}
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { 
+  Plus, 
+  Search, 
+  TrendingUp, 
+  Edit2, 
+  Trash2, 
+  BarChart3,
+  Info,
+  RefreshCw
+} from "lucide-react";
 
 interface KeywordTrackingTabProps {
   searchTerm: string;
 }
 
-const KeywordTrackingTab = ({ searchTerm }: KeywordTrackingTabProps) => {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newKeyword, setNewKeyword] = useState("");
-  const [newCategory, setNewCategory] = useState("");
-  const [newPriority, setNewPriority] = useState("medium");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  
-  const queryClient = useQueryClient();
+interface KeywordEntry {
+  id: string;
+  keyword: string;
+  category: string;
+  priority: string;
+  status: string;
+  article_count: number;
+  last_searched_date: string;
+  created_at: string;
+}
 
-  // Fetch all tracked keywords
-  const { data: trackedKeywords, isLoading, error } = useQuery({
+export default function KeywordTrackingTab({ searchTerm }: KeywordTrackingTabProps) {
+  const [isAddingKeyword, setIsAddingKeyword] = useState(false);
+  const [editingKeyword, setEditingKeyword] = useState<KeywordEntry | null>(null);
+  const [newKeyword, setNewKeyword] = useState({
+    keyword: '',
+    category: '',
+    priority: 'medium',
+    status: 'active'
+  });
+
+  const { data: keywords, isLoading, refetch } = useQuery({
     queryKey: ['keyword-tracking'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('keyword_tracking')
         .select('*')
-        .order('priority', { ascending: false })
-        .order('keyword', { ascending: true });
-      
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
-      return data as KeywordTracking[];
+      return data as KeywordEntry[];
     }
   });
 
-  // Add new keyword tracking
-  const addKeyword = useMutation({
-    mutationFn: async () => {
+  const filteredKeywords = keywords?.filter(keyword => 
+    keyword.keyword.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (keyword.category && keyword.category.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const handleAddKeyword = async () => {
+    if (!newKeyword.keyword.trim()) {
+      toast.error("Please enter a keyword");
+      return;
+    }
+
+    try {
       const { error } = await supabase
         .from('keyword_tracking')
         .insert({
-          keyword: newKeyword,
-          category: newCategory || null,
-          priority: newPriority,
-          status: 'active'
+          keyword: newKeyword.keyword.trim(),
+          category: newKeyword.category.trim() || null,
+          priority: newKeyword.priority,
+          status: newKeyword.status,
+          article_count: 0
         });
-        
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setIsAddDialogOpen(false);
-      setNewKeyword("");
-      setNewCategory("");
-      setNewPriority("medium");
-      queryClient.invalidateQueries({ queryKey: ['keyword-tracking'] });
-      toast.success("Keyword added to tracking");
-    },
-    onError: (error) => {
-      toast.error(`Failed to add keyword: ${error.message}`);
-    }
-  });
 
-  // Update keyword status
-  const updateKeywordStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string, status: string }) => {
+      if (error) throw error;
+
+      toast.success("Keyword added successfully");
+      setNewKeyword({ keyword: '', category: '', priority: 'medium', status: 'active' });
+      setIsAddingKeyword(false);
+      refetch();
+    } catch (error) {
+      console.error('Error adding keyword:', error);
+      toast.error("Failed to add keyword");
+    }
+  };
+
+  const handleUpdateKeyword = async () => {
+    if (!editingKeyword) return;
+
+    try {
       const { error } = await supabase
         .from('keyword_tracking')
-        .update({ status })
-        .eq('id', id);
-        
+        .update({
+          keyword: editingKeyword.keyword.trim(),
+          category: editingKeyword.category?.trim() || null,
+          priority: editingKeyword.priority,
+          status: editingKeyword.status
+        })
+        .eq('id', editingKeyword.id);
+
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['keyword-tracking'] });
-      toast.success("Keyword status updated");
-    },
-    onError: (error) => {
-      toast.error(`Failed to update keyword: ${error.message}`);
+
+      toast.success("Keyword updated successfully");
+      setEditingKeyword(null);
+      refetch();
+    } catch (error) {
+      console.error('Error updating keyword:', error);
+      toast.error("Failed to update keyword");
     }
-  });
+  };
 
-  // Filter keywords based on search term and filters
-  const filteredKeywords = trackedKeywords?.filter(keyword => {
-    const matchesSearch = !searchTerm || 
-      keyword.keyword.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      (keyword.category && keyword.category.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = statusFilter === "all" || keyword.status === statusFilter;
-    const matchesPriority = priorityFilter === "all" || keyword.priority === priorityFilter;
-    
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
+  const handleDeleteKeyword = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this keyword?")) return;
 
-  const totalFiltered = filteredKeywords?.length || 0;
-  const totalArticles = filteredKeywords?.reduce((sum, k) => sum + (k.article_count || 0), 0) || 0;
+    try {
+      const { error } = await supabase
+        .from('keyword_tracking')
+        .delete()
+        .eq('id', id);
 
-  // Returns a CSS class for priority badges
-  const getPriorityStyles = (priority?: string) => {
+      if (error) throw error;
+
+      toast.success("Keyword deleted successfully");
+      refetch();
+    } catch (error) {
+      console.error('Error deleting keyword:', error);
+      toast.error("Failed to delete keyword");
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-800';
+      case 'inactive': return 'bg-gray-100 text-gray-800';
+      case 'monitoring': return 'bg-blue-100 text-blue-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'high': return 'bg-red-100 text-red-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
@@ -152,239 +156,91 @@ const KeywordTrackingTab = ({ searchTerm }: KeywordTrackingTabProps) => {
     }
   };
 
-  const handleAddKeyword = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newKeyword) {
-      toast.error("Keyword cannot be empty");
-      return;
-    }
-    addKeyword.mutate();
-  };
-
-  const getPriorityIcon = (count?: number, created_at?: string) => {
-    if (count === undefined) return null;
-    
-    // If article count is 0 but keyword was added recently (last 7 days)
-    if (count === 0 && created_at) {
-      const createdDate = new Date(created_at);
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
-      if (createdDate > sevenDaysAgo) {
-        return <Badge variant="outline" className="text-xs">New</Badge>;
-      }
-      return <AlertCircle className="h-4 w-4 text-amber-500" />;
-    }
-    
-    if (count > 10) return <TrendingUp className="h-4 w-4 text-green-500" />;
-    if (count < 2) return <TrendingDown className="h-4 w-4 text-red-500" />;
-    return null;
-  };
+  const totalKeywords = keywords?.length || 0;
+  const activeKeywords = keywords?.filter(k => k.status === 'active').length || 0;
+  const totalArticles = keywords?.reduce((sum, k) => sum + (k.article_count || 0), 0) || 0;
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">Keyword Tracking</h2>
-          <p className="text-sm text-muted-foreground">
-            {totalFiltered} keywords | {totalArticles} articles
-          </p>
-        </div>
-        <Button onClick={() => setIsAddDialogOpen(true)}>
-          <PlusCircle className="h-4 w-4 mr-2" />
-          Add Keyword
-        </Button>
-      </div>
-      
-      <div className="flex gap-4">
-        <div className="w-40">
-          <Label htmlFor="status-filter" className="text-xs">Status</Label>
-          <Select
-            value={statusFilter}
-            onValueChange={setStatusFilter}
-          >
-            <SelectTrigger id="status-filter" className="h-8 mt-1">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div className="w-40">
-          <Label htmlFor="priority-filter" className="text-xs">Priority</Label>
-          <Select
-            value={priorityFilter}
-            onValueChange={setPriorityFilter}
-          >
-            <SelectTrigger id="priority-filter" className="h-8 mt-1">
-              <SelectValue placeholder="Filter by priority" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Priorities</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      
-      {isLoading && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground">Loading keywords...</p>
-        </div>
-      )}
-      
-      {error && (
-        <div className="bg-destructive/10 text-destructive p-4 rounded-md">
-          <p>Error loading keyword tracking data. Please try refreshing.</p>
-        </div>
-      )}
+      {/* Integration Info */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          Article counts are automatically updated when articles are analyzed using AI Analysis. 
+          Keywords extracted from articles will increment the counts for matching tracked keywords.
+        </AlertDescription>
+      </Alert>
 
-      {filteredKeywords && filteredKeywords.length > 0 ? (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Keyword</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead className="text-right">Articles</TableHead>
-                <TableHead className="text-right">Last Search</TableHead>
-                <TableHead className="w-[60px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredKeywords.map((keyword) => (
-                <TableRow key={keyword.id}>
-                  <TableCell className="flex items-center gap-2 font-medium">
-                    {keyword.status === "paused" ? (
-                      <span className="text-muted-foreground">{keyword.keyword}</span>
-                    ) : (
-                      keyword.keyword
-                    )}
-                    {keyword.status === "paused" && (
-                      <Badge variant="outline" className="text-xs">Paused</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>{keyword.category || "-"}</TableCell>
-                  <TableCell>
-                    <Badge className={getPriorityStyles(keyword.priority)} variant="outline">
-                      {keyword.priority || "medium"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right flex items-center justify-end gap-2">
-                    {getPriorityIcon(keyword.article_count, keyword.created_at)}
-                    {keyword.article_count || 0}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground text-sm">
-                    {keyword.last_searched_date ? (
-                      new Date(keyword.last_searched_date).toLocaleDateString()
-                    ) : (
-                      "Never"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Edit className="h-4 w-4 mr-2" /> Edit Keyword
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        {keyword.status === "active" ? (
-                          <DropdownMenuItem onClick={() => updateKeywordStatus.mutate({ 
-                            id: keyword.id, 
-                            status: "paused" 
-                          })}>
-                            Pause Tracking
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem onClick={() => updateKeywordStatus.mutate({ 
-                            id: keyword.id, 
-                            status: "active" 
-                          })}>
-                            Resume Tracking
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem 
-                          onClick={() => updateKeywordStatus.mutate({ 
-                            id: keyword.id, 
-                            status: "archived" 
-                          })}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          Archive Keyword
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        !isLoading && (
-          <div className="bg-muted/50 rounded-md p-8 text-center">
-            <h3 className="font-semibold mb-2">No keywords found</h3>
-            <p className="text-muted-foreground mb-4">
-              {searchTerm || statusFilter !== "all" || priorityFilter !== "all" 
-                ? "No keywords match your current filters" 
-                : "Add keywords to start tracking their performance"}
-            </p>
-            <Button onClick={() => setIsAddDialogOpen(true)}>
-              <PlusCircle className="h-4 w-4 mr-2" />
-              Add Keyword
-            </Button>
-          </div>
-        )
-      )}
-      
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Add Keyword to Tracking</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleAddKeyword}>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <Search className="h-8 w-8 text-blue-600" />
+              <div>
+                <p className="text-sm font-medium text-blue-600">Total Keywords</p>
+                <p className="text-2xl font-bold text-blue-900">{totalKeywords}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <TrendingUp className="h-8 w-8 text-green-600" />
+              <div>
+                <p className="text-sm font-medium text-green-600">Active Keywords</p>
+                <p className="text-2xl font-bold text-green-900">{activeKeywords}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <BarChart3 className="h-8 w-8 text-purple-600" />
+              <div>
+                <p className="text-sm font-medium text-purple-600">Total Articles</p>
+                <p className="text-2xl font-bold text-purple-900">{totalArticles}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Add Keyword Form */}
+      {isAddingKeyword && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Add New Keyword</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
                 <Label htmlFor="keyword">Keyword</Label>
                 <Input
                   id="keyword"
-                  value={newKeyword}
-                  onChange={(e) => setNewKeyword(e.target.value)}
-                  placeholder="Enter keyword to track"
-                  required
+                  value={newKeyword.keyword}
+                  onChange={(e) => setNewKeyword(prev => ({ ...prev, keyword: e.target.value }))}
+                  placeholder="Enter keyword or phrase"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="category">Category (Optional)</Label>
+              <div>
+                <Label htmlFor="category">Category</Label>
                 <Input
                   id="category"
-                  value={newCategory}
-                  onChange={(e) => setNewCategory(e.target.value)}
-                  placeholder="e.g., Market Trends"
+                  value={newKeyword.category}
+                  onChange={(e) => setNewKeyword(prev => ({ ...prev, category: e.target.value }))}
+                  placeholder="e.g., rates, regulations, market"
                 />
               </div>
-              <div className="space-y-2">
+              <div>
                 <Label htmlFor="priority">Priority</Label>
-                <Select
-                  value={newPriority}
-                  onValueChange={(value) => setNewPriority(value)}
-                >
-                  <SelectTrigger id="priority">
-                    <SelectValue placeholder="Select priority" />
+                <Select value={newKeyword.priority} onValueChange={(value) => setNewKeyword(prev => ({ ...prev, priority: value }))}>
+                  <SelectTrigger>
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="high">High</SelectItem>
@@ -393,27 +249,195 @@ const KeywordTrackingTab = ({ searchTerm }: KeywordTrackingTabProps) => {
                   </SelectContent>
                 </Select>
               </div>
+              <div>
+                <Label htmlFor="status">Status</Label>
+                <Select value={newKeyword.status} onValueChange={(value) => setNewKeyword(prev => ({ ...prev, status: value }))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="monitoring">Monitoring</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex justify-end space-x-2">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setIsAddDialogOpen(false)}
-              >
-                Cancel
+            <div className="flex gap-2">
+              <Button onClick={handleAddKeyword}>Add Keyword</Button>
+              <Button variant="outline" onClick={() => setIsAddingKeyword(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Keywords Table */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Keyword Tracking</CardTitle>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => refetch()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh
               </Button>
-              <Button 
-                type="submit" 
-                disabled={!newKeyword || addKeyword.isPending}
-              >
-                {addKeyword.isPending ? "Adding..." : "Add Keyword"}
+              <Button onClick={() => setIsAddingKeyword(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Keyword
               </Button>
             </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8">Loading keywords...</div>
+          ) : filteredKeywords && filteredKeywords.length > 0 ? (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Keyword</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Article Count</TableHead>
+                    <TableHead>Last Updated</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredKeywords.map((keyword) => (
+                    <TableRow key={keyword.id}>
+                      <TableCell>
+                        {editingKeyword?.id === keyword.id ? (
+                          <Input
+                            value={editingKeyword.keyword}
+                            onChange={(e) => setEditingKeyword(prev => prev ? { ...prev, keyword: e.target.value } : null)}
+                            className="max-w-48"
+                          />
+                        ) : (
+                          <span className="font-medium">{keyword.keyword}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingKeyword?.id === keyword.id ? (
+                          <Input
+                            value={editingKeyword.category || ''}
+                            onChange={(e) => setEditingKeyword(prev => prev ? { ...prev, category: e.target.value } : null)}
+                            className="max-w-32"
+                          />
+                        ) : (
+                          keyword.category || '-'
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingKeyword?.id === keyword.id ? (
+                          <Select 
+                            value={editingKeyword.priority} 
+                            onValueChange={(value) => setEditingKeyword(prev => prev ? { ...prev, priority: value } : null)}
+                          >
+                            <SelectTrigger className="max-w-24">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="high">High</SelectItem>
+                              <SelectItem value="medium">Medium</SelectItem>
+                              <SelectItem value="low">Low</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge className={getPriorityColor(keyword.priority)}>
+                            {keyword.priority}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {editingKeyword?.id === keyword.id ? (
+                          <Select 
+                            value={editingKeyword.status} 
+                            onValueChange={(value) => setEditingKeyword(prev => prev ? { ...prev, status: value } : null)}
+                          >
+                            <SelectTrigger className="max-w-28">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="monitoring">Monitoring</SelectItem>
+                              <SelectItem value="inactive">Inactive</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Badge className={getStatusColor(keyword.status)}>
+                            {keyword.status}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{keyword.article_count || 0}</span>
+                          {keyword.article_count > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              articles
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {keyword.last_searched_date ? (
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(keyword.last_searched_date).toLocaleDateString()}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Never</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {editingKeyword?.id === keyword.id ? (
+                            <>
+                              <Button size="sm" onClick={handleUpdateKeyword}>Save</Button>
+                              <Button size="sm" variant="outline" onClick={() => setEditingKeyword(null)}>Cancel</Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingKeyword(keyword)}
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteKeyword(keyword.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No keywords found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchTerm ? 'No keywords match your search.' : 'Start tracking keywords to monitor content performance.'}
+              </p>
+              <Button onClick={() => setIsAddingKeyword(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Your First Keyword
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
-};
-
-export default KeywordTrackingTab;
+}

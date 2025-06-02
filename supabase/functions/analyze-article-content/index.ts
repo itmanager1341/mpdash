@@ -108,7 +108,8 @@ function extractAndParseJSON(text: string): any {
     console.log('Line-by-line extraction failed:', e.message)
   }
   
-  throw new Error('Unable to extract valid JSON from response')
+  // No fallback - throw error to force proper handling
+  throw new Error('Unable to extract valid JSON from response. This indicates an issue with the AI analysis prompt or response format.')
 }
 
 // Validate analysis data structure
@@ -130,6 +131,71 @@ function validateAnalysisData(data: any): boolean {
   }
   
   return true
+}
+
+// Get analysis prompt from database
+async function getAnalysisPrompt(supabase: any) {
+  try {
+    const { data: prompt, error } = await supabase
+      .from('llm_prompts')
+      .select('prompt_text, model, include_clusters')
+      .eq('function_name', 'analyze-article-content')
+      .eq('is_active', true)
+      .single();
+
+    if (error) {
+      console.error('Error fetching analysis prompt:', error);
+      throw new Error('Failed to fetch analysis prompt configuration');
+    }
+
+    return prompt;
+  } catch (error) {
+    console.error('Error in getAnalysisPrompt:', error);
+    throw new Error('Analysis prompt configuration not found. Please set up the prompt in LLM Management.');
+  }
+}
+
+// Update keyword tracking counts
+async function updateKeywordCounts(supabase: any, extractedKeywords: string[]) {
+  try {
+    if (!extractedKeywords || extractedKeywords.length === 0) {
+      return;
+    }
+
+    console.log('Updating keyword counts for:', extractedKeywords);
+
+    // Get existing keyword tracking entries
+    const { data: keywordEntries, error: fetchError } = await supabase
+      .from('keyword_tracking')
+      .select('id, keyword, article_count')
+      .in('keyword', extractedKeywords);
+
+    if (fetchError) {
+      console.error('Error fetching keyword entries:', fetchError);
+      return;
+    }
+
+    // Update article counts for existing keywords
+    const updatePromises = keywordEntries?.map(async (entry) => {
+      const { error: updateError } = await supabase
+        .from('keyword_tracking')
+        .update({ 
+          article_count: (entry.article_count || 0) + 1,
+          last_searched_date: new Date().toISOString().split('T')[0]
+        })
+        .eq('id', entry.id);
+
+      if (updateError) {
+        console.error(`Error updating keyword count for ${entry.keyword}:`, updateError);
+      }
+    }) || [];
+
+    await Promise.all(updatePromises);
+
+    console.log(`Updated keyword counts for ${keywordEntries?.length || 0} tracked keywords`);
+  } catch (error) {
+    console.error('Error updating keyword counts:', error);
+  }
 }
 
 serve(async (req) => {
@@ -203,222 +269,154 @@ serve(async (req) => {
       throw new Error('No content found for analysis')
     }
 
-    // Get keyword clusters for context
-    const { data: clusters } = await supabase
-      .from('keyword_clusters')
-      .select('*')
+    // Get analysis prompt configuration
+    const promptConfig = await getAnalysisPrompt(supabase);
 
-    const clustersContext = clusters ? 
-      clusters.map(c => `${c.primary_theme}: ${c.sub_theme} (${c.keywords?.join(', ') || ''})`).join('\n') : 
-      ''
+    // Get keyword clusters for context if enabled
+    let clustersContext = '';
+    if (promptConfig.include_clusters) {
+      const { data: clusters } = await supabase
+        .from('keyword_clusters')
+        .select('*')
 
-    // OpenAI analysis prompt
-    const analysisPrompt = `
-Analyze this mortgage industry article for editorial performance prediction:
+      clustersContext = clusters ? 
+        clusters.map(c => `${c.primary_theme}: ${c.sub_theme} (${c.keywords?.join(', ') || ''})`).join('\n') : 
+        ''
+    }
 
-TITLE: ${article.title}
-CONTENT: ${content.substring(0, 4000)}...
-
-KEYWORD CLUSTERS CONTEXT:
-${clustersContext}
-
-Provide analysis in this JSON format ONLY (no markdown, no extra text):
-{
-  "content_quality_score": 85,
-  "template_classification": "news_analysis",
-  "extracted_keywords": ["mortgage rates", "housing market"],
-  "matched_clusters": ["Housing Market Trends", "Interest Rates"],
-  "performance_prediction": {
-    "engagement_score": 78,
-    "shareability": 65,
-    "seo_potential": 82,
-    "target_audience": "mortgage professionals"
-  },
-  "readability_analysis": {
-    "reading_level": "professional",
-    "sentence_complexity": "medium",
-    "jargon_level": "high"
-  },
-  "content_suggestions": [
-    "Add more data visualization",
-    "Include expert quotes"
-  ]
-}
-
-Focus on mortgage industry relevance, professional audience engagement, and content optimization opportunities. Return ONLY valid JSON.`
+    // Prepare the analysis prompt with variable substitution
+    const analysisPrompt = promptConfig.prompt_text
+      .replace('{title}', article.title)
+      .replace('{content}', content.substring(0, 4000) + (content.length > 4000 ? '...' : ''))
+      .replace('{clusters_context}', clustersContext);
 
     console.log('Calling OpenAI with prompt for article:', article.title)
 
     // Call OpenAI with logging
-    try {
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: 'You are an expert content analyst for mortgage industry publications. Always respond with valid JSON only, no markdown formatting.' },
-            { role: 'user', content: analysisPrompt }
-          ],
-          temperature: 0.3
-        })
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: promptConfig.model || 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'You are an expert content analyst for mortgage industry publications. Always respond with valid JSON only, no markdown formatting.' },
+          { role: 'user', content: analysisPrompt }
+        ],
+        temperature: 0.3
       })
+    })
 
-      if (!openaiResponse.ok) {
-        await logLlmUsage(supabase, {
-          model: 'gpt-4o-mini',
-          status: 'error',
-          error: `OpenAI API error: ${openaiResponse.status}`,
-          startTime,
-          metadata: {
-            articleId,
-            article_title: article.title,
-            content_length: content.length,
-            clusters_count: clusters?.length || 0
-          }
-        });
-        
-        throw new Error(`OpenAI API error: ${openaiResponse.status}`)
-      }
-
-      const openaiResult = await openaiResponse.json()
-      const analysisText = openaiResult.choices[0]?.message?.content
-
-      // Log successful API call
+    if (!openaiResponse.ok) {
       await logLlmUsage(supabase, {
-        model: openaiResult.model || 'gpt-4o-mini',
-        usage: openaiResult.usage,
-        status: 'success',
-        startTime,
-        metadata: {
-          articleId,
-          article_title: article.title,
-          content_length: content.length,
-          clusters_count: clusters?.length || 0,
-          analysis_length: analysisText?.length || 0,
-          force_reanalysis: forceReanalysis
-        }
-      });
-
-      console.log('Raw OpenAI response length:', analysisText?.length)
-      console.log('Raw OpenAI response:', analysisText)
-
-      let analysisData
-      try {
-        analysisData = extractAndParseJSON(analysisText)
-        console.log('Successfully parsed analysis data:', JSON.stringify(analysisData, null, 2))
-        
-        // Validate the parsed data
-        if (!validateAnalysisData(analysisData)) {
-          throw new Error('Parsed data failed validation')
-        }
-        
-      } catch (e) {
-        console.error('JSON parsing completely failed:', e)
-        console.error('Original text that failed:', analysisText)
-        
-        // Only use fallback as last resort
-        analysisData = {
-          content_quality_score: 70,
-          template_classification: 'unknown',
-          extracted_keywords: [],
-          matched_clusters: [],
-          performance_prediction: {
-            engagement_score: 60,
-            shareability: 50,
-            seo_potential: 65,
-            target_audience: 'general'
-          },
-          readability_analysis: {
-            reading_level: 'intermediate',
-            sentence_complexity: 'medium',
-            jargon_level: 'medium'
-          },
-          content_suggestions: ['Review content structure'],
-          analysis_raw: analysisText,
-          parsing_error: e.message
-        }
-        
-        console.log('Using fallback data due to parsing failure')
-      }
-
-      // Get next version number
-      const { data: lastAnalysis } = await supabase
-        .from('article_ai_analysis')
-        .select('analysis_version')
-        .eq('article_id', articleId)
-        .order('analysis_version', { ascending: false })
-        .limit(1)
-        .single()
-
-      const nextVersion = (lastAnalysis?.analysis_version || 0) + 1
-
-      console.log('Saving analysis with score:', analysisData.content_quality_score)
-
-      // Save analysis with properly structured data
-      const { data: newAnalysis, error: insertError } = await supabase
-        .from('article_ai_analysis')
-        .insert({
-          article_id: articleId,
-          analysis_version: nextVersion,
-          ai_model_used: 'gpt-4o-mini',
-          content_quality_score: analysisData.content_quality_score,
-          template_classification: analysisData.template_classification,
-          extracted_keywords: analysisData.extracted_keywords || [],
-          matched_clusters: analysisData.matched_clusters || [],
-          performance_prediction: analysisData.performance_prediction || {},
-          analysis_data: analysisData
-        })
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error('Database insert error:', insertError)
-        throw insertError
-      }
-
-      console.log('Analysis saved successfully with ID:', newAnalysis.id)
-      console.log('Final saved quality score:', newAnalysis.content_quality_score)
-
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          analysis: newAnalysis,
-          version: nextVersion,
-          qualityScore: newAnalysis.content_quality_score
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      )
-
-    } catch (apiError) {
-      console.error('OpenAI API call failed:', apiError);
-      
-      await logLlmUsage(supabase, {
-        model: 'gpt-4o-mini',
+        model: promptConfig.model || 'gpt-4o-mini',
         status: 'error',
-        error: apiError instanceof Error ? apiError.message : String(apiError),
+        error: `OpenAI API error: ${openaiResponse.status}`,
         startTime,
         metadata: {
           articleId,
           article_title: article.title,
           content_length: content.length,
-          error_type: 'openai_api_failed'
+          clusters_count: clustersContext ? clustersContext.split('\n').length : 0
         }
       });
       
-      throw apiError;
+      throw new Error(`OpenAI API error: ${openaiResponse.status}`)
     }
+
+    const openaiResult = await openaiResponse.json()
+    const analysisText = openaiResult.choices[0]?.message?.content
+
+    // Log successful API call
+    await logLlmUsage(supabase, {
+      model: openaiResult.model || promptConfig.model || 'gpt-4o-mini',
+      usage: openaiResult.usage,
+      status: 'success',
+      startTime,
+      metadata: {
+        articleId,
+        article_title: article.title,
+        content_length: content.length,
+        clusters_count: clustersContext ? clustersContext.split('\n').length : 0,
+        analysis_length: analysisText?.length || 0,
+        force_reanalysis: forceReanalysis
+      }
+    });
+
+    console.log('Raw OpenAI response length:', analysisText?.length)
+    console.log('Raw OpenAI response:', analysisText)
+
+    // Parse and validate analysis data - NO FALLBACKS
+    const analysisData = extractAndParseJSON(analysisText);
+    console.log('Successfully parsed analysis data:', JSON.stringify(analysisData, null, 2))
+    
+    // Validate the parsed data
+    if (!validateAnalysisData(analysisData)) {
+      throw new Error('Parsed analysis data failed validation checks')
+    }
+
+    // Update keyword tracking counts
+    if (analysisData.extracted_keywords) {
+      await updateKeywordCounts(supabase, analysisData.extracted_keywords);
+    }
+
+    // Get next version number
+    const { data: lastAnalysis } = await supabase
+      .from('article_ai_analysis')
+      .select('analysis_version')
+      .eq('article_id', articleId)
+      .order('analysis_version', { ascending: false })
+      .limit(1)
+      .single()
+
+    const nextVersion = (lastAnalysis?.analysis_version || 0) + 1
+
+    console.log('Saving analysis with score:', analysisData.content_quality_score)
+
+    // Save analysis with properly structured data
+    const { data: newAnalysis, error: insertError } = await supabase
+      .from('article_ai_analysis')
+      .insert({
+        article_id: articleId,
+        analysis_version: nextVersion,
+        ai_model_used: promptConfig.model || 'gpt-4o-mini',
+        content_quality_score: analysisData.content_quality_score,
+        template_classification: analysisData.template_classification,
+        extracted_keywords: analysisData.extracted_keywords || [],
+        matched_clusters: analysisData.matched_clusters || [],
+        performance_prediction: analysisData.performance_prediction || {},
+        analysis_data: analysisData
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Database insert error:', insertError)
+      throw insertError
+    }
+
+    console.log('Analysis saved successfully with ID:', newAnalysis.id)
+    console.log('Final saved quality score:', newAnalysis.content_quality_score)
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        analysis: newAnalysis,
+        version: nextVersion,
+        qualityScore: newAnalysis.content_quality_score
+      }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200 
+      }
+    )
 
   } catch (error) {
     console.error('Article analysis error:', error)
     
-    // Log general function error
+    // Log error with details
     try {
       const supabase = createClient(supabaseUrl, supabaseServiceKey)
       await logLlmUsage(supabase, {
@@ -427,7 +425,7 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
         error: error instanceof Error ? error.message : String(error),
         startTime,
         metadata: {
-          error_type: 'general_function_error'
+          error_type: 'analysis_failed'
         }
       });
     } catch (logError) {
@@ -436,8 +434,9 @@ Focus on mortgage industry relevance, professional audience engagement, and cont
     
     return new Response(
       JSON.stringify({ 
-        error: error.message,
-        success: false
+        error: error instanceof Error ? error.message : String(error),
+        success: false,
+        details: 'Article analysis failed. Please check the analysis prompt configuration in LLM Management or try again.'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
