@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/table";
 import { SortableTableHead } from "./SortableTableHead";
 import { SimplifiedBulkOperations } from "./SimplifiedBulkOperations";
-import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock, Zap, Package } from "lucide-react";
+import { ArticleEditDialog } from "./ArticleEditDialog";
+import { ExternalLink, Trash2, RefreshCw, Search, CheckCircle, Clock, Zap, Package, Edit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { ArticleFilter } from "@/pages/ArticlesManagement";
@@ -62,6 +63,8 @@ export function ArticlesTable({
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [editingArticle, setEditingArticle] = useState<any>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   // Apply filter first, then search - removed embedding filters
   const filteredByStatus = articles.filter(article => {
@@ -183,6 +186,11 @@ export function ArticlesTable({
       newSelection.delete(articleId);
     }
     onSelectionChange(newSelection, newSelection.size > 0);
+  };
+
+  const handleEditArticle = (article: any) => {
+    setEditingArticle(article);
+    setShowEditDialog(true);
   };
 
   const handleSyncArticle = async (articleId: string) => {
@@ -409,7 +417,7 @@ export function ArticlesTable({
               >
                 Chunked
               </SortableTableHead>
-              <TableHead className="w-40">Actions</TableHead>
+              <TableHead className="w-48">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -515,6 +523,14 @@ export function ArticlesTable({
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => handleEditArticle(article)}
+                        title="Edit article"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleSyncArticle(article.id)}
                         disabled={syncingArticleId === article.id}
                         title="Sync with WordPress"
@@ -613,6 +629,13 @@ export function ArticlesTable({
           </div>
         </div>
       )}
+
+      <ArticleEditDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        article={editingArticle}
+        onSave={onUpdate}
+      />
     </div>
   );
 }
