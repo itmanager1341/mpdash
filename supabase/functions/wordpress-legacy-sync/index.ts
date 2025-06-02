@@ -73,12 +73,9 @@ function decodeHtmlEntities(text: string): string {
 // Convert WordPress date to CST (our default timezone)
 function convertWordPressToCst(wpDate: string): string {
   try {
-    // WordPress dates are typically in CST already, so we just need to ensure proper formatting
+    // WordPress dates are in CST already, just ensure proper ISO format
     const date = new Date(wpDate);
-    // Convert to CST by adjusting for timezone offset
-    // CST is UTC-6, so we subtract 6 hours from UTC
-    const cstDate = new Date(date.getTime() - (6 * 60 * 60 * 1000));
-    return cstDate.toISOString().split('T')[0];
+    return date.toISOString().split('T')[0];
   } catch (error) {
     console.error('Date conversion error:', error);
     return new Date().toISOString().split('T')[0];
@@ -97,29 +94,6 @@ function normalizeTitle(title: string): string {
   return normalized;
 }
 
-// Enhanced similarity scoring for title matching
-function calculateTitleSimilarity(title1: string, title2: string): number {
-  const norm1 = normalizeTitle(title1);
-  const norm2 = normalizeTitle(title2);
-  
-  if (norm1 === norm2) {
-    return 1.0;
-  }
-  
-  if (norm1.includes(norm2) || norm2.includes(norm1)) {
-    return 0.95;
-  }
-  
-  const words1 = new Set(norm1.split(/\s+/).filter(w => w.length > 2));
-  const words2 = new Set(norm2.split(/\s+/).filter(w => w.length > 2));
-  const intersection = new Set([...words1].filter(x => words2.has(x)));
-  const union = new Set([...words1, ...words2]);
-  
-  const similarity = intersection.size / union.size;
-  
-  return similarity;
-}
-
 // Check for existing WordPress ID conflicts
 async function checkWordPressIdConflict(supabase: any, wpId: number, currentArticleId: string | null = null) {
   let query = supabase
@@ -135,12 +109,62 @@ async function checkWordPressIdConflict(supabase: any, wpId: number, currentArti
   return existingArticle;
 }
 
-// Simplified author handling
-async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any) {
-  if (!wpAuthorData || !wpAuthorId) {
+// Enhanced author handling with fallback lookup
+async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any, wpPost: any) {
+  if (!wpAuthorId) {
+    console.log('No WordPress author ID provided');
     return null;
   }
 
+  // Try to get author data from embedded response first
+  let authorData = wpAuthorData;
+  
+  // If no embedded author data, try to find existing author by WordPress ID
+  if (!authorData) {
+    console.log(`No embedded author data for WordPress author ID ${wpAuthorId}, checking existing authors...`);
+    
+    const { data: existingAuthor } = await supabase
+      .from('authors')
+      .select('id, name, wordpress_author_id')
+      .eq('wordpress_author_id', wpAuthorId)
+      .maybeSingle();
+
+    if (existingAuthor) {
+      console.log(`Found existing author: ${existingAuthor.name} for WordPress ID ${wpAuthorId}`);
+      return existingAuthor.id;
+    }
+    
+    // Try to fetch author info directly from WordPress API if we have the credentials
+    const wordpressUrl = Deno.env.get('WORDPRESS_URL');
+    const username = Deno.env.get('WORDPRESS_USERNAME');
+    const password = Deno.env.get('WORDPRESS_PASSWORD');
+    
+    if (wordpressUrl && username && password) {
+      try {
+        const auth = btoa(`${username}:${password}`);
+        const authorResponse = await fetch(`${wordpressUrl}/wp-json/wp/v2/users/${wpAuthorId}`, {
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (authorResponse.ok) {
+          authorData = await authorResponse.json();
+          console.log(`Fetched author data from WordPress API: ${authorData.name}`);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch author ${wpAuthorId} from WordPress API:`, error);
+      }
+    }
+  }
+
+  if (!authorData || !authorData.name) {
+    console.log(`No author data available for WordPress author ID ${wpAuthorId}`);
+    return null;
+  }
+
+  // Check if author already exists by WordPress ID
   const { data: existingAuthor } = await supabase
     .from('authors')
     .select('id, name')
@@ -148,21 +172,24 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
     .maybeSingle();
 
   if (existingAuthor) {
+    console.log(`Using existing author: ${existingAuthor.name}`);
     return existingAuthor.id;
   }
 
+  // Check if author exists by name and update with WordPress ID
   const { data: authorByName } = await supabase
     .from('authors')
     .select('id, name, wordpress_author_id')
-    .ilike('name', wpAuthorData.name)
+    .ilike('name', authorData.name)
     .maybeSingle();
 
   if (authorByName && !authorByName.wordpress_author_id) {
+    console.log(`Updating existing author ${authorByName.name} with WordPress ID ${wpAuthorId}`);
     const { error: updateError } = await supabase
       .from('authors')
       .update({
         wordpress_author_id: wpAuthorId,
-        wordpress_author_name: wpAuthorData.name
+        wordpress_author_name: authorData.name
       })
       .eq('id', authorByName.id);
 
@@ -171,15 +198,17 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
     }
   }
 
+  // Create new author
+  console.log(`Creating new author: ${authorData.name}`);
   const { data: newAuthor, error: authorError } = await supabase
     .from('authors')
     .insert({
-      name: wpAuthorData.name,
+      name: authorData.name,
       author_type: 'external',
-      email: wpAuthorData.email || null,
-      bio: wpAuthorData.description || null,
+      email: authorData.email || null,
+      bio: authorData.description || null,
       wordpress_author_id: wpAuthorId,
-      wordpress_author_name: wpAuthorData.name,
+      wordpress_author_name: authorData.name,
       is_active: true
     })
     .select('id')
@@ -190,6 +219,7 @@ async function handleAuthor(supabase: any, wpAuthorId: number, wpAuthorData: any
     return null;
   }
 
+  console.log(`Created new author: ${authorData.name} with ID ${newAuthor.id}`);
   return newAuthor.id;
 }
 
@@ -218,7 +248,7 @@ serve(async (req) => {
       maxArticles = 100, 
       startDate, 
       endDate, 
-      legacyMode = true,
+      legacyMode = true, // Default to legacy mode for proven functionality
       targetArticleIds = null,
       operationId = null,
       processingOptions = {
@@ -231,14 +261,15 @@ serve(async (req) => {
         batchSize: 20
       },
       duplicateHandling = {
-        mode: 'skip', // 'skip', 'update', 'both'
+        mode: 'skip', // Default to skip duplicates
         dryRun: false
       }
     } = await req.json().catch(() => ({}))
 
-    console.log(`Starting ${duplicateHandling.dryRun ? 'dry run' : 'enhanced'} WordPress sync`)
+    console.log(`Starting ${duplicateHandling.dryRun ? 'dry run' : 'legacy mode'} WordPress sync`)
     console.log(`Duplicate handling mode: ${duplicateHandling.mode}`)
     console.log(`Processing options:`, processingOptions)
+    console.log(`Legacy mode enabled: ${legacyMode}`)
 
     // Create sync operation record
     const { data: syncOperation, error: syncOpError } = await supabase
@@ -278,9 +309,9 @@ serve(async (req) => {
 
     let articlesToProcess = [];
 
-    // Fetch from WordPress with optimized field selection and batching
+    // Fetch from WordPress with enhanced field selection and _embed for author data
     if (!targetArticleIds) {
-      console.log('Fetching from WordPress API with enhanced batching...');
+      console.log('Fetching from WordPress API with enhanced batching and author embedding...');
       
       const optimizedFields = 'id,title,content,excerpt,author,date,modified,link,categories,tags,featured_media,status';
       let wpApiUrl = `${wordpressUrl}/wp-json/wp/v2/posts?per_page=${performanceOptions.batchSize}&_embed&_fields=${optimizedFields}`
@@ -330,7 +361,7 @@ serve(async (req) => {
       articlesToProcess = allArticles;
     }
 
-    console.log(`Processing ${articlesToProcess.length} articles...`)
+    console.log(`Processing ${articlesToProcess.length} articles using legacy mode...`)
 
     // Update total_items now that we know the count
     if (syncOpId) {
@@ -342,7 +373,6 @@ serve(async (req) => {
 
     // Store article IDs for background processing
     const articleIdsForProcessing = [];
-    const duplicateChecks = [];
 
     for (let i = 0; i < articlesToProcess.length; i++) {
       const wpPost = articlesToProcess[i];
@@ -359,6 +389,9 @@ serve(async (req) => {
         }
         
         console.log(`\n--- Processing article ${syncResults.processed}/${articlesToProcess.length} ---`);
+        console.log(`Title: "${wpPost.title?.rendered || 'Unknown'}"`);
+        console.log(`WordPress ID: ${wpPost.id}`);
+        console.log(`Author ID: ${wpPost.author}`);
 
         // Check for existing article by WordPress ID
         const existingArticle = await checkWordPressIdConflict(supabase, wpPost.id);
@@ -376,11 +409,12 @@ serve(async (req) => {
           }
         }
 
-        // Handle author
+        // Handle author with enhanced fallback logic
         const authorData = wpPost._embedded?.author?.[0];
         let authorId = null;
-        if (authorData && wpPost.author) {
-          authorId = await handleAuthor(supabase, wpPost.author, authorData);
+        if (wpPost.author) {
+          authorId = await handleAuthor(supabase, wpPost.author, authorData, wpPost);
+          console.log(`Author assignment result: ${authorId ? `ID ${authorId}` : 'No author assigned'}`);
         }
 
         // Parse dates properly from WordPress post (CST timezone)
@@ -392,10 +426,11 @@ serve(async (req) => {
         // Prepare article data with enhanced content processing
         const articleData = {
           wordpress_id: wpPost.id,
+          title: decodeHtmlEntities(wpPost.title?.rendered || ''),
           content_variants: {
             wordpress_content: {
-              content: wpPost.content.rendered,
-              excerpt: wpPost.excerpt.rendered,
+              content: wpPost.content?.rendered || '',
+              excerpt: wpPost.excerpt?.rendered || '',
               featured_media: wpPost.featured_media,
               categories: wpPost.categories,
               tags: wpPost.tags
@@ -403,7 +438,7 @@ serve(async (req) => {
           },
           primary_author_id: authorId,
           wordpress_author_id: wpPost.author,
-          wordpress_author_name: wpPost._embedded?.author?.[0]?.name || 'Unknown',
+          wordpress_author_name: authorData?.name || 'Unknown',
           wordpress_categories: wpPost.categories || [],
           wordpress_tags: wpPost.tags || [],
           published_at: publishedDate,
@@ -412,7 +447,7 @@ serve(async (req) => {
           status: wpPost.status === 'publish' ? 'published' : 'draft',
           source_system: 'wordpress',
           source_url: wpPost.link || null,
-          excerpt: wpPost.excerpt.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null,
+          excerpt: wpPost.excerpt?.rendered?.replace(/<[^>]*>/g, '').substring(0, 500) || null,
           updated_at: modifiedDate
         }
 
@@ -421,8 +456,10 @@ serve(async (req) => {
           const { cleanContent, wordCount } = extractCleanContent(wpPost);
           if (cleanContent) {
             articleData.clean_content = cleanContent;
+            console.log(`Extracted clean content (${cleanContent.length} chars)`);
             if (processingOptions.autoCalculateWordCount) {
               articleData.word_count = wordCount;
+              console.log(`Calculated word count: ${wordCount}`);
             }
           }
         }
@@ -464,7 +501,6 @@ serve(async (req) => {
             console.log(`✓ Updated article: ${existingArticle.title}`)
           } else if (!existingArticle) {
             // Create new article
-            articleData.title = decodeHtmlEntities(wpPost.title.rendered);
             console.log(`Creating new article: "${articleData.title}"`);
             
             const { data: insertedArticle, error } = await supabase
@@ -562,7 +598,8 @@ serve(async (req) => {
             wordCountsCalculated: syncResults.wordCountsCalculated,
             articlesChunked: syncResults.articlesChunked,
             total_errors: syncResults.errors.length,
-            dry_run: duplicateHandling.dryRun
+            dry_run: duplicateHandling.dryRun,
+            legacy_mode: legacyMode
           },
           error_details: syncResults.errorDetails,
           merge_decisions: syncResults.mergeDecisions
@@ -570,7 +607,7 @@ serve(async (req) => {
         .eq('id', syncOpId);
     }
 
-    const operation = duplicateHandling.dryRun ? 'dry run analysis' : 'enhanced sync';
+    const operation = duplicateHandling.dryRun ? 'dry run analysis' : 'legacy mode sync';
     console.log(`\n=== ${operation} completed ===`);
     console.log(`Processed: ${syncResults.processed}`);
     console.log(`Created: ${syncResults.created}`);
@@ -596,7 +633,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('Enhanced WordPress sync error:', error)
+    console.error('Legacy mode WordPress sync error:', error)
     return new Response(
       JSON.stringify({ 
         error: error.message,

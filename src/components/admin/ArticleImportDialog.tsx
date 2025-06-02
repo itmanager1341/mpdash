@@ -34,8 +34,8 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
   const [autoCalculateWordCount, setAutoCalculateWordCount] = useState(true);
   const [autoChunkArticles, setAutoChunkArticles] = useState(false);
   
-  // Duplicate handling options
-  const [duplicateHandling, setDuplicateHandling] = useState('skip'); // 'skip', 'update', 'both'
+  // Duplicate handling options - default to skip
+  const [duplicateHandling, setDuplicateHandling] = useState('skip');
   const [dryRun, setDryRun] = useState(false);
   
   // Performance options
@@ -82,13 +82,15 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
     });
 
     try {
-      console.log(`Starting ${dryRun ? 'dry run' : 'enhanced'} WordPress sync with processing pipeline...`);
+      console.log(`Starting ${dryRun ? 'dry run' : 'enhanced'} WordPress sync using legacy mode...`);
       
       const { data, error } = await supabase.functions.invoke('wordpress-legacy-sync', {
         body: { 
           maxArticles, 
           startDate, 
           endDate,
+          // Use legacy mode for proven functionality
+          legacyMode: true,
           processingOptions: {
             autoExtractContent,
             autoCalculateWordCount,
@@ -190,7 +192,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5" />
-            Enhanced WordPress Article Import
+            WordPress Article Import
           </DialogTitle>
         </DialogHeader>
         
@@ -198,8 +200,8 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              Enhanced import with smart duplicate handling and content processing pipeline. 
-              Configure sync parameters to minimize WPEngine impact while maximizing automation.
+              Import articles using proven sync logic with smart duplicate handling and content processing. 
+              Configure parameters to minimize WPEngine impact while maximizing automation.
             </AlertDescription>
           </Alert>
 
@@ -468,7 +470,7 @@ export function ArticleImportDialog({ open, onOpenChange, onImportComplete }: Ar
               ) : (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  {dryRun ? 'Run Analysis' : 'Start Enhanced Sync'}
+                  {dryRun ? 'Run Analysis' : 'Start Import Sync'}
                 </>
               )}
             </Button>
