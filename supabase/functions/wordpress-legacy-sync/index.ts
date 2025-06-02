@@ -609,9 +609,9 @@ serve(async (req) => {
         console.log(`Using published date: ${publishedDate}, modified date: ${modifiedDate}`);
         console.log(`Author assigned: ${authorId || 'none'}`);
 
+        // Prepare article data - conditionally include title based on operation type
         const articleData = {
           wordpress_id: wpPost.id,
-          title: wpPost.title.rendered,
           content_variants: {
             wordpress_content: {
               content: wpPost.content.rendered,
@@ -636,9 +636,19 @@ serve(async (req) => {
           updated_at: modifiedDate
         }
 
+        // Only include title for new articles (from WordPress import), not for existing article updates
+        if (!targetArticleIds) {
+          // For new articles created from WordPress, use the decoded title
+          articleData.title = decodeHtmlEntities(wpPost.title.rendered);
+          console.log(`Using decoded WordPress title for new article: "${articleData.title}"`);
+        } else {
+          // For existing articles, preserve the current title and don't overwrite it
+          console.log(`Preserving existing database title: "${article.title}" (WordPress title: "${wpPost.title.rendered}")`);
+        }
+
         if (targetArticleIds) {
-          // Update existing article
-          console.log(`Updating existing article: ${article.id}`);
+          // Update existing article without changing the title
+          console.log(`Updating existing article: ${article.id} (preserving title: "${article.title}")`);
           const { error } = await supabase
             .from('articles')
             .update(articleData)
@@ -659,10 +669,10 @@ serve(async (req) => {
             title: article.title
           })
           
-          console.log(`✓ Updated article: ${article.title}`)
+          console.log(`✓ Updated article: ${article.title} (title preserved)`)
         } else {
-          // Create new article (original behavior)
-          console.log(`Creating new article...`);
+          // Create new article (original behavior) with decoded title
+          console.log(`Creating new article with title: "${articleData.title}"`);
           const { error } = await supabase
             .from('articles')
             .insert(articleData)
@@ -673,7 +683,7 @@ serve(async (req) => {
           }
           
           syncResults.created++
-          console.log(`✓ Created new article: ${wpPost.title.rendered}`)
+          console.log(`✓ Created new article: ${articleData.title}`)
         }
 
       } catch (error) {
