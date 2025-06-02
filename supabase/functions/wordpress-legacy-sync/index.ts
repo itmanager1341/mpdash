@@ -315,8 +315,58 @@ serve(async (req) => {
 
     let articlesToProcess = [];
 
-    // Fetch from WordPress with enhanced field selection and _embed for author data
-    if (!targetArticleIds) {
+    // Handle different sync modes
+    if (targetArticleIds && targetArticleIds.length > 0) {
+      console.log(`Fetching ${targetArticleIds.length} specific articles for manual sync...`);
+      
+      // Get WordPress IDs for the target articles
+      const { data: targetArticles, error: targetError } = await supabase
+        .from('articles')
+        .select('id, wordpress_id, title')
+        .in('id', targetArticleIds)
+        .not('wordpress_id', 'is', null);
+
+      if (targetError) {
+        throw new Error(`Failed to get target articles: ${targetError.message}`);
+      }
+
+      if (!targetArticles || targetArticles.length === 0) {
+        console.log('No articles found with WordPress IDs for the provided target IDs');
+        articlesToProcess = [];
+      } else {
+        console.log(`Found ${targetArticles.length} articles with WordPress IDs to sync`);
+        
+        // Fetch each WordPress post individually with embedded author data
+        for (const article of targetArticles) {
+          try {
+            console.log(`Fetching WordPress post ${article.wordpress_id} for article "${article.title}"`);
+            
+            const wpResponse = await fetch(`${wordpressUrl}/wp-json/wp/v2/posts/${article.wordpress_id}?_embed`, {
+              headers: {
+                'Authorization': `Basic ${auth}`,
+                'Content-Type': 'application/json'
+              }
+            });
+
+            if (wpResponse.ok) {
+              const wpPost = await wpResponse.json();
+              articlesToProcess.push(wpPost);
+              console.log(`✓ Successfully fetched WordPress post for "${article.title}"`);
+            } else {
+              console.log(`❌ WordPress API returned ${wpResponse.status} for post ${article.wordpress_id}`);
+            }
+
+            // Add delay to respect API rate limits
+            if (performanceOptions.apiDelay > 0) {
+              await delay(performanceOptions.apiDelay);
+            }
+          } catch (error) {
+            console.error(`Error fetching WordPress post ${article.wordpress_id}:`, error);
+          }
+        }
+      }
+    } else {
+      // Fetch from WordPress with enhanced field selection and _embed for author data
       console.log('Fetching from WordPress API with enhanced batching and author embedding...');
       
       const optimizedFields = 'id,title,content,excerpt,author,date,modified,link,categories,tags,featured_media,status';
