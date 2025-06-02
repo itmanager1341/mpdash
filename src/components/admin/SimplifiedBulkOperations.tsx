@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,11 +40,10 @@ export function SimplifiedBulkOperations({
     return null;
   }
 
-  // Calculate statistics for selected articles
+  // Calculate statistics for selected articles - removed legacy embedding stats
   const stats = {
     chunked: selectedArticles.filter(a => a.is_chunked).length,
     notChunked: selectedArticles.filter(a => !a.is_chunked).length,
-    withEmbeddings: selectedArticles.filter(a => a.embedding).length,
     withWordCount: selectedArticles.filter(a => a.word_count > 0).length,
     needsChunking: selectedArticles.filter(a => !a.is_chunked && a.word_count > 0).length
   };
@@ -137,7 +137,7 @@ export function SimplifiedBulkOperations({
               {selectedCount} selected
             </Badge>
             
-            {/* Updated Statistics */}
+            {/* Updated Statistics - removed embedding references */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Package className="h-3 w-3" />
@@ -151,7 +151,7 @@ export function SimplifiedBulkOperations({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Single Chunk Processing Button */}
+            {/* Chunk Processing Button */}
             {onBulkProcessChunks && stats.needsChunking > 0 && (
               <Button
                 variant="outline"

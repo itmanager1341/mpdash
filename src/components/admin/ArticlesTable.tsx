@@ -66,7 +66,7 @@ export function ArticlesTable({
   const [editingArticle, setEditingArticle] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
 
-  // Apply filter first, then search - removed embedding filters
+  // Apply filter first, then search - cleaned up to remove embedding filters
   const filteredByStatus = articles.filter(article => {
     switch (activeFilter) {
       case 'published':
@@ -326,7 +326,7 @@ export function ArticlesTable({
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1); // Reset to first page when searching
+              setCurrentPage(1);
             }}
             className="pl-10"
           />
