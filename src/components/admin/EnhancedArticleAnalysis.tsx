@@ -29,7 +29,8 @@ import {
   Play,
   Pause,
   ExternalLink,
-  FileText
+  FileText,
+  Loader2
 } from "lucide-react";
 import { ensureAnalysisPromptExists } from "@/utils/analysisPromptUtils";
 import { useNavigate } from "react-router-dom";
@@ -233,7 +234,7 @@ export default function EnhancedArticleAnalysis({ onAnalysisComplete }: Enhanced
     return "destructive";
   };
 
-  if (isLoading) {
+  if (articlesLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="h-8 w-8 animate-spin" />
