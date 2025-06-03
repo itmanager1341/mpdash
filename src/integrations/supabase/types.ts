@@ -522,6 +522,7 @@ export type Database = {
           id: string
           keywords: string[] | null
           primary_theme: string
+          priority_weight: number | null
           professions: string[] | null
           sub_theme: string
         }
@@ -531,6 +532,7 @@ export type Database = {
           id?: string
           keywords?: string[] | null
           primary_theme: string
+          priority_weight?: number | null
           professions?: string[] | null
           sub_theme: string
         }
@@ -540,6 +542,7 @@ export type Database = {
           id?: string
           keywords?: string[] | null
           primary_theme?: string
+          priority_weight?: number | null
           professions?: string[] | null
           sub_theme?: string
         }
