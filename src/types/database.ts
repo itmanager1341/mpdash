@@ -153,6 +153,7 @@ export interface KeywordCluster {
   description?: string;
   keywords?: string[];
   professions?: string[];
+  priority_weight?: number;
   created_at: string;
 }
 
