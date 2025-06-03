@@ -67,12 +67,16 @@ export default function VisualPromptBuilder({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentModel, setCurrentModel] = useState<string>("llama-3.1-sonar-small-128k-online");
   
-  // Add missing state declarations
+  // Theme selection state
   const [selectedPrimaryThemes, setSelectedPrimaryThemes] = useState<string[]>([]);
   const [selectedSubThemes, setSelectedSubThemes] = useState<string[]>([]);
   
   // Prompt-specific cluster weights (not saved to database)
   const [promptWeights, setPromptWeights] = useState<Record<string, number>>({});
+  
+  // Track manual changes to prevent resets
+  const [hasManualWeightChanges, setHasManualWeightChanges] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   const queryClient = useQueryClient();
   
@@ -145,16 +149,20 @@ export default function VisualPromptBuilder({
     },
   });
   
-  // Update form when initialPrompt changes
+  // Update form when initialPrompt changes - but respect manual changes
   useEffect(() => {
-    if (initialPrompt) {
+    if (initialPrompt && (isInitialLoad || !hasManualWeightChanges)) {
       console.log('Setting form values for prompt:', initialPrompt);
       const metadata = extractPromptMetadata(initialPrompt);
       const cleanPromptText = getCleanPromptText(initialPrompt.prompt_text);
       
       // Extract prompt-specific weights from metadata
       const savedPromptWeights = metadata?.search_settings?.prompt_weights || {};
-      setPromptWeights(savedPromptWeights);
+      
+      // Only update weights if this is initial load or no manual changes made
+      if (isInitialLoad || !hasManualWeightChanges) {
+        setPromptWeights(savedPromptWeights);
+      }
       
       form.reset({
         function_name: initialPrompt.function_name,
@@ -191,13 +199,17 @@ export default function VisualPromptBuilder({
         limit: metadata?.search_settings?.limit || 10,
         is_news_search: true,
       });
-    } else {
+      
+      setIsInitialLoad(false);
+    } else if (!initialPrompt) {
       // Reset form for new prompt
       form.reset();
       setCurrentModel("llama-3.1-sonar-small-128k-online");
       setSelectedPrimaryThemes([]);
       setSelectedSubThemes([]);
       setPromptWeights({});
+      setHasManualWeightChanges(false);
+      setIsInitialLoad(true);
       setSearchSettings({
         domain_filter: "auto",
         recency_filter: "day",
@@ -207,7 +219,7 @@ export default function VisualPromptBuilder({
         is_news_search: true,
       });
     }
-  }, [initialPrompt, form]);
+  }, [initialPrompt, form, isInitialLoad, hasManualWeightChanges]);
   
   // Keep track of the search settings in a single state object for easier access by child components
   const [searchSettings, setSearchSettings] = useState({
@@ -242,14 +254,14 @@ export default function VisualPromptBuilder({
 
   // Initialize prompt weights from database weights when clusters load
   useEffect(() => {
-    if (clusters && Object.keys(promptWeights).length === 0) {
+    if (clusters && Object.keys(promptWeights).length === 0 && isInitialLoad) {
       const initialWeights: Record<string, number> = {};
       clusters.forEach(cluster => {
         initialWeights[cluster.sub_theme] = cluster.priority_weight || 0;
       });
       setPromptWeights(initialWeights);
     }
-  }, [clusters, promptWeights]);
+  }, [clusters, promptWeights, isInitialLoad]);
 
   const handlePrimaryThemeSelect = (theme: string) => {
     if (selectedPrimaryThemes.includes(theme)) {
@@ -272,6 +284,7 @@ export default function VisualPromptBuilder({
       ...prev,
       [subTheme]: weight
     }));
+    setHasManualWeightChanges(true);
   };
 
   const handleNormalizeWeights = () => {
@@ -290,6 +303,7 @@ export default function VisualPromptBuilder({
       ...prev,
       ...normalizedWeights
     }));
+    setHasManualWeightChanges(true);
   };
 
   const handleSubmit = async (data: PromptFormValues) => {
@@ -337,6 +351,9 @@ export default function VisualPromptBuilder({
         await createPrompt(promptData);
         toast.success("Prompt created successfully");
       }
+      
+      // Reset manual changes flag after successful save
+      setHasManualWeightChanges(false);
       
       onSave(promptData);
     } catch (error: any) {
