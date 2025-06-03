@@ -1,13 +1,13 @@
+
 import { Card, CardContent } from "@/components/ui/card";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useState, useEffect, useRef } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info, RefreshCw } from "lucide-react";
+import { Info, RefreshCw, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 interface Cluster {
   id: string;
@@ -15,6 +15,7 @@ interface Cluster {
   sub_theme: string;
   description?: string;
   keywords?: string[];
+  professions?: string[];
   priority_weight?: number;
 }
 
@@ -56,7 +57,7 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
     }
   }, []);
   
-  // Only regenerate if there are significant changes (not just weight updates)
+  // Only regenerate if there are significant changes
   useEffect(() => {
     if (value && isCustomizing) {
       const currentKey = JSON.stringify({
@@ -65,7 +66,6 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
         domain: searchSettings?.domain_filter
       });
       
-      // Only auto-regenerate if key settings changed, not just weights
       if (lastGenerationRef.current && lastGenerationRef.current !== currentKey) {
         const shouldRegenerate = window.confirm(
           "Theme or search settings have changed. Would you like to regenerate the prompt template?"
@@ -86,7 +86,6 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       onChange(template);
       setIsCustomizing(true);
       
-      // Update the generation key to current settings
       lastGenerationRef.current = JSON.stringify({
         themes: selectedThemes.sort(),
         recency: searchSettings?.recency_filter,
@@ -111,7 +110,6 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   };
   
   const generateTemplate = () => {
-    // Ensure we have valid arrays to work with
     const validSources: Source[] = Array.isArray(sources) ? sources : [];
     const validClusters: Cluster[] = Array.isArray(clusters) ? clusters : [];
     
@@ -126,34 +124,31 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       s.source_type && s.source_type.toLowerCase().includes('competitor')
     );
     
-    // Filter clusters by selected themes or use top weighted themes
+    // Filter clusters by selected themes or use all clusters
     let filteredClusters: Cluster[] = [];
     if (selectedThemes && selectedThemes.length > 0) {
       filteredClusters = validClusters.filter(cluster => 
         selectedThemes.includes(cluster.primary_theme)
       );
     } else {
-      // Sort by priority weight and get top themes
-      const sortedClusters = validClusters.sort((a, b) => (b.priority_weight || 50) - (a.priority_weight || 50));
-      const uniqueThemes = Array.from(new Set(sortedClusters.map(c => c.primary_theme))).slice(0, 5);
-      filteredClusters = validClusters.filter(cluster => 
-        uniqueThemes.includes(cluster.primary_theme)
-      );
+      filteredClusters = validClusters;
     }
     
-    // Calculate total weight for proportional allocation
-    const totalWeight = filteredClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0);
+    // Sort clusters by priority weight (highest first)
+    filteredClusters.sort((a, b) => (b.priority_weight || 0) - (a.priority_weight || 0));
     
     const timeRange = searchSettings?.recency_filter
       ? getHoursFromRecency(searchSettings.recency_filter)
       : "24 hours";
     
-    let template = `You are a senior editorial assistant for MortgagePoint, a leading news outlet covering mortgage lending, servicing, housing policy, regulation, and macroeconomic trends. Your task is to surface the most relevant and timely articles for our daily email briefing.
+    let template = `You are a senior editorial assistant for MortgagePoint, the premier industry publication for mortgage lending professionals. Your role is to identify the most strategically valuable content for our daily briefing, focusing on business-critical intelligence that impacts mortgage industry operations.
 
-SEARCH & FILTER RULES:
-1. Time Range: Only include articles published within the last ${timeRange}.
+SEARCH PARAMETERS & FILTERS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-2. Priority Sources (search these first):
+⏰ TIME SCOPE: Articles published within the last ${timeRange}
+
+🎯 PRIORITY SOURCE STRATEGY:
 `;
 
     // Add priority sources with proper grouping
@@ -165,12 +160,13 @@ SEARCH & FILTER RULES:
           return `site:${s.source_url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0]}`;
         }
       });
-      template += sourceQueries.join(' OR ') + '\n\n';
+      template += `Search these authoritative sources first:\n${sourceQueries.join(' OR ')}\n\n`;
     }
 
-    template += `3. WEIGHTED Content Focus Areas & Keywords:\n\n`;
+    template += `📊 CONTENT FOCUS AREAS (Weighted by Editorial Priority):\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
-    // Group clusters by primary theme with weights and keywords
+    // Group clusters by primary theme with weights
     const clustersByTheme = filteredClusters.reduce((acc: Record<string, Cluster[]>, cluster) => {
       const theme = cluster.primary_theme || "General";
       if (!acc[theme]) acc[theme] = [];
@@ -178,136 +174,190 @@ SEARCH & FILTER RULES:
       return acc;
     }, {});
     
-    // Sort themes by aggregate weight
-    const sortedThemeEntries = Object.entries(clustersByTheme).sort(([, a], [, b]) => {
-      const weightA = (a as Cluster[]).reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / (a as Cluster[]).length;
-      const weightB = (b as Cluster[]).reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / (b as Cluster[]).length;
-      return weightB - weightA;
-    });
+    // Calculate theme totals and sort by aggregate weight
+    const sortedThemeEntries = Object.entries(clustersByTheme)
+      .map(([theme, themeClusters]) => {
+        const totalWeight = themeClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 0), 0);
+        return [theme, themeClusters, totalWeight] as [string, Cluster[], number];
+      })
+      .sort(([, , a], [, , b]) => b - a);
     
-    sortedThemeEntries.forEach(([theme, themeClusters]: [string, Cluster[]]) => {
-      // Calculate theme aggregate weight
-      const themeWeight = themeClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / themeClusters.length;
-      const weightPercentage = totalWeight > 0 ? Math.round((themeWeight / totalWeight) * 100 * themeClusters.length) : 0;
+    sortedThemeEntries.forEach(([theme, themeClusters, themeWeight]: [string, Cluster[], number]) => {
+      // Add priority level indicator
+      let priorityIndicator = "";
+      if (themeWeight >= 25) priorityIndicator = "🔥 CRITICAL PRIORITY";
+      else if (themeWeight >= 15) priorityIndicator = "⚡ HIGH PRIORITY";
+      else if (themeWeight >= 8) priorityIndicator = "📈 MEDIUM PRIORITY";
+      else priorityIndicator = "📋 STANDARD COVERAGE";
       
-      // Add weight emphasis
-      let emphasis = "";
-      if (themeWeight >= 70) emphasis = " [HIGH PRIORITY - Focus heavily on this area]";
-      else if (themeWeight >= 40) emphasis = " [MEDIUM PRIORITY - Balanced coverage]";
-      else emphasis = " [LOW PRIORITY - Minimal but representative coverage]";
+      template += `${priorityIndicator} | ${theme.toUpperCase()} (${themeWeight.toFixed(1)}% weight)\n`;
+      template += `${"=".repeat(60)}\n`;
       
-      template += `${theme} (Priority Weight: ${Math.round(themeWeight)}, Search Allocation: ${weightPercentage}%)${emphasis}:\n`;
+      // Sort sub-themes by weight within this theme
+      const sortedSubThemes = themeClusters.sort((a, b) => (b.priority_weight || 0) - (a.priority_weight || 0));
       
-      // Collect all keywords and sub-themes for this primary theme
-      const allKeywords: string[] = [];
-      const subThemes: string[] = [];
-      
-      themeClusters.forEach(cluster => {
-        if (cluster.sub_theme && !subThemes.includes(cluster.sub_theme)) {
-          subThemes.push(cluster.sub_theme);
+      sortedSubThemes.forEach(cluster => {
+        const weight = cluster.priority_weight || 0;
+        const urgencyLevel = weight >= 15 ? "🚨 URGENT" : weight >= 8 ? "⏰ IMPORTANT" : "📝 MONITOR";
+        
+        template += `\n${urgencyLevel} ${cluster.sub_theme} (${weight.toFixed(1)}%)\n`;
+        
+        if (cluster.description) {
+          template += `   Context: ${cluster.description}\n`;
         }
-        // Safely handle keywords array with weight-based allocation
-        if (cluster.keywords && Array.isArray(cluster.keywords)) {
-          const clusterWeight = cluster.priority_weight || 50;
-          const keywordAllocation = Math.max(3, Math.round((clusterWeight / 100) * 12)); // 3-12 keywords based on weight
-          allKeywords.push(...cluster.keywords.slice(0, keywordAllocation));
+        
+        if (cluster.professions && cluster.professions.length > 0) {
+          template += `   Target Audience: ${cluster.professions.join(', ')}\n`;
         }
+        
+        if (cluster.keywords && cluster.keywords.length > 0) {
+          // Show more keywords for higher weighted clusters
+          const keywordLimit = weight >= 15 ? 15 : weight >= 8 ? 10 : 6;
+          const displayKeywords = cluster.keywords.slice(0, keywordLimit);
+          template += `   Search Terms: ${displayKeywords.join(', ')}\n`;
+        }
+        template += `\n`;
       });
       
-      // Add sub-themes
-      if (subThemes.length > 0) {
-        template += `  Sub-areas: ${subThemes.join(', ')}\n`;
-      }
-      
-      // Add unique keywords with weight-based selection
-      if (allKeywords.length > 0) {
-        const uniqueKeywords = Array.from(new Set(allKeywords));
-        template += `  Keywords: ${uniqueKeywords.join(', ')}\n`;
-      }
-      
-      template += '\n';
+      template += `\n`;
     });
 
     // Add competitor exclusion if any exist
     if (competitorSources.length > 0) {
-      template += `4. Exclude Competitor Coverage:\n`;
+      template += `🚫 EXCLUDE COMPETITOR COVERAGE:\n`;
+      template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
       competitorSources.forEach(s => {
-        template += `• Avoid ${s.source_name}\n`;
+        template += `• Avoid content from ${s.source_name}\n`;
       });
       template += '\n';
     }
 
-    template += `SEARCH REQUIREMENTS:
-• Focus on BUSINESS IMPACT - regulatory changes, market shifts, technology disruptions
-• Prioritize PRIMARY SOURCES - government agencies, Fed announcements, industry leaders  
-• Exclude consumer-focused content and basic homebuying advice
-• Look for competitive intelligence and market opportunities
+    template += `🎯 STRATEGIC SEARCH REQUIREMENTS:\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    template += `✓ BUSINESS IMPACT FOCUS: Regulatory changes, market disruptions, policy shifts\n`;
+    template += `✓ PRIMARY SOURCE PRIORITY: Government agencies, Federal Reserve, industry leaders\n`;
+    template += `✓ EXECUTIVE INTELLIGENCE: C-suite moves, strategic acquisitions, market analysis\n`;
+    template += `✓ OPERATIONAL RELEVANCE: Technology adoption, process improvements, compliance updates\n`;
+    template += `✓ COMPETITIVE ADVANTAGE: Market opportunities, emerging trends, best practices\n\n`;
 
-DYNAMIC SCORING CRITERIA (Based on Content Weights):
-`;
+    template += `❌ CONTENT EXCLUSIONS:\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    template += `× Consumer-focused homebuying advice and tips\n`;
+    template += `× Basic mortgage education content\n`;
+    template += `× Generic real estate market reports without industry context\n`;
+    template += `× Promotional content or advertorials\n\n`;
+
+    template += `🏆 DYNAMIC RELEVANCE SCORING (Weight-Based Algorithm):\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
     // Calculate dynamic scoring based on cluster weights
-    const highWeightThemes = sortedThemeEntries.filter(([, clusters]) => {
-      const avgWeight = (clusters as Cluster[]).reduce((sum, c) => sum + (c.priority_weight || 50), 0) / (clusters as Cluster[]).length;
-      return avgWeight >= 70;
-    }).map(([theme]) => theme);
-
-    const mediumWeightThemes = sortedThemeEntries.filter(([, clusters]) => {
-      const avgWeight = (clusters as Cluster[]).reduce((sum, c) => sum + (c.priority_weight || 50), 0) / (clusters as Cluster[]).length;
-      return avgWeight >= 40 && avgWeight < 70;
-    }).map(([theme]) => theme);
+    const highWeightThemes = sortedThemeEntries.filter(([, , weight]) => weight >= 20).map(([theme]) => theme);
+    const mediumWeightThemes = sortedThemeEntries.filter(([, , weight]) => weight >= 10 && weight < 20).map(([theme]) => theme);
 
     if (highWeightThemes.length > 0) {
-      template += `- High Priority Topics (${highWeightThemes.join(', ')}): 40%\n`;
-      template += `- Regulatory/policy implications: 25%\n`;
-      template += `- Market trends and data: 20%\n`;
-      template += `- Technology and innovation: 10%\n`;
-      template += `- General competitive landscape: 5%\n`;
+      template += `• Critical Topics (${highWeightThemes.join(', ')}): 35% weight\n`;
+      template += `• Regulatory/Policy Impact: 25% weight\n`;
+      template += `• Market Intelligence & Data: 20% weight\n`;
+      template += `• Technology & Innovation: 12% weight\n`;
+      template += `• Industry Leadership & Strategy: 8% weight\n\n`;
     } else {
-      // Fallback to balanced scoring
-      template += `- Direct impact on mortgage business operations: 30%\n`;
-      template += `- Regulatory/policy implications: 25%\n`;
-      template += `- Market trends and data: 20%\n`;
-      template += `- Technology and innovation: 15%\n`;
-      template += `- Competitive landscape changes: 10%\n`;
+      template += `• Direct Business Operations Impact: 30% weight\n`;
+      template += `• Regulatory/Policy Implications: 25% weight\n`;
+      template += `• Market Trends & Economic Data: 20% weight\n`;
+      template += `• Technology & Process Innovation: 15% weight\n`;
+      template += `• Competitive Landscape Changes: 10% weight\n\n`;
     }
 
-    template += `
-WEIGHT-BASED SEARCH STRATEGY:
-• Give higher relevance scores to articles matching high-priority themes (70+ weight)
-• Ensure balanced representation across all selected themes
-• Adjust keyword density in search queries based on cluster weights
-• Prioritize sources that frequently cover high-weight topic areas
+    template += `🧠 AI SEARCH STRATEGY & BEST PRACTICES:\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    template += `1. WEIGHTED SEARCH APPROACH:\n`;
+    template += `   → Prioritize high-weight themes (15%+ clusters) in initial search queries\n`;
+    template += `   → Use cluster-specific keywords with boolean operators for precision\n`;
+    template += `   → Cross-reference multiple clusters for comprehensive coverage\n\n`;
+    
+    template += `2. QUALITY ASSESSMENT FRAMEWORK:\n`;
+    template += `   → SOURCE CREDIBILITY: Government > Industry Associations > Major Publishers\n`;
+    template += `   → CONTENT FRESHNESS: Breaking news > Recent analysis > Historical context\n`;
+    template += `   → BUSINESS RELEVANCE: Operations impact > Market trends > General interest\n`;
+    template += `   → AUDIENCE SPECIFICITY: C-suite insights > Department leaders > General workforce\n\n`;
 
-OUTPUT FORMAT:
-Return 5-10 articles in this JSON structure:
+    template += `3. INTELLIGENT FILTERING:\n`;
+    template += `   → Match article keywords against cluster professions for audience relevance\n`;
+    template += `   → Evaluate content depth and analytical substance over surface coverage\n`;
+    template += `   → Prioritize forward-looking analysis over historical summaries\n`;
+    template += `   → Favor actionable insights over informational content\n\n`;
 
-{
+    template += `📋 REQUIRED OUTPUT FORMAT:\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    template += `Return 5-10 articles in this structured JSON format:\n\n`;
+
+    template += `{
+  "search_metadata": {
+    "total_articles_found": 47,
+    "high_priority_matches": 12,
+    "search_time_ms": 3400,
+    "coverage_gaps": ["Economic Data Analysis", "International Markets"]
+  },
   "articles": [
     {
-      "title": "Full headline of the article",
-      "url": "Direct link to article", 
-      "focus_area": "One of the weighted themes above",
-      "summary": "1-2 sentence summary highlighting business impact and urgency",
-      "source": "Source name and tier",
-      "relevance_score": 85,
-      "cluster_weight": 75,
-      "justification": "Brief explanation of score, weight consideration, and business relevance"
+      "title": "Complete article headline exactly as published",
+      "url": "Direct article URL",
+      "source": "Source name and credibility tier",
+      "published_date": "2024-01-XX",
+      "focus_area": "Matching cluster theme/sub-theme",
+      "cluster_weight": 18.5,
+      "relevance_score": 92,
+      "business_impact": "HIGH|MEDIUM|LOW",
+      "audience_match": ["Loan Officers", "Risk Managers"],
+      "summary": "2-3 sentence summary emphasizing business implications and urgency for mortgage professionals",
+      "key_insights": [
+        "Specific actionable insight #1",
+        "Regulatory implication #2",
+        "Market opportunity #3"
+      ],
+      "competitive_intelligence": "How this affects industry positioning or provides strategic advantage",
+      "score_justification": "Detailed explanation of relevance score considering cluster weight, source authority, and business impact"
     }
   ]
-}
+}`;
 
-Search for articles matching these weighted criteria and provide relevance scores (0-100) with cluster weight consideration and justification.`;
+    template += `\n\n🔍 SEARCH EXECUTION INSTRUCTIONS:\n`;
+    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    template += `1. Begin with highest-weighted clusters (${filteredClusters.slice(0, 3).map(c => c.sub_theme).join(', ')})\n`;
+    template += `2. Use cluster keywords in targeted search queries with appropriate boolean logic\n`;
+    template += `3. Apply source priority filtering to ensure authoritative content\n`;
+    template += `4. Cross-validate findings against multiple themes for comprehensive coverage\n`;
+    template += `5. Prioritize recent, breaking news while maintaining quality standards\n`;
+    template += `6. Include cluster weight and audience data in your relevance calculations\n`;
+    template += `7. Provide actionable intelligence that mortgage professionals can immediately apply\n\n`;
+
+    template += `Execute this search strategy now, focusing on the weighted priorities above.`;
 
     return template;
   };
+
+  // Calculate summary statistics for selected themes
+  const selectedClusters = clusters.filter(cluster => 
+    selectedThemes.length === 0 || selectedThemes.includes(cluster.primary_theme)
+  );
+  
+  const totalWeight = selectedClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 0), 0);
+  const themeStats = selectedClusters.reduce((acc: Record<string, number>, cluster) => {
+    const theme = cluster.primary_theme;
+    acc[theme] = (acc[theme] || 0) + (cluster.priority_weight || 0);
+    return acc;
+  }, {});
+  
+  const topThemes = Object.entries(themeStats)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 4);
   
   return (
     <Card className="mt-4">
       <CardContent className="pt-6">
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <Label htmlFor="prompt_template">Editorial Prompt Template</Label>
+            <Label htmlFor="prompt_template">AI News Discovery Prompt</Label>
             <Button 
               onClick={handleGenerateTemplate}
               variant="secondary"
@@ -316,27 +366,57 @@ Search for articles matching these weighted criteria and provide relevance score
               disabled={isGenerating}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isGenerating ? 'animate-spin' : ''}`} /> 
-              {isGenerating ? 'Generating...' : 'Regenerate Template'}
+              {isGenerating ? 'Generating...' : 'Regenerate Prompt'}
             </Button>
           </div>
           
-          <Alert className="bg-blue-50">
-            <Info className="h-4 w-4" />
-            <AlertTitle>Intelligent News Search Prompt</AlertTitle>
-            <AlertDescription>
-              This template uses your priority sources, keywords, and themes for targeted news discovery.
-              {!readOnly && " You can edit it directly or regenerate from your current settings."}
-              {isCustomizing && " Weight adjustments won't automatically regenerate the template."}
+          {/* Theme Weight Summary */}
+          {selectedClusters.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-900">Content Focus Distribution</span>
+                <Badge variant="outline" className="text-blue-700 border-blue-300">
+                  {totalWeight.toFixed(1)}% total weight
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {topThemes.map(([theme, weight]) => (
+                  <Badge 
+                    key={theme} 
+                    variant={weight >= 20 ? "default" : weight >= 10 ? "secondary" : "outline"}
+                    className="text-xs"
+                  >
+                    {theme}: {weight.toFixed(1)}%
+                  </Badge>
+                ))}
+                {Object.keys(themeStats).length > 4 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{Object.keys(themeStats).length - 4} more themes
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <Alert className="bg-green-50 border-green-200">
+            <Info className="h-4 w-4 text-green-600" />
+            <AlertTitle className="text-green-900">Intelligent Content Discovery</AlertTitle>
+            <AlertDescription className="text-green-800">
+              This advanced prompt leverages your cluster weights and editorial priorities for targeted news discovery.
+              {!readOnly && " Edit directly or regenerate to reflect current cluster weights."}
+              {isCustomizing && " Manual edits will be preserved during regeneration."}
             </AlertDescription>
           </Alert>
           
-          <ScrollArea className="h-[400px] border rounded-md">
+          <ScrollArea className="h-[500px] border rounded-md">
             <Textarea
               id="prompt_template"
               value={value}
               onChange={(e) => onChange(e.target.value)}
-              className="min-h-[400px] font-mono text-sm border-0"
+              className="min-h-[500px] font-mono text-sm border-0 resize-none"
               readOnly={readOnly}
+              placeholder="Generating intelligent prompt template..."
             />
           </ScrollArea>
         </div>

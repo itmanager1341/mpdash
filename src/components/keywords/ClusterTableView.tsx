@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Edit, Plus, Save, X } from "lucide-react";
+import { Edit, Plus, Save, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import ClusterForm from "./ClusterForm";
 import { KeywordCluster } from "@/types/database";
 
@@ -87,11 +88,42 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['keyword-clusters-table'] });
-      toast.success("Priority weight updated");
+      toast.success("Weight percentage updated");
       setEditingWeight(null);
     },
     onError: (error) => {
       toast.error(`Failed to update weight: ${error.message}`);
+    }
+  });
+
+  // Normalize weights mutation
+  const normalizeWeightsMutation = useMutation({
+    mutationFn: async () => {
+      if (!clusters) return;
+      
+      const totalWeight = clusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 0), 0);
+      if (totalWeight === 0) return;
+      
+      const updates = clusters.map(cluster => ({
+        id: cluster.id,
+        priority_weight: Math.round(((cluster.priority_weight || 0) / totalWeight) * 100)
+      }));
+      
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('keyword_clusters')
+          .update({ priority_weight: update.priority_weight })
+          .eq('id', update.id);
+        
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['keyword-clusters-table'] });
+      toast.success("Weights normalized to 100%");
+    },
+    onError: (error) => {
+      toast.error(`Failed to normalize weights: ${error.message}`);
     }
   });
 
@@ -100,14 +132,22 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
     !searchTerm || 
     cluster.primary_theme.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cluster.sub_theme.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cluster.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cluster.keywords?.some(keyword => 
       keyword.toLowerCase().includes(searchTerm.toLowerCase())
+    ) ||
+    cluster.professions?.some(profession => 
+      profession.toLowerCase().includes(searchTerm.toLowerCase())
     )
   ) || [];
 
+  // Calculate total weight percentage
+  const totalWeight = filteredClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 0), 0);
+  const isWeightValid = Math.abs(totalWeight - 100) < 0.1; // Allow for small rounding differences
+
   const handleEditWeight = (clusterId: string, currentWeight: number) => {
     setEditingWeight(clusterId);
-    setTempWeight(currentWeight || 50);
+    setTempWeight(currentWeight || 0);
   };
 
   const handleSaveWeight = (clusterId: string) => {
@@ -116,7 +156,7 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
 
   const handleCancelWeight = () => {
     setEditingWeight(null);
-    setTempWeight(50);
+    setTempWeight(0);
   };
 
   const handleEditCluster = (cluster: KeywordCluster) => {
@@ -157,7 +197,7 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
         <div>
           <h2 className="text-xl font-semibold">Keyword Clusters</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage your content taxonomy with hierarchical keyword clusters and priority weights
+            Manage your content taxonomy with hierarchical keyword clusters and percentage weights
           </p>
         </div>
         <Button onClick={() => setIsAddDialogOpen(true)}>
@@ -165,6 +205,34 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
           Add Cluster
         </Button>
       </div>
+
+      {/* Weight Status Alert */}
+      {filteredClusters.length > 0 && (
+        <div className="flex items-center justify-between bg-muted/50 p-4 rounded-lg">
+          <div className="flex items-center gap-3">
+            <span className="font-medium">Total Weight:</span>
+            <Badge variant={isWeightValid ? "success" : "warning"} className="text-sm">
+              {totalWeight.toFixed(1)}%
+            </Badge>
+            {!isWeightValid && (
+              <div className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="h-4 w-4" />
+                <span className="text-sm">Weights should total 100%</span>
+              </div>
+            )}
+          </div>
+          {!isWeightValid && totalWeight > 0 && (
+            <Button 
+              onClick={() => normalizeWeightsMutation.mutate()}
+              disabled={normalizeWeightsMutation.isPending}
+              variant="outline"
+              size="sm"
+            >
+              Normalize to 100%
+            </Button>
+          )}
+        </div>
+      )}
 
       {filteredClusters.length === 0 ? (
         <div className="bg-muted/50 rounded-md p-8 text-center">
@@ -184,8 +252,10 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
               <TableRow>
                 <TableHead>Primary Theme</TableHead>
                 <TableHead>Sub-theme</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Professions</TableHead>
                 <TableHead>Keywords</TableHead>
-                <TableHead>Priority Weight</TableHead>
+                <TableHead>Weight %</TableHead>
                 <TableHead>Article Count</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -197,6 +267,32 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
                     {cluster.primary_theme}
                   </TableCell>
                   <TableCell>{cluster.sub_theme}</TableCell>
+                  <TableCell className="max-w-xs">
+                    {cluster.description ? (
+                      <div className="truncate" title={cluster.description}>
+                        {cluster.description}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground italic">No description</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1 max-w-md">
+                      {cluster.professions?.slice(0, 3).map((profession, idx) => (
+                        <Badge key={idx} variant="secondary" className="text-xs">
+                          {profession}
+                        </Badge>
+                      ))}
+                      {(cluster.professions?.length || 0) > 3 && (
+                        <Badge variant="secondary" className="text-xs">
+                          +{(cluster.professions?.length || 0) - 3} more
+                        </Badge>
+                      )}
+                      {(!cluster.professions || cluster.professions.length === 0) && (
+                        <span className="text-muted-foreground italic text-xs">None</span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1 max-w-md">
                       {cluster.keywords?.slice(0, 5).map((keyword, idx) => (
@@ -218,10 +314,12 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
                           type="number"
                           min="0"
                           max="100"
+                          step="0.1"
                           value={tempWeight}
                           onChange={(e) => setTempWeight(Number(e.target.value))}
-                          className="w-16"
+                          className="w-20"
                         />
+                        <span className="text-sm text-muted-foreground">%</span>
                         <Button
                           size="sm"
                           onClick={() => handleSaveWeight(cluster.id)}
@@ -240,14 +338,11 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
                     ) : (
                       <div className="flex items-center gap-2">
                         <Badge 
-                          variant={
-                            (cluster.priority_weight || 50) >= 70 ? "default" :
-                            (cluster.priority_weight || 50) >= 40 ? "secondary" : "outline"
-                          }
-                          className="cursor-pointer"
-                          onClick={() => handleEditWeight(cluster.id, cluster.priority_weight || 50)}
+                          variant="outline"
+                          className="cursor-pointer hover:bg-muted"
+                          onClick={() => handleEditWeight(cluster.id, cluster.priority_weight || 0)}
                         >
-                          {cluster.priority_weight || 50}
+                          {(cluster.priority_weight || 0).toFixed(1)}%
                         </Badge>
                       </div>
                     )}
