@@ -9,8 +9,7 @@ import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import KeywordClustersTab from "@/components/keywords/KeywordClustersTab";
 import KeywordTrackingTab from "@/components/keywords/KeywordTrackingTab";
-import ClusterMaintenanceTab from "@/components/keywords/ClusterMaintenanceTab";
-import PlanningTab from "@/components/keywords/PlanningTab";
+import SearchPromptsTab from "@/components/keywords/SearchPromptsTab";
 
 const KeywordManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -22,7 +21,7 @@ const KeywordManagement = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['clusters', 'tracking', 'maintenance', 'planning'].includes(tabParam)) {
+    if (tabParam && ['clusters', 'tracking', 'search-prompts'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [location.search]);
@@ -40,7 +39,7 @@ const KeywordManagement = () => {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Keyword Management</h1>
         <p className="text-muted-foreground">
-          Manage keyword clusters, track performance, and maintain your editorial taxonomy
+          Manage keyword clusters, track performance, and configure news search prompts
         </p>
       </div>
 
@@ -57,11 +56,10 @@ const KeywordManagement = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="clusters">Manage Clusters</TabsTrigger>
           <TabsTrigger value="tracking">Keyword Analytics</TabsTrigger>
-          <TabsTrigger value="maintenance">AI Suggestions</TabsTrigger>
-          <TabsTrigger value="planning">Content Planning</TabsTrigger>
+          <TabsTrigger value="search-prompts">Search Prompts</TabsTrigger>
         </TabsList>
 
         <TabsContent value="clusters" className="pt-4">
@@ -72,12 +70,8 @@ const KeywordManagement = () => {
           <KeywordTrackingTab searchTerm={searchTerm} />
         </TabsContent>
 
-        <TabsContent value="maintenance" className="pt-4">
-          <ClusterMaintenanceTab searchTerm={searchTerm} />
-        </TabsContent>
-        
-        <TabsContent value="planning" className="pt-4">
-          <PlanningTab searchTerm={searchTerm} />
+        <TabsContent value="search-prompts" className="pt-4">
+          <SearchPromptsTab searchTerm={searchTerm} />
         </TabsContent>
       </Tabs>
     </DashboardLayout>
