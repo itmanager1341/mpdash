@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1";
@@ -222,7 +223,7 @@ serve(async (req) => {
       await supabase
         .from('job_logs')
         .insert([{
-          job_name: 'news_import',
+          job_name: promptId ? `news_search_${promptId.substring(0, 8)}` : 'news_import',
           status: insertedCount > 0 ? 'success' : (errorCount > 0 ? 'error' : 'warning'),
           message: insertedCount > 0 ? 
                    `Imported ${insertedCount} new articles` : 

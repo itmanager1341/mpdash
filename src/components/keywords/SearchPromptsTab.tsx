@@ -1,7 +1,6 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PlusCircle, Search, Calendar, Play, Clock, Settings } from "lucide-react";
+import { PlusCircle, Search, Calendar, Play, Clock, Settings, Loader2, Pause } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +21,7 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
   const [editingPrompt, setEditingPrompt] = useState<LlmPrompt | null>(null);
   const [promptSearchTerm, setPromptSearchTerm] = useState("");
   const [activeView, setActiveView] = useState("prompts");
+  const [runningPrompts, setRunningPrompts] = useState<Set<string>>(new Set());
   
   const { data: allPrompts, isLoading, error, refetch } = useQuery({
     queryKey: ['news-search-prompts'],
@@ -75,24 +75,83 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
   };
 
   const handleSchedulePrompt = async (promptId: string) => {
-    // TODO: Implement scheduling logic
-    toast.info("Scheduling feature coming soon");
+    try {
+      const prompt = allPrompts?.find(p => p.id === promptId);
+      if (!prompt) {
+        toast.error("Prompt not found");
+        return;
+      }
+
+      // Create a scheduled job for this prompt
+      const { error } = await supabase
+        .from('scheduled_job_settings')
+        .insert({
+          job_name: `news_search_${prompt.function_name.toLowerCase().replace(/\s+/g, '_')}`,
+          schedule: '0 */6 * * *', // Every 6 hours by default
+          is_enabled: true,
+          parameters: {
+            promptId: promptId,
+            minScore: 0.6,
+            limit: 10
+          }
+        });
+
+      if (error) throw error;
+
+      toast.success("Prompt scheduled successfully");
+      refetchTasks();
+    } catch (error) {
+      console.error("Error scheduling prompt:", error);
+      toast.error("Failed to schedule prompt");
+    }
   };
 
   const handleRunNow = async (promptId: string) => {
+    if (runningPrompts.has(promptId)) return;
+    
+    setRunningPrompts(prev => new Set(prev).add(promptId));
+    
     try {
-      const { error } = await supabase.functions.invoke('test-llm-prompt', {
+      const { data, error } = await supabase.functions.invoke('run-news-import', {
         body: { 
-          prompt_id: promptId,
-          input_data: { query: "latest mortgage industry news" }
+          manual: true,
+          promptId: promptId
         }
       });
       
       if (error) throw error;
-      toast.success("Search prompt executed successfully");
+      
+      if (data?.success) {
+        toast.success(`News search completed: ${data.details.articles_inserted} articles imported`);
+      } else {
+        toast.warning(data?.message || "Search completed but no new articles found");
+      }
     } catch (error) {
       console.error("Error running prompt:", error);
       toast.error("Failed to execute search prompt");
+    } finally {
+      setRunningPrompts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(promptId);
+        return newSet;
+      });
+    }
+  };
+
+  const toggleScheduledTask = async (taskId: string, enabled: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('scheduled_job_settings')
+        .update({ is_enabled: enabled, updated_at: new Date().toISOString() })
+        .eq('id', taskId);
+      
+      if (error) throw error;
+      
+      toast.success(`Schedule ${enabled ? 'enabled' : 'disabled'} successfully`);
+      refetchTasks();
+    } catch (error) {
+      console.error('Error toggling schedule:', error);
+      toast.error('Failed to toggle schedule');
     }
   };
   
@@ -255,8 +314,13 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                               variant="outline"
                               size="sm"
                               onClick={() => handleRunNow(prompt.id)}
+                              disabled={runningPrompts.has(prompt.id)}
                             >
-                              <Play className="mr-2 h-3 w-3" />
+                              {runningPrompts.has(prompt.id) ? (
+                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <Play className="mr-2 h-3 w-3" />
+                              )}
                               Run Now
                             </Button>
                             <Button
@@ -302,9 +366,18 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                         <CardTitle className="text-base">{task.job_name}</CardTitle>
                         <CardDescription>Schedule: {task.schedule}</CardDescription>
                       </div>
-                      <Badge variant={task.is_enabled ? "default" : "secondary"}>
-                        {task.is_enabled ? "Active" : "Paused"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={task.is_enabled ? "default" : "secondary"}>
+                          {task.is_enabled ? "Active" : "Paused"}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleScheduledTask(task.id, !task.is_enabled)}
+                        >
+                          {task.is_enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center justify-between text-sm text-muted-foreground">
