@@ -1,12 +1,13 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Play, Clock, Settings, Loader2, Pause } from "lucide-react";
+import { Search, Play, Clock, Settings, Loader2, Pause, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
+import ScheduleConfigDialog from "@/components/keywords/ScheduleConfigDialog";
 import { fetchPrompts } from "@/utils/llmPromptsUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -20,6 +21,8 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
   const [editingPrompt, setEditingPrompt] = useState<LlmPrompt | null>(null);
   const [promptSearchTerm, setPromptSearchTerm] = useState("");
   const [runningPrompts, setRunningPrompts] = useState<Set<string>>(new Set());
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
+  const [schedulingPrompt, setSchedulingPrompt] = useState<LlmPrompt | null>(null);
   
   const { data: allPrompts, isLoading, error, refetch } = useQuery({
     queryKey: ['news-search-prompts'],
@@ -67,35 +70,71 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
     toast.success(editingPrompt ? "Search prompt updated successfully" : "Search prompt created successfully");
   };
 
-  const handleSchedulePrompt = async (promptId: string) => {
+  const handleSchedulePrompt = async (prompt: LlmPrompt) => {
+    setSchedulingPrompt(prompt);
+    setScheduleDialogOpen(true);
+  };
+
+  const handleSaveSchedule = async (config: {
+    schedule: string;
+    parameters: any;
+    is_enabled: boolean;
+  }) => {
+    if (!schedulingPrompt) return;
+
     try {
-      const prompt = allPrompts?.find(p => p.id === promptId);
-      if (!prompt) {
-        toast.error("Prompt not found");
-        return;
+      const schedule = getPromptSchedule(schedulingPrompt.id);
+      
+      if (schedule) {
+        // Update existing schedule
+        const { error } = await supabase
+          .from('scheduled_job_settings')
+          .update({
+            schedule: config.schedule,
+            parameters: config.parameters,
+            is_enabled: config.is_enabled,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', schedule.id);
+
+        if (error) throw error;
+        toast.success("Schedule updated successfully");
+      } else {
+        // Create new schedule
+        const { error } = await supabase
+          .from('scheduled_job_settings')
+          .insert({
+            job_name: `news_search_${schedulingPrompt.function_name.toLowerCase().replace(/\s+/g, '_')}`,
+            schedule: config.schedule,
+            is_enabled: config.is_enabled,
+            parameters: config.parameters
+          });
+
+        if (error) throw error;
+        toast.success("Schedule created successfully");
       }
 
-      // Create a scheduled job for this prompt
+      refetchTasks();
+    } catch (error) {
+      console.error("Error saving schedule:", error);
+      toast.error("Failed to save schedule");
+    }
+  };
+
+  const handleDeleteSchedule = async (taskId: string) => {
+    try {
       const { error } = await supabase
         .from('scheduled_job_settings')
-        .insert({
-          job_name: `news_search_${prompt.function_name.toLowerCase().replace(/\s+/g, '_')}`,
-          schedule: '0 */6 * * *', // Every 6 hours by default
-          is_enabled: true,
-          parameters: {
-            promptId: promptId,
-            minScore: 0.6,
-            limit: 10
-          }
-        });
+        .delete()
+        .eq('id', taskId);
 
       if (error) throw error;
 
-      toast.success("Prompt scheduled successfully");
+      toast.success("Schedule removed successfully");
       refetchTasks();
     } catch (error) {
-      console.error("Error scheduling prompt:", error);
-      toast.error("Failed to schedule prompt");
+      console.error("Error deleting schedule:", error);
+      toast.error("Failed to remove schedule");
     }
   };
 
@@ -218,7 +257,7 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                             {prompt.is_active ? "Active" : "Inactive"}
                           </Badge>
                           {schedule && (
-                            <Badge variant={schedule.is_enabled ? "success" : "outline"}>
+                            <Badge variant={schedule.is_enabled ? "default" : "outline"}>
                               {schedule.is_enabled ? "Scheduled" : "Paused"}
                             </Badge>
                           )}
@@ -226,7 +265,12 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span>Model: {prompt.model}</span>
                           {schedule && (
-                            <span>Schedule: {schedule.schedule}</span>
+                            <span>
+                              Next: {schedule.schedule === "0 */6 * * *" ? "Every 6h" : 
+                                     schedule.schedule === "0 */12 * * *" ? "Every 12h" : 
+                                     schedule.schedule === "0 9 * * *" ? "Daily 9AM" : 
+                                     "Custom"}
+                            </span>
                           )}
                           <span>Updated: {new Date(prompt.updated_at).toLocaleDateString()}</span>
                         </div>
@@ -234,18 +278,49 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                       
                       <div className="flex gap-2">
                         {schedule ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => toggleScheduledTask(schedule.id, !schedule.is_enabled)}
-                          >
-                            {schedule.is_enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                          </Button>
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleScheduledTask(schedule.id, !schedule.is_enabled)}
+                            >
+                              {schedule.is_enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleSchedulePrompt(prompt)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Remove Schedule</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to remove the schedule for "{prompt.function_name}"? 
+                                    This will stop all automated runs.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteSchedule(schedule.id)}>
+                                    Remove Schedule
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
                         ) : (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleSchedulePrompt(prompt.id)}
+                            onClick={() => handleSchedulePrompt(prompt)}
                           >
                             <Clock className="mr-2 h-3 w-3" />
                             Schedule
@@ -280,6 +355,16 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                       {schedule?.last_run && (
                         <span>Last run: {new Date(schedule.last_run).toLocaleString()}</span>
                       )}
+                      {schedule && (
+                        <div className="mt-1 text-xs">
+                          Score: {schedule.parameters?.minScore || 0.6} • 
+                          Limit: {schedule.parameters?.limit || 10}
+                          {schedule.parameters?.keywords && (
+                            <> • Keywords: {schedule.parameters.keywords.slice(0, 3).join(", ")}
+                            {schedule.parameters.keywords.length > 3 && " +"}</>
+                          )}
+                        </div>
+                      )}
                     </CardDescription>
                   </CardContent>
                 </Card>
@@ -295,6 +380,17 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
           onSave={handleSuccess}
           onCancel={handleFormClose}
           initialActiveTab="search"
+        />
+      )}
+
+      {scheduleDialogOpen && schedulingPrompt && (
+        <ScheduleConfigDialog
+          open={scheduleDialogOpen}
+          onOpenChange={setScheduleDialogOpen}
+          promptName={schedulingPrompt.function_name}
+          currentSchedule={getPromptSchedule(schedulingPrompt.id)}
+          onSave={handleSaveSchedule}
+          promptId={schedulingPrompt.id}
         />
       )}
     </div>
