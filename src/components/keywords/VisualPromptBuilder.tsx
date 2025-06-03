@@ -65,7 +65,7 @@ export default function VisualPromptBuilder({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
-  const [currentModel, setCurrentModel] = useState<string>(initialPrompt?.model || "gpt-4o");
+  const [currentModel, setCurrentModel] = useState<string>("gpt-4o");
   
   // Extract metadata from the initial prompt if it exists
   const metadata = initialPrompt ? extractPromptMetadata(initialPrompt) : null;
@@ -104,31 +104,98 @@ export default function VisualPromptBuilder({
     }
   });
 
+  // Extract clean prompt text without metadata comment
+  const getCleanPromptText = (promptText: string) => {
+    if (promptText.startsWith("/*")) {
+      const endIndex = promptText.indexOf("*/");
+      if (endIndex !== -1) {
+        return promptText.substring(endIndex + 2).trim();
+      }
+    }
+    return promptText;
+  };
+
   const form = useForm<PromptFormValues>({
     resolver: zodResolver(promptSchema),
     defaultValues: {
-      function_name: initialPrompt?.function_name || "",
-      model: initialPrompt?.model || "gpt-4o",
-      prompt_text: initialPrompt?.prompt_text || "",
-      include_clusters: initialPrompt?.include_clusters || true,
-      include_tracking_summary: initialPrompt?.include_tracking_summary || false,
-      include_sources_map: initialPrompt?.include_sources_map || false,
-      is_active: initialPrompt?.is_active ?? true,
+      function_name: "",
+      model: "gpt-4o",
+      prompt_text: "",
+      include_clusters: false,
+      include_tracking_summary: false,
+      include_sources_map: false,
+      is_active: true,
       search_settings: {
+        domain_filter: "auto",
+        recency_filter: "day",
+        temperature: 0.7,
+        max_tokens: 1500,
+        is_news_search: true,
+      },
+      selected_themes: {
+        primary: [],
+        sub: [],
+        professions: [],
+      },
+      test_keyword: "",
+    },
+  });
+  
+  // Update form when initialPrompt changes
+  useEffect(() => {
+    if (initialPrompt) {
+      console.log('Setting form values for prompt:', initialPrompt);
+      const metadata = extractPromptMetadata(initialPrompt);
+      const cleanPromptText = getCleanPromptText(initialPrompt.prompt_text);
+      
+      form.reset({
+        function_name: initialPrompt.function_name,
+        model: initialPrompt.model,
+        prompt_text: cleanPromptText,
+        include_clusters: initialPrompt.include_clusters,
+        include_tracking_summary: initialPrompt.include_tracking_summary,
+        include_sources_map: initialPrompt.include_sources_map,
+        is_active: initialPrompt.is_active,
+        search_settings: {
+          domain_filter: metadata?.search_settings?.domain_filter || "auto",
+          recency_filter: metadata?.search_settings?.recency_filter || "day",
+          temperature: metadata?.search_settings?.temperature || 0.7,
+          max_tokens: metadata?.search_settings?.max_tokens || 1500,
+          is_news_search: true,
+        },
+        selected_themes: {
+          primary: metadata?.search_settings?.selected_themes?.primary || [],
+          sub: metadata?.search_settings?.selected_themes?.sub || [],
+          professions: metadata?.search_settings?.selected_themes?.professions || [],
+        },
+        test_keyword: "",
+      });
+
+      setCurrentModel(initialPrompt.model);
+      setSelectedPrimaryThemes(metadata?.search_settings?.selected_themes?.primary || []);
+      setSelectedSubThemes(metadata?.search_settings?.selected_themes?.sub || []);
+      setSearchSettings({
         domain_filter: metadata?.search_settings?.domain_filter || "auto",
         recency_filter: metadata?.search_settings?.recency_filter || "day",
         temperature: metadata?.search_settings?.temperature || 0.7,
         max_tokens: metadata?.search_settings?.max_tokens || 1500,
         is_news_search: true,
-      },
-      selected_themes: {
-        primary: initialPrimaryThemes,
-        sub: initialSubThemes,
-        professions: metadata?.search_settings?.selected_themes?.professions || [],
-      },
-      test_keyword: "",
-    },
-  });
+      });
+    } else {
+      // Reset form for new prompt
+      form.reset();
+      setCurrentModel("gpt-4o");
+      setSelectedPrimaryThemes([]);
+      setSelectedSubThemes([]);
+      setSearchSettings({
+        domain_filter: "auto",
+        recency_filter: "day",
+        temperature: 0.7,
+        max_tokens: 1500,
+        is_news_search: true,
+      });
+    }
+  }, [initialPrompt, form]);
   
   // Keep track of the search settings in a single state object for easier access by child components
   const [searchSettings, setSearchSettings] = useState({
@@ -188,7 +255,7 @@ export default function VisualPromptBuilder({
       
       const promptData = {
         function_name: data.function_name,
-        model: data.model, // Ensure we save the selected model
+        model: data.model,
         prompt_text: promptTextWithMetadata,
         include_clusters: data.include_clusters,
         include_tracking_summary: data.include_tracking_summary,
@@ -248,6 +315,7 @@ export default function VisualPromptBuilder({
   // Comprehensive model options including Perplexity-specific options
   const modelOptions = [
     { value: "gpt-4o", label: "GPT-4o", description: "Best for complex analysis and reasoning" },
+    { value: "gpt-4o-mini", label: "GPT-4o Mini", description: "Faster and more cost-effective" },
     { value: "gpt-3.5-turbo", label: "GPT-3.5", description: "Faster, good for simpler tasks" },
     { value: "claude-3-opus", label: "Claude 3 Opus", description: "High quality, slower" },
     { value: "claude-3-sonnet", label: "Claude 3 Sonnet", description: "Balanced speed/quality" },
@@ -301,7 +369,7 @@ export default function VisualPromptBuilder({
                         form.setValue("model", value);
                         setCurrentModel(value);
                       }}
-                      value={currentModel}
+                      value={form.watch("model")}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select a model" />
@@ -564,15 +632,18 @@ export default function VisualPromptBuilder({
                         This is a preview of how your prompt will appear. It combines your selected settings, sources, and clusters.
                       </AlertDescription>
                     </Alert>
-                    <NewsSearchPromptTemplate 
-                      value={form.watch("prompt_text")}
-                      onChange={(value) => form.setValue("prompt_text", value)}
-                      clusters={clusters || []}
-                      sources={sources || []}
-                      searchSettings={searchSettings}
-                      selectedThemes={selectedPrimaryThemes}
-                      readOnly={false}
-                    />
+                    <div className="space-y-2">
+                      <Label htmlFor="prompt_text">Prompt Text</Label>
+                      <Textarea
+                        id="prompt_text"
+                        placeholder="Enter your prompt template..."
+                        className="min-h-[200px] font-mono text-sm"
+                        {...form.register("prompt_text")}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        You can use variables like {"{title}"} and {"{content}"} which will be replaced with actual data.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </TabsContent>

@@ -155,44 +155,112 @@ async function getAnalysisPrompt(supabase: any) {
   }
 }
 
-// Update keyword tracking counts
+// Improved keyword matching function
+function normalizeKeyword(keyword: string): string {
+  return keyword.toLowerCase().trim().replace(/[^\w\s]/g, '');
+}
+
+function isKeywordMatch(extractedKeyword: string, trackedKeyword: string): boolean {
+  const extracted = normalizeKeyword(extractedKeyword);
+  const tracked = normalizeKeyword(trackedKeyword);
+  
+  // Exact match
+  if (extracted === tracked) return true;
+  
+  // Partial match - keyword is contained in extracted
+  if (extracted.includes(tracked) || tracked.includes(extracted)) return true;
+  
+  // Handle plurals - remove 's' from end
+  const extractedSingular = extracted.endsWith('s') ? extracted.slice(0, -1) : extracted;
+  const trackedSingular = tracked.endsWith('s') ? tracked.slice(0, -1) : tracked;
+  
+  if (extractedSingular === trackedSingular) return true;
+  
+  // Word-by-word matching for compound terms
+  const extractedWords = extracted.split(/\s+/);
+  const trackedWords = tracked.split(/\s+/);
+  
+  // Check if any significant words match
+  const significantWords = trackedWords.filter(word => word.length > 2);
+  const matchedWords = significantWords.filter(word => 
+    extractedWords.some(ew => ew.includes(word) || word.includes(ew))
+  );
+  
+  // If more than half the significant words match, consider it a match
+  return matchedWords.length > 0 && (matchedWords.length / significantWords.length) >= 0.5;
+}
+
+// Update keyword tracking counts with improved matching
 async function updateKeywordCounts(supabase: any, extractedKeywords: string[]) {
   try {
     if (!extractedKeywords || extractedKeywords.length === 0) {
+      console.log('No extracted keywords to process');
       return;
     }
 
     console.log('Updating keyword counts for:', extractedKeywords);
 
-    // Get existing keyword tracking entries
+    // Get all active keyword tracking entries
     const { data: keywordEntries, error: fetchError } = await supabase
       .from('keyword_tracking')
       .select('id, keyword, article_count')
-      .in('keyword', extractedKeywords);
+      .eq('status', 'active');
 
     if (fetchError) {
       console.error('Error fetching keyword entries:', fetchError);
       return;
     }
 
-    // Update article counts for existing keywords
-    const updatePromises = keywordEntries?.map(async (entry) => {
-      const { error: updateError } = await supabase
-        .from('keyword_tracking')
-        .update({ 
-          article_count: (entry.article_count || 0) + 1,
-          last_searched_date: new Date().toISOString().split('T')[0]
-        })
-        .eq('id', entry.id);
+    if (!keywordEntries || keywordEntries.length === 0) {
+      console.log('No active keyword tracking entries found');
+      return;
+    }
 
-      if (updateError) {
-        console.error(`Error updating keyword count for ${entry.keyword}:`, updateError);
+    let matchedCount = 0;
+    const matchedKeywords = [];
+
+    // Check each tracked keyword against all extracted keywords
+    for (const entry of keywordEntries) {
+      let hasMatch = false;
+      
+      for (const extractedKeyword of extractedKeywords) {
+        if (isKeywordMatch(extractedKeyword, entry.keyword)) {
+          hasMatch = true;
+          matchedKeywords.push({
+            tracked: entry.keyword,
+            extracted: extractedKeyword
+          });
+          break; // Only count once per tracked keyword
+        }
       }
-    }) || [];
+      
+      if (hasMatch) {
+        matchedCount++;
+        
+        // Update the article count for this keyword
+        const { error: updateError } = await supabase
+          .from('keyword_tracking')
+          .update({ 
+            article_count: (entry.article_count || 0) + 1,
+            last_searched_date: new Date().toISOString().split('T')[0]
+          })
+          .eq('id', entry.id);
 
-    await Promise.all(updatePromises);
+        if (updateError) {
+          console.error(`Error updating keyword count for ${entry.keyword}:`, updateError);
+        } else {
+          console.log(`Updated count for keyword "${entry.keyword}" (matched with "${matchedKeywords.find(m => m.tracked === entry.keyword)?.extracted}")`);
+        }
+      }
+    }
 
-    console.log(`Updated keyword counts for ${keywordEntries?.length || 0} tracked keywords`);
+    console.log(`Updated keyword counts for ${matchedCount} tracked keywords`);
+    console.log('Keyword matches:', matchedKeywords);
+    
+    if (matchedCount === 0) {
+      console.log('No keyword matches found. Extracted keywords:', extractedKeywords);
+      console.log('Tracked keywords:', keywordEntries.map(e => e.keyword));
+    }
   } catch (error) {
     console.error('Error updating keyword counts:', error);
   }
@@ -357,7 +425,7 @@ serve(async (req) => {
       throw new Error('Parsed analysis data failed validation checks')
     }
 
-    // Update keyword tracking counts
+    // Update keyword tracking counts with improved matching
     if (analysisData.extracted_keywords) {
       await updateKeywordCounts(supabase, analysisData.extracted_keywords);
     }

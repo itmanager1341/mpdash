@@ -25,6 +25,7 @@ export default function PromptsTab() {
   };
   
   const handleEdit = (prompt: LlmPrompt) => {
+    console.log('Editing prompt:', prompt); // Debug log
     setEditingPrompt(prompt);
     setIsAddingPrompt(true);
   };

@@ -1,353 +1,236 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
-import { ensureAnalysisPromptExists } from "@/utils/analysisPromptUtils";
 import { toast } from "sonner";
 import { 
-  Loader2, 
   Brain, 
   TrendingUp, 
-  FileText, 
+  Users, 
   Eye, 
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  CheckCircle,
-  Clock,
+  MessageSquare,
+  CheckCircle2,
   XCircle,
-  AlertTriangle,
-  Settings,
-  RefreshCw
+  AlertCircle,
+  Lightbulb,
+  Target,
+  BarChart3,
+  RefreshCw,
+  Play,
+  Pause,
+  ExternalLink,
+  FileText
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { ensureAnalysisPromptExists } from "@/utils/analysisPromptUtils";
+import { useNavigate } from "react-router-dom";
 
-interface ArticleWithAnalysis {
+interface AnalysisResult {
   id: string;
-  title: string;
-  published_at: string;
-  wordpress_id: number;
-  status: string;
-  analysis?: {
-    id: string;
-    analysis_version: number;
-    content_quality_score: number;
-    template_classification: string;
-    extracted_keywords: string[];
-    matched_clusters: string[];
-    performance_prediction: {
-      engagement_score: number;
-      shareability: number;
-      seo_potential: number;
-      target_audience: string;
-    };
-    analysis_data: any;
-    analyzed_at: string;
+  article_id: string;
+  content_quality_score: number;
+  template_classification: string;
+  extracted_keywords: string[];
+  matched_clusters: string[];
+  performance_prediction: {
+    engagement_score?: number;
+    shareability?: number;
+    seo_potential?: number;
+    target_audience?: string;
   };
+  analysis_data: {
+    template_compliance_score?: number;
+    readability_analysis?: {
+      reading_level?: string;
+      sentence_complexity?: string;
+      jargon_level?: string;
+    };
+    template_insights?: {
+      structure_score?: number;
+      required_elements_present?: string[];
+      missing_elements?: string[];
+      template_specific_suggestions?: string[];
+    };
+    content_suggestions?: string[];
+  };
+  analyzed_at: string;
+  ai_model_used: string;
 }
 
-type SortColumn = 'title' | 'quality_score' | 'analyzed_at' | 'status' | null;
-type SortDirection = 'asc' | 'desc';
-type FilterStatus = 'all' | 'analyzed' | 'pending' | 'failed';
+interface Article {
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  word_count?: number;
+  source_system?: string;
+}
 
-export default function EnhancedArticleAnalysis() {
-  const [selectedArticles, setSelectedArticles] = useState<Set<string>>(new Set());
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingProgress, setProcessingProgress] = useState(0);
-  const [processingStatus, setProcessingStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({});
-  const [selectedAnalysis, setSelectedAnalysis] = useState<ArticleWithAnalysis | null>(null);
-  const [sortColumn, setSortColumn] = useState<SortColumn>('analyzed_at');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
-  const [analysisErrors, setAnalysisErrors] = useState<Record<string, string>>({});
+interface EnhancedArticleAnalysisProps {
+  onAnalysisComplete?: (results: AnalysisResult[]) => void;
+}
+
+export default function EnhancedArticleAnalysis({ onAnalysisComplete }: EnhancedArticleAnalysisProps) {
+  const navigate = useNavigate();
+  const [selectedArticles, setSelectedArticles] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisStatus, setAnalysisStatus] = useState<string>("");
+  const [currentAnalysisId, setCurrentAnalysisId] = useState<string>("");
+  const [shouldPauseAnalysis, setShouldPauseAnalysis] = useState(false);
+  const queryClient = useQueryClient();
 
   // Initialize analysis prompt on component mount
   useEffect(() => {
-    ensureAnalysisPromptExists();
+    const initializePrompt = async () => {
+      const success = await ensureAnalysisPromptExists();
+      if (!success) {
+        toast.error("Failed to initialize analysis prompt. Please check your database connection.");
+      }
+    };
+
+    initializePrompt();
   }, []);
 
   // Fetch all articles with their LATEST analysis data
-  const { data: articles, isLoading, refetch } = useQuery({
-    queryKey: ['all-articles-with-analysis', sortColumn, sortDirection, filterStatus],
+  const { data: articles, isLoading: articlesLoading } = useQuery({
+    queryKey: ['articles-for-analysis'],
     queryFn: async () => {
-      // First, get all articles with wordpress_id
-      let articlesQuery = supabase
+      const { data, error } = await supabase
         .from('articles')
-        .select('id, title, published_at, wordpress_id, status')
-        .not('wordpress_id', 'is', null);
+        .select('id, title, status, created_at, word_count, source_system')
+        .order('created_at', { ascending: false })
+        .limit(50);
 
-      // Apply basic sorting for articles
-      if (sortColumn === 'title') {
-        articlesQuery = articlesQuery.order('title', { ascending: sortDirection === 'asc' });
-      } else if (sortColumn === 'analyzed_at') {
-        articlesQuery = articlesQuery.order('published_at', { ascending: sortDirection === 'asc' });
-      }
-
-      const { data: articlesData, error: articlesError } = await articlesQuery;
-      if (articlesError) throw articlesError;
-
-      // Get the latest analysis for each article
-      const articleIds = articlesData.map(article => article.id);
-      
-      let analysisQuery = supabase
-        .from('article_ai_analysis')
-        .select('*')
-        .in('article_id', articleIds)
-        .order('analysis_version', { ascending: false });
-
-      const { data: analysisData, error: analysisError } = await analysisQuery;
-      if (analysisError) throw analysisError;
-
-      // Create a map of article_id to latest analysis
-      const latestAnalysisMap = new Map();
-      analysisData?.forEach(analysis => {
-        if (!latestAnalysisMap.has(analysis.article_id)) {
-          latestAnalysisMap.set(analysis.article_id, analysis);
-        }
-      });
-
-      // Combine articles with their latest analysis
-      const transformedData: ArticleWithAnalysis[] = articlesData.map(article => {
-        const latestAnalysis = latestAnalysisMap.get(article.id);
-        
-        return {
-          id: article.id,
-          title: article.title,
-          published_at: article.published_at,
-          wordpress_id: article.wordpress_id,
-          status: article.status,
-          analysis: latestAnalysis ? {
-            id: latestAnalysis.id,
-            analysis_version: latestAnalysis.analysis_version,
-            content_quality_score: latestAnalysis.content_quality_score,
-            template_classification: latestAnalysis.template_classification,
-            extracted_keywords: Array.isArray(latestAnalysis.extracted_keywords) 
-              ? latestAnalysis.extracted_keywords as string[]
-              : [],
-            matched_clusters: Array.isArray(latestAnalysis.matched_clusters)
-              ? latestAnalysis.matched_clusters as string[]
-              : [],
-            performance_prediction: latestAnalysis.performance_prediction as {
-              engagement_score: number;
-              shareability: number;
-              seo_potential: number;
-              target_audience: string;
-            } || {
-              engagement_score: 0,
-              shareability: 0,
-              seo_potential: 0,
-              target_audience: 'Unknown'
-            },
-            analysis_data: latestAnalysis.analysis_data,
-            analyzed_at: latestAnalysis.analyzed_at,
-          } : undefined
-        };
-      });
-
-      // Apply status filter
-      let filteredData = transformedData;
-      if (filterStatus === 'analyzed') {
-        filteredData = transformedData.filter(article => article.analysis);
-      } else if (filterStatus === 'pending') {
-        filteredData = transformedData.filter(article => !article.analysis);
-      }
-
-      // Apply client-side sorting for analysis-specific fields
-      if (sortColumn === 'quality_score') {
-        filteredData.sort((a, b) => {
-          const scoreA = a.analysis?.content_quality_score || 0;
-          const scoreB = b.analysis?.content_quality_score || 0;
-          return sortDirection === 'asc' ? scoreA - scoreB : scoreB - scoreA;
-        });
-      }
-
-      return filteredData;
+      if (error) throw error;
+      return data as Article[];
     }
   });
 
-  const handleSort = (column: SortColumn) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('desc');
-    }
-  };
+  const { data: analysisResults, isLoading: resultsLoading, refetch: refetchResults } = useQuery({
+    queryKey: ['analysis-results'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('article_ai_analysis')
+        .select(`
+          *,
+          articles!inner(id, title, status)
+        `)
+        .order('analyzed_at', { ascending: false })
+        .limit(20);
 
-  const getSortIcon = (column: SortColumn) => {
-    if (sortColumn !== column) {
-      return <ArrowUpDown className="h-4 w-4" />;
+      if (error) throw error;
+      return data as (AnalysisResult & { articles: { id: string; title: string; status: string } })[];
     }
-    return sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />;
-  };
+  });
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedArticles(new Set(articles?.map(a => a.id) || []));
-    } else {
-      setSelectedArticles(new Set());
-    }
-  };
-
-  const handleSelectArticle = (articleId: string, checked: boolean) => {
-    const newSelected = new Set(selectedArticles);
-    if (checked) {
-      newSelected.add(articleId);
-    } else {
-      newSelected.delete(articleId);
-    }
-    setSelectedArticles(newSelected);
-  };
-
-  const analyzeArticle = async (articleId: string) => {
-    try {
-      setProcessingStatus(prev => ({ ...prev, [articleId]: 'pending' }));
-      setAnalysisErrors(prev => ({ ...prev, [articleId]: '' }));
-      
-      const { data, error } = await supabase.functions.invoke('analyze-article-content', {
+  // Analyze article mutation
+  const analyzeArticleMutation = useMutation({
+    mutationFn: async (articleId: string) => {
+      const response = await supabase.functions.invoke('analyze-article-content', {
         body: { articleId, forceReanalysis: true }
       });
 
-      if (error) throw error;
-
-      if (data.success) {
-        setProcessingStatus(prev => ({ ...prev, [articleId]: 'success' }));
-        // Refetch data to show the new analysis
-        refetch();
-        return true;
-      } else {
-        throw new Error(data.error || 'Analysis failed');
+      if (response.error) {
+        throw new Error(response.error.message || 'Analysis failed');
       }
-    } catch (error) {
+
+      return response.data;
+    },
+    onSuccess: (data, articleId) => {
+      console.log(`Analysis completed for article ${articleId}:`, data);
+      queryClient.invalidateQueries({ queryKey: ['analysis-results'] });
+      toast.success(`Analysis completed for article`);
+    },
+    onError: (error, articleId) => {
       console.error(`Analysis failed for article ${articleId}:`, error);
-      setProcessingStatus(prev => ({ ...prev, [articleId]: 'error' }));
-      
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setAnalysisErrors(prev => ({ ...prev, [articleId]: errorMessage }));
-      
-      if (errorMessage.includes('Analysis prompt configuration not found')) {
-        toast.error("Analysis prompt not configured. Please set up the prompt in LLM Management.", {
-          action: {
-            label: "Go to LLM Management",
-            onClick: () => window.location.href = "/llm-management?tab=prompts"
-          }
-        });
-      } else {
-        toast.error(`Analysis failed: ${errorMessage}`);
+      toast.error(`Analysis failed: ${error.message}`);
+    }
+  });
+
+  const handleBulkAnalysis = async () => {
+    if (selectedArticles.length === 0) {
+      toast.error("Please select at least one article to analyze");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAnalysisProgress(0);
+    setShouldPauseAnalysis(false);
+    
+    const total = selectedArticles.length;
+    let completed = 0;
+    const results: AnalysisResult[] = [];
+
+    for (const articleId of selectedArticles) {
+      if (shouldPauseAnalysis) {
+        toast.info("Analysis paused by user");
+        break;
       }
-      
-      return false;
-    }
-  };
 
-  const handleBulkAnalysis = async (forceReanalysis = false) => {
-    const articlesToAnalyze = Array.from(selectedArticles);
-    
-    if (articlesToAnalyze.length === 0) {
-      toast.error("Please select articles to analyze");
-      return;
-    }
-
-    // Filter out articles that already have analysis (unless forcing re-analysis)
-    const filteredArticles = forceReanalysis 
-      ? articlesToAnalyze
-      : articlesToAnalyze.filter(id => {
-          const article = articles?.find(a => a.id === id);
-          return !article?.analysis;
-        });
-
-    if (filteredArticles.length === 0 && !forceReanalysis) {
-      toast.info("Selected articles are already analyzed. Use 'Re-analyze Selected' to force re-analysis.");
-      return;
-    }
-
-    setIsProcessing(true);
-    setProcessingProgress(0);
-    
-    const actionText = forceReanalysis ? 'Re-analyzing' : 'Analyzing';
-    toast.info(`${actionText} ${filteredArticles.length} selected articles...`);
-
-    let successCount = 0;
-    
-    for (let i = 0; i < filteredArticles.length; i++) {
-      const articleId = filteredArticles[i];
-      const success = await analyzeArticle(articleId);
-      
-      if (success) successCount++;
-      
-      setProcessingProgress(((i + 1) / filteredArticles.length) * 100);
-      
-      // Add delay between requests to avoid rate limiting
-      if (i < filteredArticles.length - 1) {
+      try {
+        setCurrentAnalysisId(articleId);
+        const article = articles?.find(a => a.id === articleId);
+        setAnalysisStatus(`Analyzing: ${article?.title || 'Unknown Article'}`);
+        
+        const result = await analyzeArticleMutation.mutateAsync(articleId);
+        if (result) {
+          results.push(result.analysis);
+        }
+        
+        completed++;
+        setAnalysisProgress((completed / total) * 100);
+        
+        // Brief delay between analyses to prevent overwhelming the API
         await new Promise(resolve => setTimeout(resolve, 1000));
+        
+      } catch (error) {
+        console.error(`Failed to analyze article ${articleId}:`, error);
+        // Continue with next article even if one fails
+        completed++;
+        setAnalysisProgress((completed / total) * 100);
       }
     }
 
-    setIsProcessing(false);
-    setSelectedArticles(new Set());
+    setIsAnalyzing(false);
+    setAnalysisStatus("");
+    setCurrentAnalysisId("");
+    setSelectedArticles([]);
     
-    toast.success(`${actionText} completed: ${successCount}/${filteredArticles.length} articles processed successfully`);
-    refetch();
+    if (results.length > 0) {
+      toast.success(`Successfully analyzed ${results.length} articles`);
+      onAnalysisComplete?.(results);
+      refetchResults();
+    }
   };
 
-  const getAnalysisStatus = (article: ArticleWithAnalysis) => {
-    if (processingStatus[article.id] === 'pending') {
-      return <Clock className="h-4 w-4 text-yellow-500" />;
+  const handleSelectAll = () => {
+    if (selectedArticles.length === articles?.length) {
+      setSelectedArticles([]);
+    } else {
+      setSelectedArticles(articles?.map(a => a.id) || []);
     }
-    if (processingStatus[article.id] === 'error') {
-      return (
-        <div className="flex items-center gap-1">
-          <XCircle className="h-4 w-4 text-red-500" />
-          {analysisErrors[article.id] && (
-            <span className="text-xs text-red-600 max-w-32 truncate" title={analysisErrors[article.id]}>
-              {analysisErrors[article.id]}
-            </span>
-          )}
-        </div>
-      );
-    }
-    if (article.analysis) {
-      return <CheckCircle className="h-4 w-4 text-green-500" />;
-    }
-    return <Clock className="h-4 w-4 text-gray-400" />;
   };
 
   const getQualityScoreColor = (score: number) => {
-    if (score >= 80) return 'bg-green-100 text-green-800';
-    if (score >= 60) return 'bg-yellow-100 text-yellow-800';
-    return 'bg-red-100 text-red-800';
+    if (score >= 80) return "text-green-600";
+    if (score >= 60) return "text-yellow-600";
+    return "text-red-600";
   };
 
-  const getTemplateColor = (template: string) => {
-    const colors = {
-      'news_analysis': 'bg-blue-100 text-blue-800',
-      'opinion_editorial': 'bg-purple-100 text-purple-800',
-      'how_to_guide': 'bg-green-100 text-green-800',
-      'market_report': 'bg-orange-100 text-orange-800',
-      'interview_profile': 'bg-pink-100 text-pink-800',
-      'regulatory_update': 'bg-red-100 text-red-800',
-      'industry_trend': 'bg-indigo-100 text-indigo-800'
-    };
-    return colors[template as keyof typeof colors] || 'bg-gray-100 text-gray-800';
+  const getQualityScoreBadgeVariant = (score: number) => {
+    if (score >= 80) return "default";
+    if (score >= 60) return "secondary";
+    return "destructive";
   };
 
   if (isLoading) {
@@ -358,478 +241,389 @@ export default function EnhancedArticleAnalysis() {
     );
   }
 
-  const analyzedCount = articles?.filter(a => a.analysis).length || 0;
-  const totalCount = articles?.length || 0;
-  const selectedCount = selectedArticles.size;
-  const analysisProgress = totalCount > 0 ? (analyzedCount / totalCount) * 100 : 0;
-
   return (
     <div className="space-y-6">
-      {/* Analysis Setup Warning */}
-      <Alert>
-        <Settings className="h-4 w-4" />
-        <AlertDescription>
-          Analysis prompts are now managed in{" "}
-          <a href="/llm-management?tab=prompts" className="font-medium text-blue-600 hover:underline">
-            LLM Management
-          </a>
-          . Configure the "analyze-article-content" prompt to customize analysis behavior.
-        </AlertDescription>
-      </Alert>
+      {/* Header with Navigation */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">AI Article Analysis</h2>
+          <p className="text-muted-foreground">
+            Analyze articles for quality, template compliance, and performance prediction
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => navigate('/keyword-management?tab=tracking')}
+          >
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Keyword Tracking
+            <ExternalLink className="h-4 w-4 ml-2" />
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => navigate('/llm-management?tab=prompts')}
+          >
+            <Brain className="h-4 w-4 mr-2" />
+            AI Prompts
+            <ExternalLink className="h-4 w-4 ml-2" />
+          </Button>
+        </div>
+      </div>
 
-      {/* Stats and Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5" />
-            Enhanced AI Article Analysis
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">
-                Analysis Progress: {analyzedCount} analyzed, {totalCount - analyzedCount} pending
-              </div>
-              <Progress value={analysisProgress} className="w-64" />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* Filter Dropdown */}
-              <select 
-                value={filterStatus} 
-                onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
-                className="px-3 py-2 border rounded-md text-sm"
-              >
-                <option value="all">All Articles</option>
-                <option value="analyzed">Analyzed Only</option>
-                <option value="pending">Pending Only</option>
-              </select>
-            </div>
-          </div>
+      <Tabs defaultValue="bulk-analysis" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="bulk-analysis">Bulk Analysis</TabsTrigger>
+          <TabsTrigger value="results">Analysis Results</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="bulk-analysis" className="space-y-4">
+          {/* Bulk Analysis Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5" />
+                Bulk Article Analysis
+              </CardTitle>
+              <CardDescription>
+                Select articles to analyze with AI for content quality, template compliance, and performance prediction
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isAnalyzing && (
+                <div className="mb-6 p-4 border rounded-lg bg-blue-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">Analysis in Progress</span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant={shouldPauseAnalysis ? "default" : "outline"}
+                        onClick={() => setShouldPauseAnalysis(!shouldPauseAnalysis)}
+                      >
+                        {shouldPauseAnalysis ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                        {shouldPauseAnalysis ? "Resume" : "Pause"}
+                      </Button>
+                    </div>
+                  </div>
+                  <Progress value={analysisProgress} className="mb-2" />
+                  <p className="text-sm text-muted-foreground">{analysisStatus}</p>
+                </div>
+              )}
 
-          {/* Bulk Actions */}
-          {selectedCount > 0 && (
-            <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-lg">
-              <span className="text-sm font-medium">
-                {selectedCount} article{selectedCount !== 1 ? 's' : ''} selected
-              </span>
-              <div className="flex gap-2">
-                <Button 
-                  onClick={() => handleBulkAnalysis(false)}
-                  disabled={isProcessing}
-                  size="sm"
-                >
-                  {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TrendingUp className="mr-2 h-4 w-4" />}
-                  Analyze Selected
-                </Button>
-                <Button 
-                  onClick={() => handleBulkAnalysis(true)}
-                  disabled={isProcessing}
-                  variant="outline"
-                  size="sm"
-                >
-                  Re-analyze Selected
-                </Button>
-                <Button 
-                  onClick={() => setSelectedArticles(new Set())}
-                  variant="ghost"
-                  size="sm"
-                >
-                  Clear Selection
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Processing Progress */}
-          {isProcessing && (
-            <div className="space-y-2">
-              <div className="text-sm text-muted-foreground">Processing articles...</div>
-              <Progress value={processingProgress} className="w-full" />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Articles Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>All Articles ({totalCount})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="border rounded-lg">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox 
-                      checked={selectedCount === totalCount && totalCount > 0}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedArticles(new Set(articles?.map(a => a.id) || []));
-                        } else {
-                          setSelectedArticles(new Set());
-                        }
-                      }}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={selectedArticles.length === articles?.length && articles?.length > 0}
+                      onCheckedChange={handleSelectAll}
                     />
-                  </TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-gray-50" 
-                    onClick={() => {
-                      if (sortColumn === 'title') {
-                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortColumn('title');
-                        setSortDirection('desc');
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-1">
-                      Article Title
-                      {sortColumn !== 'title' ? <ArrowUpDown className="h-4 w-4" /> : 
-                       sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                    </div>
-                  </TableHead>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-gray-50" 
-                    onClick={() => {
-                      if (sortColumn === 'quality_score') {
-                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortColumn('quality_score');
-                        setSortDirection('desc');
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-1">
-                      Quality Score
-                      {sortColumn !== 'quality_score' ? <ArrowUpDown className="h-4 w-4" /> : 
-                       sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                    </div>
-                  </TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead>Keywords</TableHead>
-                  <TableHead>Clusters</TableHead>
-                  <TableHead 
-                    className="cursor-pointer hover:bg-gray-50" 
-                    onClick={() => {
-                      if (sortColumn === 'analyzed_at') {
-                        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortColumn('analyzed_at');
-                        setSortDirection('desc');
-                      }
-                    }}
-                  >
-                    <div className="flex items-center gap-1">
-                      Analyzed
-                      {sortColumn !== 'analyzed_at' ? <ArrowUpDown className="h-4 w-4" /> : 
-                       sortDirection === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                    </div>
-                  </TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {articles?.map((article) => (
-                  <TableRow key={article.id}>
-                    <TableCell>
-                      <Checkbox 
-                        checked={selectedArticles.has(article.id)}
-                        onCheckedChange={(checked) => {
-                          const newSelected = new Set(selectedArticles);
-                          if (checked) {
-                            newSelected.add(article.id);
-                          } else {
-                            newSelected.delete(article.id);
-                          }
-                          setSelectedArticles(newSelected);
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {getAnalysisStatus(article)}
-                    </TableCell>
-                    <TableCell className="max-w-md">
-                      <div className="font-medium truncate">{article.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        WP ID: {article.wordpress_id}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {article.analysis ? (
-                        <div className="flex items-center gap-2">
-                          <Badge className={getQualityScoreColor(article.analysis.content_quality_score)}>
-                            {article.analysis.content_quality_score}/100
-                          </Badge>
-                          {article.analysis.analysis_data?.template_compliance_score && (
-                            <Badge variant="outline" className="text-xs">
-                              T: {article.analysis.analysis_data.template_compliance_score}
-                            </Badge>
-                          )}
-                        </div>
+                    <Label>Select All ({articles?.length || 0} articles)</Label>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => setSelectedArticles([])}
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedArticles.length === 0}
+                    >
+                      Clear Selection
+                    </Button>
+                    <Button
+                      onClick={handleBulkAnalysis}
+                      disabled={selectedArticles.length === 0 || isAnalyzing}
+                      className="min-w-32"
+                    >
+                      {isAnalyzing ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Analyzing...
+                        </>
                       ) : (
-                        <span className="text-muted-foreground">-</span>
+                        <>
+                          <Brain className="h-4 w-4 mr-2" />
+                          Analyze {selectedArticles.length} Article{selectedArticles.length !== 1 ? 's' : ''}
+                        </>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {article.analysis ? (
-                        <Badge className={getTemplateColor(article.analysis.template_classification)}>
-                          {article.analysis.template_classification?.replace('_', ' ') || 'Unknown'}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {article.analysis ? (
-                        <Badge variant="outline">
-                          {article.analysis.extracted_keywords?.length || 0} keywords
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {article.analysis ? (
-                        <Badge variant="outline">
-                          {article.analysis.matched_clusters?.length || 0} clusters
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {article.analysis ? (
-                        <div className="text-sm">
-                          {formatDistanceToNow(new Date(article.analysis.analyzed_at), { addSuffix: true })}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {article.analysis && (
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            onClick={() => setSelectedAnalysis(article)}
+                    </Button>
+                  </div>
+                </div>
+
+                {articlesLoading ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
+                    <p>Loading articles...</p>
+                  </div>
+                ) : (
+                  <div className="border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-12">Select</TableHead>
+                          <TableHead>Article Title</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Word Count</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Created</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {articles?.map((article) => (
+                          <TableRow key={article.id}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedArticles.includes(article.id)}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedArticles([...selectedArticles, article.id]);
+                                  } else {
+                                    setSelectedArticles(selectedArticles.filter(id => id !== article.id));
+                                  }
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-left"
+                                onClick={() => navigate(`/articles/${article.id}`)}
+                              >
+                                {article.title}
+                                <ExternalLink className="h-3 w-3 ml-1" />
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{article.status}</Badge>
+                            </TableCell>
+                            <TableCell>{article.word_count || 'N/A'}</TableCell>
+                            <TableCell>{article.source_system || 'Unknown'}</TableCell>
+                            <TableCell>
+                              {new Date(article.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => analyzeArticleMutation.mutate(article.id)}
+                                disabled={isAnalyzing}
+                              >
+                                <Brain className="h-4 w-4 mr-1" />
+                                Analyze
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="results" className="space-y-4">
+          {/* Analysis Results Section */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Analysis Results
+                  </CardTitle>
+                  <CardDescription>
+                    View detailed AI analysis results including quality scores, template compliance, and insights
+                  </CardDescription>
+                </div>
+                <Button onClick={() => refetchResults()} variant="outline" size="sm">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {resultsLoading ? (
+                <div className="text-center py-8">
+                  <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
+                  <p>Loading analysis results...</p>
+                </div>
+              ) : analysisResults && analysisResults.length > 0 ? (
+                <div className="space-y-6">
+                  {analysisResults.map((result) => (
+                    <Card key={result.id} className="p-4">
+                      <div className="space-y-4">
+                        {/* Header */}
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <h3 className="font-semibold flex items-center gap-2">
+                              <Button
+                                variant="link"
+                                className="p-0 h-auto text-left font-semibold"
+                                onClick={() => navigate(`/articles/${result.article_id}`)}
+                              >
+                                {result.articles.title}
+                                <ExternalLink className="h-3 w-3 ml-1" />
+                              </Button>
+                            </h3>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span>Analyzed {new Date(result.analyzed_at).toLocaleString()}</span>
+                              <Badge variant="outline">{result.ai_model_used}</Badge>
+                            </div>
+                          </div>
+                          <Badge 
+                            variant={getQualityScoreBadgeVariant(result.content_quality_score)}
+                            className="text-lg px-3 py-1"
                           >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => analyzeArticle(article.id)}
-                          disabled={processingStatus[article.id] === 'pending'}
-                        >
-                          {processingStatus[article.id] === 'pending' ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-4 w-4" />
+                            {result.content_quality_score}/100
+                          </Badge>
+                        </div>
+
+                        {/* Metrics Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="text-center p-3 bg-blue-50 rounded-lg">
+                            <TrendingUp className="h-6 w-6 text-blue-600 mx-auto mb-1" />
+                            <div className="text-sm font-medium text-blue-600">Quality Score</div>
+                            <div className={`text-xl font-bold ${getQualityScoreColor(result.content_quality_score)}`}>
+                              {result.content_quality_score}
+                            </div>
+                          </div>
+
+                          {result.analysis_data.template_compliance_score && (
+                            <div className="text-center p-3 bg-green-50 rounded-lg">
+                              <CheckCircle2 className="h-6 w-6 text-green-600 mx-auto mb-1" />
+                              <div className="text-sm font-medium text-green-600">Template Score</div>
+                              <div className="text-xl font-bold text-green-900">
+                                {result.analysis_data.template_compliance_score}
+                              </div>
+                            </div>
                           )}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )) || (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-4 text-muted-foreground">
-                      No articles found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Enhanced Analysis Detail Modal */}
-      <Dialog open={!!selectedAnalysis} onOpenChange={() => setSelectedAnalysis(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Analysis Details: {selectedAnalysis?.title}</DialogTitle>
-          </DialogHeader>
-          {selectedAnalysis?.analysis && (
-            <div className="space-y-6">
-              {/* Quality Scores */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="text-sm text-muted-foreground">Content Quality</div>
-                  <div className="text-2xl font-bold text-blue-600">
-                    {selectedAnalysis.analysis.content_quality_score}/100
-                  </div>
-                </div>
-                {selectedAnalysis.analysis.analysis_data?.template_compliance_score && (
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <div className="text-sm text-muted-foreground">Template Compliance</div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {selectedAnalysis.analysis.analysis_data.template_compliance_score}/100
-                    </div>
-                  </div>
-                )}
-              </div>
+                          {result.performance_prediction.engagement_score && (
+                            <div className="text-center p-3 bg-purple-50 rounded-lg">
+                              <Users className="h-6 w-6 text-purple-600 mx-auto mb-1" />
+                              <div className="text-sm font-medium text-purple-600">Engagement</div>
+                              <div className="text-xl font-bold text-purple-900">
+                                {result.performance_prediction.engagement_score}
+                              </div>
+                            </div>
+                          )}
 
-              {/* Template Insights */}
-              {selectedAnalysis.analysis.analysis_data?.template_insights && (
-                <div>
-                  <h3 className="font-semibold mb-3">Template Analysis</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <span className="text-sm font-medium">Structure Score: </span>
-                      <Badge variant="outline">
-                        {selectedAnalysis.analysis.analysis_data.template_insights.structure_score}/100
-                      </Badge>
-                    </div>
-                    
-                    {selectedAnalysis.analysis.analysis_data.template_insights.required_elements_present?.length > 0 && (
-                      <div>
-                        <span className="text-sm font-medium">Present Elements: </span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {selectedAnalysis.analysis.analysis_data.template_insights.required_elements_present.map((element: string, index: number) => (
-                            <Badge key={index} variant="default" className="bg-green-100 text-green-800">
-                              {element}
+                          {result.performance_prediction.seo_potential && (
+                            <div className="text-center p-3 bg-orange-50 rounded-lg">
+                              <Eye className="h-6 w-6 text-orange-600 mx-auto mb-1" />
+                              <div className="text-sm font-medium text-orange-600">SEO Potential</div>
+                              <div className="text-xl font-bold text-orange-900">
+                                {result.performance_prediction.seo_potential}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Template Classification & Clusters */}
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary" className="capitalize">
+                            {result.template_classification.replace('_', ' ')}
+                          </Badge>
+                          {result.matched_clusters.map((cluster, index) => (
+                            <Badge key={index} variant="outline">
+                              {cluster}
                             </Badge>
                           ))}
                         </div>
-                      </div>
-                    )}
 
-                    {selectedAnalysis.analysis.analysis_data.template_insights.missing_elements?.length > 0 && (
-                      <div>
-                        <span className="text-sm font-medium">Missing Elements: </span>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {selectedAnalysis.analysis.analysis_data.template_insights.missing_elements.map((element: string, index: number) => (
-                            <Badge key={index} variant="destructive">
-                              {element}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                        {/* Template Insights */}
+                        {result.analysis_data.template_insights && (
+                          <div className="space-y-3">
+                            <h4 className="font-medium flex items-center gap-2">
+                              <Target className="h-4 w-4" />
+                              Template Analysis
+                            </h4>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {result.analysis_data.template_insights.required_elements_present && (
+                                <div>
+                                  <h5 className="text-sm font-medium text-green-600 mb-2 flex items-center gap-1">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Present Elements
+                                  </h5>
+                                  <div className="flex flex-wrap gap-1">
+                                    {result.analysis_data.template_insights.required_elements_present.map((element, index) => (
+                                      <Badge key={index} variant="outline" className="text-xs text-green-700 border-green-200">
+                                        {element}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
 
-                    {selectedAnalysis.analysis.analysis_data.template_insights.template_specific_suggestions?.length > 0 && (
-                      <div>
-                        <span className="text-sm font-medium">Template-Specific Suggestions: </span>
-                        <ul className="list-disc list-inside mt-1 space-y-1">
-                          {selectedAnalysis.analysis.analysis_data.template_insights.template_specific_suggestions.map((suggestion: string, index: number) => (
-                            <li key={index} className="text-sm">{suggestion}</li>
-                          ))}
-                        </ul>
+                              {result.analysis_data.template_insights.missing_elements && result.analysis_data.template_insights.missing_elements.length > 0 && (
+                                <div>
+                                  <h5 className="text-sm font-medium text-red-600 mb-2 flex items-center gap-1">
+                                    <XCircle className="h-4 w-4" />
+                                    Missing Elements
+                                  </h5>
+                                  <div className="flex flex-wrap gap-1">
+                                    {result.analysis_data.template_insights.missing_elements.map((element, index) => (
+                                      <Badge key={index} variant="outline" className="text-xs text-red-700 border-red-200">
+                                        {element}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Suggestions */}
+                        {result.analysis_data.content_suggestions && result.analysis_data.content_suggestions.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="font-medium flex items-center gap-2">
+                              <Lightbulb className="h-4 w-4" />
+                              AI Suggestions
+                            </h4>
+                            <ul className="space-y-1">
+                              {result.analysis_data.content_suggestions.map((suggestion, index) => (
+                                <li key={index} className="text-sm text-muted-foreground flex items-start gap-2">
+                                  <AlertCircle className="h-4 w-4 mt-0.5 text-blue-500 flex-shrink-0" />
+                                  {suggestion}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Keywords */}
+                        {result.extracted_keywords.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="font-medium">Extracted Keywords</h4>
+                            <div className="flex flex-wrap gap-1">
+                              {result.extracted_keywords.map((keyword, index) => (
+                                <Badge key={index} variant="outline" className="text-xs">
+                                  {keyword}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Analysis Results</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Run bulk analysis on articles to see AI-powered insights here.
+                  </p>
                 </div>
               )}
-
-              {/* Performance Prediction */}
-              <div>
-                <h3 className="font-semibold mb-3">Performance Prediction</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-blue-50 p-3 rounded-lg">
-                    <div className="text-sm text-muted-foreground">Engagement Score</div>
-                    <div className="text-2xl font-bold text-blue-600">
-                      {selectedAnalysis.analysis.performance_prediction?.engagement_score || 'N/A'}
-                    </div>
-                  </div>
-                  <div className="bg-green-50 p-3 rounded-lg">
-                    <div className="text-sm text-muted-foreground">Shareability</div>
-                    <div className="text-2xl font-bold text-green-600">
-                      {selectedAnalysis.analysis.performance_prediction?.shareability || 'N/A'}
-                    </div>
-                  </div>
-                  <div className="bg-purple-50 p-3 rounded-lg">
-                    <div className="text-sm text-muted-foreground">SEO Potential</div>
-                    <div className="text-2xl font-bold text-purple-600">
-                      {selectedAnalysis.analysis.performance_prediction?.seo_potential || 'N/A'}
-                    </div>
-                  </div>
-                </div>
-                {selectedAnalysis.analysis.performance_prediction?.target_audience && (
-                  <div className="mt-3">
-                    <span className="text-sm font-medium">Target Audience: </span>
-                    <Badge variant="outline">{selectedAnalysis.analysis.performance_prediction.target_audience}</Badge>
-                  </div>
-                )}
-              </div>
-
-              {/* Keywords and Clusters */}
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <h3 className="font-semibold mb-3">Extracted Keywords</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAnalysis.analysis.extracted_keywords?.map((keyword, index) => (
-                      <Badge key={index} variant="secondary">{keyword}</Badge>
-                    )) || <span className="text-muted-foreground">No keywords extracted</span>}
-                  </div>
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-3">Matched Clusters</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedAnalysis.analysis.matched_clusters?.map((cluster, index) => (
-                      <Badge key={index} variant="outline">{cluster}</Badge>
-                    )) || <span className="text-muted-foreground">No clusters matched</span>}
-                  </div>
-                </div>
-              </div>
-
-              {/* Readability Analysis */}
-              {selectedAnalysis.analysis.analysis_data?.readability_analysis && (
-                <div>
-                  <h3 className="font-semibold mb-3">Readability Analysis</h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <span className="text-sm text-muted-foreground">Reading Level: </span>
-                      <Badge variant="outline">
-                        {selectedAnalysis.analysis.analysis_data.readability_analysis.reading_level}
-                      </Badge>
-                    </div>
-                    <div>
-                      <span className="text-sm text-muted-foreground">Complexity: </span>
-                      <Badge variant="outline">
-                        {selectedAnalysis.analysis.analysis_data.readability_analysis.sentence_complexity}
-                      </Badge>
-                    </div>
-                    <div>
-                      <span className="text-sm text-muted-foreground">Jargon Level: </span>
-                      <Badge variant="outline">
-                        {selectedAnalysis.analysis.analysis_data.readability_analysis.jargon_level}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Content Suggestions */}
-              {selectedAnalysis.analysis.analysis_data?.content_suggestions && (
-                <div>
-                  <h3 className="font-semibold mb-3">Content Suggestions</h3>
-                  <ul className="list-disc list-inside space-y-1">
-                    {selectedAnalysis.analysis.analysis_data.content_suggestions.map((suggestion: string, index: number) => (
-                      <li key={index} className="text-sm">{suggestion}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Analysis Metadata */}
-              <div className="border-t pt-4">
-                <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
-                  <div>Analysis Version: {selectedAnalysis.analysis.analysis_version}</div>
-                  <div>Quality Score: {selectedAnalysis.analysis.content_quality_score}/100</div>
-                  <div>Template: {selectedAnalysis.analysis.template_classification}</div>
-                  <div>Analyzed: {new Date(selectedAnalysis.analysis.analyzed_at).toLocaleString()}</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

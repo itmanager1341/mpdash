@@ -19,8 +19,11 @@ import {
   Trash2, 
   BarChart3,
   Info,
-  RefreshCw
+  RefreshCw,
+  Settings,
+  ExternalLink
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface KeywordTrackingTabProps {
   searchTerm: string;
@@ -38,6 +41,7 @@ interface KeywordEntry {
 }
 
 export default function KeywordTrackingTab({ searchTerm }: KeywordTrackingTabProps) {
+  const navigate = useNavigate();
   const [isAddingKeyword, setIsAddingKeyword] = useState(false);
   const [editingKeyword, setEditingKeyword] = useState<KeywordEntry | null>(null);
   const [newKeyword, setNewKeyword] = useState({
@@ -165,9 +169,21 @@ export default function KeywordTrackingTab({ searchTerm }: KeywordTrackingTabPro
       {/* Integration Info */}
       <Alert>
         <Info className="h-4 w-4" />
-        <AlertDescription>
-          Article counts are automatically updated when articles are analyzed using AI Analysis. 
-          Keywords extracted from articles will increment the counts for matching tracked keywords.
+        <AlertDescription className="flex items-center justify-between">
+          <span>
+            Article counts are automatically updated when articles are analyzed using AI Analysis. 
+            Keywords extracted from articles will increment the counts for matching tracked keywords.
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => navigate('/llm-management?tab=prompts')}
+            className="ml-4"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Manage AI Prompts
+            <ExternalLink className="h-4 w-4 ml-2" />
+          </Button>
         </AlertDescription>
       </Alert>
 
