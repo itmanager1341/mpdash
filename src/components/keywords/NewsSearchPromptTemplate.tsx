@@ -10,11 +10,28 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface Cluster {
+  id: string;
+  primary_theme: string;
+  sub_theme: string;
+  description?: string;
+  keywords?: string[];
+  priority_weight?: number;
+}
+
+interface Source {
+  id: string;
+  source_name: string;
+  source_url: string;
+  priority_tier: number;
+  source_type?: string;
+}
+
 interface NewsSearchPromptTemplateProps {
   value: string;
   onChange: (value: string) => void;
-  clusters: any[];
-  sources: any[];
+  clusters: Cluster[];
+  sources: Source[];
   searchSettings?: any;
   selectedThemes?: string[];
   readOnly?: boolean;
@@ -60,8 +77,8 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   
   const generateTemplate = () => {
     // Ensure we have valid arrays to work with
-    const validSources = Array.isArray(sources) ? sources : [];
-    const validClusters = Array.isArray(clusters) ? clusters : [];
+    const validSources: Source[] = Array.isArray(sources) ? sources : [];
+    const validClusters: Cluster[] = Array.isArray(clusters) ? clusters : [];
     
     // Filter priority sources (tier 1-2 only) and exclude competitors
     const prioritySources = validSources.filter(s => 
@@ -75,7 +92,7 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
     );
     
     // Filter clusters by selected themes or use top weighted themes
-    let filteredClusters = [];
+    let filteredClusters: Cluster[] = [];
     if (selectedThemes && selectedThemes.length > 0) {
       filteredClusters = validClusters.filter(cluster => 
         selectedThemes.includes(cluster.primary_theme)
@@ -119,7 +136,7 @@ SEARCH & FILTER RULES:
     template += `3. WEIGHTED Content Focus Areas & Keywords:\n\n`;
     
     // Group clusters by primary theme with weights and keywords
-    const clustersByTheme = filteredClusters.reduce((acc: Record<string, any[]>, cluster) => {
+    const clustersByTheme = filteredClusters.reduce((acc: Record<string, Cluster[]>, cluster) => {
       const theme = cluster.primary_theme || "General";
       if (!acc[theme]) acc[theme] = [];
       acc[theme].push(cluster);
@@ -128,12 +145,12 @@ SEARCH & FILTER RULES:
     
     // Sort themes by aggregate weight
     const sortedThemeEntries = Object.entries(clustersByTheme).sort(([, a], [, b]) => {
-      const weightA = a.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / a.length;
-      const weightB = b.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / b.length;
+      const weightA = (a as Cluster[]).reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / (a as Cluster[]).length;
+      const weightB = (b as Cluster[]).reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / (b as Cluster[]).length;
       return weightB - weightA;
     });
     
-    sortedThemeEntries.forEach(([theme, themeClusters]: [string, any[]]) => {
+    sortedThemeEntries.forEach(([theme, themeClusters]: [string, Cluster[]]) => {
       // Calculate theme aggregate weight
       const themeWeight = themeClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / themeClusters.length;
       const weightPercentage = totalWeight > 0 ? Math.round((themeWeight / totalWeight) * 100 * themeClusters.length) : 0;
@@ -196,12 +213,12 @@ DYNAMIC SCORING CRITERIA (Based on Content Weights):
 
     // Calculate dynamic scoring based on cluster weights
     const highWeightThemes = sortedThemeEntries.filter(([, clusters]) => {
-      const avgWeight = clusters.reduce((sum, c) => sum + (c.priority_weight || 50), 0) / clusters.length;
+      const avgWeight = (clusters as Cluster[]).reduce((sum, c) => sum + (c.priority_weight || 50), 0) / (clusters as Cluster[]).length;
       return avgWeight >= 70;
     }).map(([theme]) => theme);
 
     const mediumWeightThemes = sortedThemeEntries.filter(([, clusters]) => {
-      const avgWeight = clusters.reduce((sum, c) => sum + (c.priority_weight || 50), 0) / clusters.length;
+      const avgWeight = (clusters as Cluster[]).reduce((sum, c) => sum + (c.priority_weight || 50), 0) / (clusters as Cluster[]).length;
       return avgWeight >= 40 && avgWeight < 70;
     }).map(([theme]) => theme);
 
