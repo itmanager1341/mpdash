@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Play, Clock, Settings, Loader2, Pause, Edit, Trash2 } from "lucide-react";
@@ -246,6 +247,8 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
           <div className="grid gap-4">
             {filteredPrompts?.map((prompt) => {
               const schedule = getPromptSchedule(prompt.id);
+              const params = schedule?.parameters as { promptId?: string; minScore?: number; limit?: number; keywords?: string[] } | null;
+              
               return (
                 <Card key={prompt.id} className="hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
@@ -355,13 +358,13 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                       {schedule?.last_run && (
                         <span>Last run: {new Date(schedule.last_run).toLocaleString()}</span>
                       )}
-                      {schedule && (
+                      {schedule && params && (
                         <div className="mt-1 text-xs">
-                          Score: {schedule.parameters?.minScore || 0.6} • 
-                          Limit: {schedule.parameters?.limit || 10}
-                          {schedule.parameters?.keywords && (
-                            <> • Keywords: {schedule.parameters.keywords.slice(0, 3).join(", ")}
-                            {schedule.parameters.keywords.length > 3 && " +"}</>
+                          Score: {params.minScore || 0.6} • 
+                          Limit: {params.limit || 10}
+                          {params.keywords && (
+                            <> • Keywords: {params.keywords.slice(0, 3).join(", ")}
+                            {params.keywords.length > 3 && " +"}</>
                           )}
                         </div>
                       )}
