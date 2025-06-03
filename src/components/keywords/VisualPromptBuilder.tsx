@@ -35,6 +35,7 @@ const promptSchema = z.object({
     recency_filter: z.string().default("day"),
     temperature: z.number().min(0).max(1).default(0.7),
     max_tokens: z.number().min(100).max(4000).default(1500),
+    limit: z.number().min(1).max(50).default(10),
     is_news_search: z.boolean().default(true),
   }).optional(),
   selected_themes: z.object({
@@ -88,13 +89,6 @@ export default function VisualPromptBuilder({
     }
   });
   
-  // Parse selected themes from metadata if available
-  const initialPrimaryThemes = metadata?.search_settings?.selected_themes?.primary || [];
-  const initialSubThemes = metadata?.search_settings?.selected_themes?.sub || [];
-  
-  const [selectedPrimaryThemes, setSelectedPrimaryThemes] = useState<string[]>(initialPrimaryThemes);
-  const [selectedSubThemes, setSelectedSubThemes] = useState<string[]>(initialSubThemes);
-  
   // Fetch sources data for the prompt template
   const { data: sources } = useQuery({
     queryKey: ['sources'],
@@ -135,6 +129,7 @@ export default function VisualPromptBuilder({
         recency_filter: "day",
         temperature: 0.7,
         max_tokens: 1500,
+        limit: 10,
         is_news_search: true,
       },
       selected_themes: {
@@ -170,6 +165,7 @@ export default function VisualPromptBuilder({
           recency_filter: metadata?.search_settings?.recency_filter || "day",
           temperature: metadata?.search_settings?.temperature || 0.7,
           max_tokens: metadata?.search_settings?.max_tokens || 1500,
+          limit: metadata?.search_settings?.limit || 10,
           is_news_search: true,
         },
         selected_themes: {
@@ -188,6 +184,7 @@ export default function VisualPromptBuilder({
         recency_filter: metadata?.search_settings?.recency_filter || "day",
         temperature: metadata?.search_settings?.temperature || 0.7,
         max_tokens: metadata?.search_settings?.max_tokens || 1500,
+        limit: metadata?.search_settings?.limit || 10,
         is_news_search: true,
       });
     } else {
@@ -202,6 +199,7 @@ export default function VisualPromptBuilder({
         recency_filter: "day",
         temperature: 0.7,
         max_tokens: 1500,
+        limit: 10,
         is_news_search: true,
       });
     }
@@ -213,6 +211,7 @@ export default function VisualPromptBuilder({
     recency_filter: metadata?.search_settings?.recency_filter || "day",
     temperature: metadata?.search_settings?.temperature || 0.7,
     max_tokens: metadata?.search_settings?.max_tokens || 1500,
+    limit: metadata?.search_settings?.limit || 10,
     is_news_search: true,
   });
   
@@ -300,6 +299,7 @@ export default function VisualPromptBuilder({
           recency_filter: data.search_settings?.recency_filter || "day",
           temperature: data.search_settings?.temperature || 0.7,
           max_tokens: data.search_settings?.max_tokens || 1500,
+          limit: data.search_settings?.limit || 10,
           is_news_search: true,
           selected_themes: {
             primary: selectedPrimaryThemes,
@@ -602,6 +602,21 @@ export default function VisualPromptBuilder({
                     />
                     <p className="text-xs text-muted-foreground">
                       Maximum length of the generated response
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="limit">Article Limit</Label>
+                    <Input
+                      id="limit"
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={searchSettings.limit}
+                      onChange={(e) => handleSearchSettingChange("limit", Number(e.target.value))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Maximum number of articles to return (1-50)
                     </p>
                   </div>
                 </div>

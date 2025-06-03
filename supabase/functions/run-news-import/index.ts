@@ -27,14 +27,14 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Parse request body
-    const { manual = false, promptId = null, modelOverride = null } = await req.json().catch(() => ({}));
+    const { manual = false, promptId = null, modelOverride = null, limit = null } = await req.json().catch(() => ({}));
     
-    console.log(`Running news import. Manual: ${manual}, PromptId: ${promptId || 'default'}, ModelOverride: ${modelOverride || 'none'}`);
+    console.log(`Running news import. Manual: ${manual}, PromptId: ${promptId || 'default'}, ModelOverride: ${modelOverride || 'none'}, Limit: ${limit || 'default'}`);
     
     // If promptId is provided, use that specific prompt
     let keywords = [];
     let minScore = 0.6;
-    let limit = 10;
+    let finalLimit = limit || 10; // Use passed limit or default
     let promptToUse = promptId;
     
     // Try to get the job configuration first if no specific prompt is provided
@@ -70,7 +70,7 @@ serve(async (req) => {
       // Extract parameters
       keywords = Array.isArray(params.keywords) ? params.keywords : [];
       minScore = params.minScore || 0.6;
-      limit = params.limit || 10;
+      finalLimit = params.limit || finalLimit; // Use job config limit if available
       promptToUse = params.promptId || null;
     }
     
@@ -81,7 +81,7 @@ serve(async (req) => {
       console.log(`No keywords configured, using defaults: ${keywords.join(', ')}`);
     }
     
-    console.log(`Running news import with ${keywords.length} keywords, min score ${minScore}, prompt ${promptToUse || 'default'}`);
+    console.log(`Running news import with ${keywords.length} keywords, min score ${minScore}, limit ${finalLimit}, prompt ${promptToUse || 'default'}`);
 
     // Call the fetch-perplexity-news function
     const { data: newsData, error: fetchError } = await supabase.functions.invoke(
@@ -91,7 +91,7 @@ serve(async (req) => {
           keywords,
           promptId: promptToUse,
           minScore,
-          limit,
+          limit: finalLimit, // Pass the final limit to the fetch function
           // Pass model override if provided
           ...(modelOverride ? { modelOverride } : {})
         }
@@ -119,6 +119,7 @@ serve(async (req) => {
         message: "No articles found. Please check keywords and try again.",
         details: { 
           keywords,
+          limit: finalLimit,
           response: newsData
         }
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -236,6 +237,7 @@ serve(async (req) => {
             articles_skipped: skippedCount,
             articles_error: errorCount,
             prompt_used: promptToUse || 'default',
+            limit_used: finalLimit,
             validation_results: validArticles.map(a => ({
               headline: a.headline,
               url: a.url,
@@ -284,6 +286,7 @@ serve(async (req) => {
           articles_error: errorCount,
           execution_time: new Date().toISOString(),
           prompt_used: promptToUse || 'default',
+          limit_used: finalLimit,
           debug: newsData.debug || {},
           articles: validArticles.map(a => ({
             headline: a.headline,

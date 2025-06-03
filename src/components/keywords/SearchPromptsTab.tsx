@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
 import ScheduleConfigDialog from "@/components/keywords/ScheduleConfigDialog";
-import { fetchPrompts } from "@/utils/llmPromptsUtils";
+import { fetchPrompts, extractPromptMetadata } from "@/utils/llmPromptsUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -142,13 +142,21 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
   const handleRunNow = async (promptId: string) => {
     if (runningPrompts.has(promptId)) return;
     
+    const prompt = allPrompts?.find(p => p.id === promptId);
+    if (!prompt) return;
+    
     setRunningPrompts(prev => new Set(prev).add(promptId));
     
     try {
+      // Extract metadata to get the limit setting
+      const metadata = extractPromptMetadata(prompt);
+      const limit = metadata?.search_settings?.limit || 10;
+      
       const { data, error } = await supabase.functions.invoke('run-news-import', {
         body: { 
           manual: true,
-          promptId: promptId
+          promptId: promptId,
+          limit: limit // Pass the limit from the prompt metadata
         }
       });
       
@@ -248,6 +256,8 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
             {filteredPrompts?.map((prompt) => {
               const schedule = getPromptSchedule(prompt.id);
               const params = schedule?.parameters as { promptId?: string; minScore?: number; limit?: number; keywords?: string[] } | null;
+              const metadata = extractPromptMetadata(prompt);
+              const promptLimit = metadata?.search_settings?.limit || 10;
               
               return (
                 <Card key={prompt.id} className="hover:shadow-md transition-shadow">
@@ -267,6 +277,7 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <span>Model: {prompt.model}</span>
+                          <span>Limit: {promptLimit} articles</span>
                           {schedule && (
                             <span>
                               Next: {schedule.schedule === "0 */6 * * *" ? "Every 6h" : 
@@ -361,7 +372,7 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                       {schedule && params && (
                         <div className="mt-1 text-xs">
                           Score: {params.minScore || 0.6} • 
-                          Limit: {params.limit || 10}
+                          Limit: {params.limit || promptLimit}
                           {params.keywords && (
                             <> • Keywords: {params.keywords.slice(0, 3).join(", ")}
                             {params.keywords.length > 3 && " +"}</>
