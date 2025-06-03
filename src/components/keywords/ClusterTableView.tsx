@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Edit, Plus, Save, X, Trash2 } from "lucide-react";
+import { Edit, Plus, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -23,17 +23,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import ClusterForm from "./ClusterForm";
-
-interface KeywordCluster {
-  id: string;
-  primary_theme: string;
-  sub_theme: string;
-  description?: string;
-  keywords?: string[];
-  professions?: string[];
-  priority_weight?: number;
-  created_at: string;
-}
+import { KeywordCluster } from "@/types/database";
 
 interface ClusterTableViewProps {
   searchTerm: string;
@@ -61,7 +51,7 @@ const ClusterTableView = ({ searchTerm }: ClusterTableViewProps) => {
     }
   });
 
-  // Get article counts per cluster (simplified - just count for now)
+  // Get article counts per cluster
   const { data: articleCounts } = useQuery({
     queryKey: ['cluster-article-counts'],
     queryFn: async () => {
