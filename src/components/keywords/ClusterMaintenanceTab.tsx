@@ -1,235 +1,210 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, Settings, TrendingUp, AlertTriangle, Users } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { KeywordSuggestion } from "@/types/database";
-import { getSuggestions, saveSuggestions, updateSuggestionStatus } from "@/utils/suggestionUtils";
-import { KeywordCluster } from "@/types/database";
-import { NotificationBadge } from "@/components/ui/notification-badge";
-import NewsFetchPrompts from "./NewsFetchPrompts";
 
 interface ClusterMaintenanceTabProps {
   searchTerm: string;
 }
 
 export default function ClusterMaintenanceTab({ searchTerm }: ClusterMaintenanceTabProps) {
-  const [suggestions, setSuggestions] = useState<KeywordSuggestion[]>([]);
-  const [selectedTab, setSelectedTab] = useState<string>("suggestions");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [sourceForSuggestions, setSourceForSuggestions] = useState<string>("news_analysis");
+  const [activeView, setActiveView] = useState("clusters");
+  const [localSearchTerm, setLocalSearchTerm] = useState("");
 
+  // Fetch keyword clusters
   const { data: clusters, isLoading: clustersLoading } = useQuery({
-    queryKey: ["keyword-clusters"],
+    queryKey: ['keyword-clusters-maintenance'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("keyword_clusters")
-        .select("*")
-        .order("primary_theme");
-
+        .from('keyword_clusters')
+        .select('*')
+        .order('primary_theme');
+      
       if (error) throw error;
       return data || [];
-    },
+    }
   });
 
-  const { data: recentArticles, isLoading: articlesLoading } = useQuery({
-    queryKey: ["recent-articles"],
+  // Fetch tracking data for performance insights
+  const { data: trackingData } = useQuery({
+    queryKey: ['keyword-tracking-insights'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("news")
-        .select("headline, summary")
-        .order("timestamp", { ascending: false })
-        .limit(10);
-
+        .from('keyword_tracking')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      
       if (error) throw error;
       return data || [];
-    },
+    }
   });
 
-  useEffect(() => {
-    // Load suggestions from storage
-    const savedSuggestions = getSuggestions();
-    if (savedSuggestions && savedSuggestions.length > 0) {
-      setSuggestions(savedSuggestions);
-    }
-  }, []);
-
-  const pendingSuggestions = suggestions.filter(s => s.status === 'pending').length;
-
-  const handleGenerateSuggestions = async () => {
-    if (isGenerating) return;
-
-    setIsGenerating(true);
-    toast.info("Generating keyword suggestions...");
-
-    try {
-      // Context to provide to the suggestion algorithm
-      const context = {
-        existingClusters: clusters?.map(c => ({
-          primary_theme: c.primary_theme,
-          sub_theme: c.sub_theme,
-          keywords: c.keywords
-        })),
-        recentArticles: recentArticles?.map(a => ({
-          headline: a.headline,
-          summary: a.summary
-        }))
-      };
-
-      // Call the Edge Function to generate suggestions
-      const { data, error } = await supabase.functions.invoke("suggest-keywords", {
-        body: { source: sourceForSuggestions, context }
-      });
-
-      if (error) throw error;
-
-      if (data.success && data.suggestions) {
-        // Add status to each suggestion
-        const newSuggestions = data.suggestions.map((s: any) => ({
-          ...s,
-          status: 'pending'
-        }));
-
-        // Combine with existing pending suggestions
-        const existing = suggestions.filter(s => s.status !== 'pending');
-        const combined = [...existing, ...newSuggestions];
-        
-        setSuggestions(combined);
-        saveSuggestions(combined);
-        
-        toast.success(`Generated ${newSuggestions.length} keyword suggestions using ${data.api_used}`);
-      } else {
-        throw new Error("No suggestions returned");
-      }
-    } catch (err) {
-      console.error("Error generating suggestions:", err);
-      toast.error("Failed to generate keyword suggestions");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleSuggestionAction = (keyword: string, action: 'approve' | 'dismiss') => {
-    const newStatus = action === 'approve' ? 'approved' : 'dismissed';
-    const updated = updateSuggestionStatus(keyword, newStatus);
-    setSuggestions(updated);
-    
-    toast.success(
-      action === 'approve'
-        ? `Added "${keyword}" to suggestions`
-        : `Dismissed "${keyword}" suggestion`
-    );
-  };
-
-  const filteredSuggestions = suggestions.filter(s => 
-    s.keyword.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredClusters = clusters?.filter(cluster =>
+    cluster.primary_theme.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cluster.primary_theme.toLowerCase().includes(localSearchTerm.toLowerCase()) ||
+    cluster.sub_themes?.some((theme: string) => 
+      theme.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      theme.toLowerCase().includes(localSearchTerm.toLowerCase())
+    )
   );
+
+  // Calculate cluster health metrics
+  const getClusterHealth = (cluster: any) => {
+    const trackingCount = trackingData?.filter(t => 
+      t.cluster_id === cluster.id
+    ).length || 0;
+    
+    if (trackingCount === 0) return 'inactive';
+    if (trackingCount < 5) return 'low';
+    if (trackingCount < 15) return 'medium';
+    return 'high';
+  };
+
+  const getHealthBadgeVariant = (health: string) => {
+    switch (health) {
+      case 'high': return 'success';
+      case 'medium': return 'warning';
+      case 'low': return 'destructive';
+      default: return 'secondary';
+    }
+  };
+
+  if (clustersLoading) {
+    return <div>Loading cluster maintenance data...</div>;
+  }
 
   return (
     <div className="space-y-6">
-      <Tabs value={selectedTab} onValueChange={setSelectedTab} className="w-full">
-        <TabsList>
-          <TabsTrigger value="suggestions" className="flex items-center gap-2">
-            AI Suggestions
-            {pendingSuggestions > 0 && (
-              <NotificationBadge variant="default" size="sm">
-                {pendingSuggestions}
-              </NotificationBadge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="search-prompts">Search Prompts</TabsTrigger>
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-bold">Cluster Maintenance</h2>
+          <p className="text-muted-foreground">Monitor and maintain keyword cluster health and performance</p>
+        </div>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative w-full max-w-md">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search clusters..."
+          value={localSearchTerm}
+          onChange={(e) => setLocalSearchTerm(e.target.value)}
+          className="pl-8"
+        />
+      </div>
+
+      <Tabs value={activeView} onValueChange={setActiveView} className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="clusters">Cluster Health</TabsTrigger>
+          <TabsTrigger value="performance">Performance Insights</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="suggestions" className="space-y-6 mt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold mb-2">Keyword Suggestions</h3>
-              <p className="text-muted-foreground text-sm mb-4">
-                Use AI to generate new keyword suggestions based on your existing clusters and content.
-              </p>
-            </div>
-            <div className="flex items-start gap-2">
-              <select
-                className="bg-background text-foreground border rounded px-3 py-2 text-sm"
-                value={sourceForSuggestions}
-                onChange={(e) => setSourceForSuggestions(e.target.value)}
-              >
-                <option value="news_analysis">News Analysis</option>
-                <option value="search_trends">Search Trends</option>
-                <option value="competitive_analysis">Competitive Analysis</option>
-                <option value="content_gaps">Content Gaps</option>
-              </select>
-              <Button onClick={handleGenerateSuggestions} disabled={isGenerating || clustersLoading}>
-                {isGenerating ? "Generating..." : "Generate Suggestions"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredSuggestions.length === 0 ? (
-              <div className="col-span-full text-center py-4 text-muted-foreground">
-                No keyword suggestions found.
-              </div>
+        <TabsContent value="clusters" className="space-y-4">
+          <div className="grid gap-4">
+            {filteredClusters?.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-8">
+                  <Settings className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Clusters Found</h3>
+                  <p className="text-muted-foreground text-center">
+                    Create keyword clusters to monitor their health and performance.
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
-              filteredSuggestions.map((suggestion) => (
-                <div key={suggestion.keyword} className="border rounded-md p-4">
-                  <h4 className="font-semibold">{suggestion.keyword}</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Relevance Score: {suggestion.score.toFixed(2)}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Source: {suggestion.source}
-                  </p>
-                  {suggestion.rationale && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Rationale: {suggestion.rationale}
-                    </p>
-                  )}
-                  {suggestion.related_clusters && suggestion.related_clusters.length > 0 && (
-                    <div className="mt-2">
-                      <p className="text-xs font-medium">Related Clusters:</p>
-                      <ul className="list-disc list-inside text-xs text-muted-foreground">
-                        {suggestion.related_clusters.map((cluster, index) => (
-                          <li key={index}>{cluster}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="mt-4 flex justify-end gap-2">
-                    {suggestion.status === 'pending' && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSuggestionAction(suggestion.keyword, 'dismiss')}
-                        >
-                          Dismiss
+              filteredClusters?.map((cluster) => {
+                const health = getClusterHealth(cluster);
+                const trackingCount = trackingData?.filter(t => t.cluster_id === cluster.id).length || 0;
+                
+                return (
+                  <Card key={cluster.id}>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <div>
+                        <CardTitle className="text-base">{cluster.primary_theme}</CardTitle>
+                        <CardDescription>
+                          {cluster.sub_themes?.length || 0} sub-themes • 
+                          Weight: {cluster.priority_weight || 50}%
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={getHealthBadgeVariant(health)}>
+                          {health} activity
+                        </Badge>
+                        <Button variant="outline" size="sm">
+                          <Settings className="h-4 w-4" />
                         </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleSuggestionAction(suggestion.keyword, 'approve')}
-                        >
-                          Approve
-                        </Button>
-                      </>
-                    )}
-                    {suggestion.status === 'approved' && (
-                      <span className="text-green-500 text-sm">Approved</span>
-                    )}
-                    {suggestion.status === 'dismissed' && (
-                      <span className="text-red-500 text-sm">Dismissed</span>
-                    )}
-                  </div>
-                </div>
-              ))
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between text-sm text-muted-foreground">
+                        <div className="flex items-center gap-4">
+                          <span className="flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3" />
+                            {trackingCount} tracking entries
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {cluster.professions?.length || 0} professions
+                          </span>
+                        </div>
+                        {health === 'inactive' && (
+                          <span className="flex items-center gap-1 text-amber-600">
+                            <AlertTriangle className="h-3 w-3" />
+                            Needs attention
+                          </span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </div>
         </TabsContent>
 
-        <TabsContent value="search-prompts" className="space-y-6 mt-6">
-          <NewsFetchPrompts />
+        <TabsContent value="performance" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance Insights</CardTitle>
+              <CardDescription>
+                Cluster performance metrics and recommendations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold">{clusters?.length || 0}</div>
+                    <div className="text-sm text-muted-foreground">Total Clusters</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold">
+                      {clusters?.filter(c => getClusterHealth(c) === 'high').length || 0}
+                    </div>
+                    <div className="text-sm text-muted-foreground">High Activity</div>
+                  </div>
+                  <div className="text-center p-4 border rounded-lg">
+                    <div className="text-2xl font-bold">
+                      {clusters?.filter(c => getClusterHealth(c) === 'inactive').length || 0}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Needs Attention</div>
+                  </div>
+                </div>
+                
+                <div className="text-sm text-muted-foreground">
+                  Performance insights and recommendations will be displayed here based on cluster activity and tracking data.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
