@@ -4,7 +4,6 @@ import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { 
   LayoutDashboard, 
-  FileText, 
   TrendingUp, 
   Calendar,
   Settings,
@@ -14,7 +13,6 @@ import {
   BookOpen,
   Target,
   Database,
-  Zap,
   Edit3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,13 +23,13 @@ const navigation = [
     name: "Today's Briefing",
     href: "/",
     icon: LayoutDashboard,
-    description: "AI-curated news and insights"
+    description: "AI-curated news triage and approval"
   },
   {
-    name: "Editorial",
+    name: "Editorial Hub",
     href: "/editorial",
     icon: Edit3,
-    description: "Unified content creation and research"
+    description: "Create and enhance content from sources"
   },
   {
     name: "Content Planning",
@@ -42,7 +40,7 @@ const navigation = [
         name: "MPDaily Planner",
         href: "/mpdaily-planner",
         icon: Newspaper,
-        description: "Daily newsletter content"
+        description: "Daily newsletter scheduling"
       },
       {
         name: "Magazine Planner", 
@@ -54,7 +52,7 @@ const navigation = [
         name: "Content Calendar",
         href: "/content-calendar",
         icon: Calendar,
-        description: "Editorial calendar overview"
+        description: "Unified publication calendar"
       }
     ]
   },

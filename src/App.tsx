@@ -6,7 +6,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import UnifiedEditorial from "./pages/UnifiedEditorial";
-import EditorialWorkspace from "./pages/EditorialWorkspace";
 import MPDailyPlanner from "./pages/MPDailyPlanner";
 import MagazinePlanner from "./pages/MagazinePlanner";
 import ContentCalendar from "./pages/ContentCalendar";
@@ -30,7 +29,6 @@ function App() {
               <Route path="/auth" element={<Auth />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/editorial" element={<UnifiedEditorial />} />
-              <Route path="/editorial-workspace" element={<EditorialWorkspace />} />
               <Route path="/mpdaily-planner" element={<MPDailyPlanner />} />
               <Route path="/magazine-planner" element={<MagazinePlanner />} />
               <Route path="/content-calendar" element={<ContentCalendar />} />
