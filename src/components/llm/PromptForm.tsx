@@ -1,3 +1,4 @@
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -62,7 +63,7 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess, onSw
     resolver: zodResolver(promptFormSchema),
     defaultValues: {
       function_name: prompt?.function_name || "",
-      model: prompt?.model || "gpt-4o",
+      model: prompt?.model || "gpt-4o-mini",
       prompt_text: prompt?.prompt_text || "",
       include_clusters: prompt?.include_clusters || false,
       include_tracking_summary: prompt?.include_tracking_summary || false,
@@ -113,13 +114,16 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess, onSw
   };
 
   const modelOptions = [
-    { value: "gpt-4o", label: "GPT-4o", description: "Best for complex analysis and reasoning" },
-    { value: "gpt-3.5-turbo", label: "GPT-3.5", description: "Faster, good for simpler tasks" },
-    { value: "claude-3-opus", label: "Claude 3 Opus", description: "High quality, slower" },
-    { value: "claude-3-sonnet", label: "Claude 3 Sonnet", description: "Balanced speed/quality" },
+    { value: "gpt-4o", label: "GPT-4o", description: "Most capable OpenAI model for complex reasoning" },
+    { value: "gpt-4o-mini", label: "GPT-4o Mini", description: "Cost-effective and fast, great for most tasks" },
+    { value: "claude-opus-4-20250514", label: "Claude 4 Opus", description: "Most capable and intelligent model with superior reasoning" },
+    { value: "claude-sonnet-4-20250514", label: "Claude 4 Sonnet", description: "High-performance with exceptional reasoning and efficiency" },
+    { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku", description: "Fastest model for quick responses" },
     { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small", description: "Fast with online search capability" },
     { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large", description: "More powerful with online search capability" },
-    { value: "perplexity", label: "Perplexity", description: "Best for real-time news" },
+    { value: "perplexity/sonar-small-online", label: "Perplexity Sonar Small", description: "Efficient with real-time search" },
+    { value: "perplexity/sonar-medium-online", label: "Perplexity Sonar Medium", description: "Balanced with real-time search" },
+    { value: "perplexity/sonar-large-online", label: "Perplexity Sonar Large", description: "Most powerful with real-time search" },
   ];
 
   return (

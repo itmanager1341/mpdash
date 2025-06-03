@@ -712,6 +712,7 @@ export type Database = {
       }
       news: {
         Row: {
+          byline_text: string | null
           clean_content: string | null
           content_hash: string | null
           content_variants: Json | null
@@ -728,17 +729,21 @@ export type Database = {
           original_publication_date: string | null
           original_title: string | null
           perplexity_score: number | null
+          primary_author_id: string | null
           publication_confidence_score: number | null
           publication_status: string | null
           published_article_id: string | null
           source: string | null
+          source_attribution: string | null
           source_content: string | null
           status: string | null
           summary: string | null
+          template_type: string | null
           timestamp: string | null
           url: string
         }
         Insert: {
+          byline_text?: string | null
           clean_content?: string | null
           content_hash?: string | null
           content_variants?: Json | null
@@ -755,17 +760,21 @@ export type Database = {
           original_publication_date?: string | null
           original_title?: string | null
           perplexity_score?: number | null
+          primary_author_id?: string | null
           publication_confidence_score?: number | null
           publication_status?: string | null
           published_article_id?: string | null
           source?: string | null
+          source_attribution?: string | null
           source_content?: string | null
           status?: string | null
           summary?: string | null
+          template_type?: string | null
           timestamp?: string | null
           url: string
         }
         Update: {
+          byline_text?: string | null
           clean_content?: string | null
           content_hash?: string | null
           content_variants?: Json | null
@@ -782,13 +791,16 @@ export type Database = {
           original_publication_date?: string | null
           original_title?: string | null
           perplexity_score?: number | null
+          primary_author_id?: string | null
           publication_confidence_score?: number | null
           publication_status?: string | null
           published_article_id?: string | null
           source?: string | null
+          source_attribution?: string | null
           source_content?: string | null
           status?: string | null
           summary?: string | null
+          template_type?: string | null
           timestamp?: string | null
           url?: string
         }

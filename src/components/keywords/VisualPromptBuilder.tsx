@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -65,7 +64,7 @@ export default function VisualPromptBuilder({
 }: VisualPromptBuilderProps) {
   const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentModel, setCurrentModel] = useState<string>("gpt-4o");
+  const [currentModel, setCurrentModel] = useState<string>("llama-3.1-sonar-small-128k-online");
   
   // Prompt-specific cluster weights (not saved to database)
   const [promptWeights, setPromptWeights] = useState<Record<string, number>>({});
@@ -125,7 +124,7 @@ export default function VisualPromptBuilder({
     resolver: zodResolver(promptSchema),
     defaultValues: {
       function_name: "",
-      model: "gpt-4o",
+      model: "llama-3.1-sonar-small-128k-online",
       prompt_text: "",
       include_clusters: false,
       include_tracking_summary: false,
@@ -194,7 +193,7 @@ export default function VisualPromptBuilder({
     } else {
       // Reset form for new prompt
       form.reset();
-      setCurrentModel("gpt-4o");
+      setCurrentModel("llama-3.1-sonar-small-128k-online");
       setSelectedPrimaryThemes([]);
       setSelectedSubThemes([]);
       setPromptWeights({});
@@ -353,13 +352,13 @@ export default function VisualPromptBuilder({
     );
   };
 
-  // Comprehensive model options including Perplexity-specific options
+  // Updated model options with current models
   const modelOptions = [
-    { value: "gpt-4o", label: "GPT-4o", description: "Best for complex analysis and reasoning" },
-    { value: "gpt-4o-mini", label: "GPT-4o Mini", description: "Faster and more cost-effective" },
-    { value: "gpt-3.5-turbo", label: "GPT-3.5", description: "Faster, good for simpler tasks" },
-    { value: "claude-3-opus", label: "Claude 3 Opus", description: "High quality, slower" },
-    { value: "claude-3-sonnet", label: "Claude 3 Sonnet", description: "Balanced speed/quality" },
+    { value: "gpt-4o", label: "GPT-4o", description: "Most capable OpenAI model for complex reasoning" },
+    { value: "gpt-4o-mini", label: "GPT-4o Mini", description: "Cost-effective and fast, great for most tasks" },
+    { value: "claude-opus-4-20250514", label: "Claude 4 Opus", description: "Most capable and intelligent model with superior reasoning" },
+    { value: "claude-sonnet-4-20250514", label: "Claude 4 Sonnet", description: "High-performance with exceptional reasoning and efficiency" },
+    { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku", description: "Fastest model for quick responses" },
     { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small", description: "Fast with online search capability" },
     { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large", description: "More powerful with online search capability" },
     { value: "perplexity/sonar-small-online", label: "Perplexity Sonar Small", description: "Efficient with real-time search" },
