@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -139,12 +138,24 @@ export default function EnhancedArticleAnalysis({ onAnalysisComplete }: Enhanced
       const { data, error, count } = await query;
       if (error) throw error;
 
-      // Transform the data to include analysis info with proper article_id
+      // Transform the data to include analysis info with proper type casting
       const articlesWithAnalysis: ArticleWithAnalysis[] = data.map(article => ({
         ...article,
         analysis: article.article_ai_analysis?.[0] ? {
           ...article.article_ai_analysis[0],
-          article_id: article.id // Add the missing article_id property
+          article_id: article.id,
+          extracted_keywords: Array.isArray(article.article_ai_analysis[0].extracted_keywords) 
+            ? article.article_ai_analysis[0].extracted_keywords as string[]
+            : [],
+          matched_clusters: Array.isArray(article.article_ai_analysis[0].matched_clusters)
+            ? article.article_ai_analysis[0].matched_clusters as string[]
+            : [],
+          performance_prediction: typeof article.article_ai_analysis[0].performance_prediction === 'object' && article.article_ai_analysis[0].performance_prediction !== null
+            ? article.article_ai_analysis[0].performance_prediction as AnalysisResult['performance_prediction']
+            : {},
+          analysis_data: typeof article.article_ai_analysis[0].analysis_data === 'object' && article.article_ai_analysis[0].analysis_data !== null
+            ? article.article_ai_analysis[0].analysis_data as AnalysisResult['analysis_data']
+            : {}
         } : undefined
       }));
 
