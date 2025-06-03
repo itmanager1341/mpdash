@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
@@ -13,7 +12,10 @@ import {
   BookOpen,
   Target,
   Database,
-  Edit3
+  Edit3,
+  Users,
+  Brain,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -75,6 +77,18 @@ const navigation = [
     description: "System configuration and settings",
     children: [
       {
+        name: "Admin Dashboard",
+        href: "/admin",
+        icon: Users,
+        description: "Core admin functions and controls"
+      },
+      {
+        name: "LLM Management",
+        href: "/llm-management",
+        icon: Brain,
+        description: "AI models, prompts, and usage"
+      },
+      {
         name: "Keyword Management",
         href: "/keyword-management",
         icon: Target,
@@ -85,6 +99,18 @@ const navigation = [
         href: "/editorial-dashboard",
         icon: Database,
         description: "AI prompts and automation"
+      },
+      {
+        name: "Admin Settings",
+        href: "/admin-settings",
+        icon: Settings,
+        description: "System settings and configuration"
+      },
+      {
+        name: "Documentation",
+        href: "/documentation",
+        icon: FileText,
+        description: "User guides and documentation"
       }
     ]
   }
