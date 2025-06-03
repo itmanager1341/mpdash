@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Calendar, List, Filter, Plus } from "lucide-react";
+import { Calendar, List, Filter } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 
 const ContentCalendar = () => {
@@ -35,14 +35,14 @@ const ContentCalendar = () => {
       
       if (briefsError) throw briefsError;
 
-      // Combine and format the data
+      // Combine and format the data using available date fields
       const allContent = [
         ...(newsData || []).map(item => ({
           id: item.id,
           title: item.editorial_headline || item.headline,
           type: 'news',
           channels: item.destinations || [],
-          scheduled_date: item.scheduled_date || new Date().toISOString(),
+          scheduled_date: item.timestamp || new Date().toISOString(), // Use timestamp for news items
           status: 'scheduled',
           content_variants: item.content_variants
         })),
@@ -51,7 +51,7 @@ const ContentCalendar = () => {
           title: item.title,
           type: 'editorial',
           channels: ['mpdaily'], // Default for now
-          scheduled_date: item.scheduled_date || new Date().toISOString(),
+          scheduled_date: item.updated_at || new Date().toISOString(), // Use updated_at for editor briefs
           status: item.status,
           content_variants: item.content_variants
         }))
