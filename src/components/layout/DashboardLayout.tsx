@@ -1,3 +1,4 @@
+
 import { ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
@@ -57,15 +58,10 @@ export default function DashboardLayout({
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Editorial Workspace">
-                    
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild tooltip="Editorial Dashboard">
-                    <a href="/editorial-dashboard">
-                      <Command />
-                      <span>Editorial Dashboard</span>
+                  <SidebarMenuButton asChild tooltip="Editorial Hub">
+                    <a href="/editorial">
+                      <Edit3 />
+                      <span>Editorial Hub</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
