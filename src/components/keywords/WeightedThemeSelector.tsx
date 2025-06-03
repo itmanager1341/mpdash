@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,26 +37,63 @@ export default function WeightedThemeSelector({
   readOnly = false
 }: WeightedThemeSelectorProps) {
   const [expandedThemes, setExpandedThemes] = useState<Set<string>>(new Set());
+  const [isUpdatingWeights, setIsUpdatingWeights] = useState(false);
+  const [pendingWeightUpdates, setPendingWeightUpdates] = useState<Map<string, number>>(new Map());
   
-  // Group clusters by primary theme and calculate aggregate weights
-  const themeGroups = clusters.reduce((acc: Record<string, { clusters: Cluster[], avgWeight: number, totalKeywords: number }>, cluster) => {
-    const theme = cluster.primary_theme;
-    if (!acc[theme]) {
-      acc[theme] = { clusters: [], avgWeight: 0, totalKeywords: 0 };
-    }
-    acc[theme].clusters.push(cluster);
-    return acc;
-  }, {});
+  // Debounce weight updates to prevent excessive re-renders and database calls
+  const debouncedWeightUpdate = useCallback(
+    (clusterId: string, weight: number) => {
+      setPendingWeightUpdates(prev => new Map(prev.set(clusterId, weight)));
+      
+      // Clear existing timeout and set a new one
+      const timeoutId = setTimeout(() => {
+        if (onWeightChange) {
+          setIsUpdatingWeights(true);
+          onWeightChange(clusterId, weight);
+          setPendingWeightUpdates(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(clusterId);
+            return newMap;
+          });
+          setTimeout(() => setIsUpdatingWeights(false), 500);
+        }
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    },
+    [onWeightChange]
+  );
+  
+  // Memoize theme groups to prevent unnecessary recalculations
+  const themeGroups = useMemo(() => {
+    return clusters.reduce((acc: Record<string, { clusters: Cluster[], avgWeight: number, totalKeywords: number }>, cluster) => {
+      const theme = cluster.primary_theme;
+      if (!acc[theme]) {
+        acc[theme] = { clusters: [], avgWeight: 0, totalKeywords: 0 };
+      }
+      acc[theme].clusters.push(cluster);
+      return acc;
+    }, {});
+  }, [clusters]);
 
   // Calculate aggregate metrics for each theme
-  Object.keys(themeGroups).forEach(theme => {
-    const group = themeGroups[theme];
-    const weights = group.clusters.map(c => c.priority_weight || 50);
-    const keywords = group.clusters.reduce((sum, c) => sum + (c.keywords?.length || 0), 0);
-    
-    group.avgWeight = weights.reduce((sum, w) => sum + w, 0) / weights.length;
-    group.totalKeywords = keywords;
-  });
+  const sortedThemes = useMemo(() => {
+    Object.keys(themeGroups).forEach(theme => {
+      const group = themeGroups[theme];
+      const weights = group.clusters.map(c => {
+        // Use pending weight if available, otherwise use current weight
+        const pendingWeight = pendingWeightUpdates.get(c.id);
+        return pendingWeight !== undefined ? pendingWeight : (c.priority_weight || 50);
+      });
+      const keywords = group.clusters.reduce((sum, c) => sum + (c.keywords?.length || 0), 0);
+      
+      group.avgWeight = weights.reduce((sum, w) => sum + w, 0) / weights.length;
+      group.totalKeywords = keywords;
+    });
+
+    // Sort themes by average weight (descending)
+    return Object.entries(themeGroups).sort(([, a], [, b]) => b.avgWeight - a.avgWeight);
+  }, [themeGroups, pendingWeightUpdates]);
 
   const getWeightIcon = (weight: number) => {
     if (weight >= 70) return <TrendingUp className="h-3 w-3 text-green-600" />;
@@ -71,7 +108,9 @@ export default function WeightedThemeSelector({
   };
 
   const toggleThemeExpansion = (theme: string, event: React.MouseEvent) => {
-    event.stopPropagation(); // Prevent theme selection when clicking expand
+    event.stopPropagation();
+    event.preventDefault();
+    
     const newExpanded = new Set(expandedThemes);
     if (newExpanded.has(theme)) {
       newExpanded.delete(theme);
@@ -89,33 +128,44 @@ export default function WeightedThemeSelector({
     const totalSubThemes = group.clusters.length;
     const selectedCount = selectedSubThemesInGroup.length;
     
-    // Show first few sub-themes as preview
-    const previewSubThemes = group.clusters.slice(0, 3).map((cluster: Cluster) => cluster.sub_theme);
-    const hasMore = totalSubThemes > 3;
+    // Show first few sub-themes as preview with better formatting
+    const previewSubThemes = group.clusters.slice(0, 4).map((cluster: Cluster) => cluster.sub_theme);
+    const hasMore = totalSubThemes > 4;
     
     return (
-      <div className="text-xs text-muted-foreground mt-1">
-        <div className="flex items-center gap-2">
-          <span>{previewSubThemes.join(', ')}{hasMore ? ` +${totalSubThemes - 3} more` : ''}</span>
+      <div className="text-xs text-muted-foreground mt-2 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium">Sub-themes:</span>
+          <span>{previewSubThemes.join(', ')}{hasMore ? ` +${totalSubThemes - 4} more` : ''}</span>
+        </div>
+        <div className="flex items-center gap-3">
           {selectedCount > 0 && (
-            <Badge variant="secondary" className="text-xs px-1 py-0">
-              {selectedCount}/{totalSubThemes} selected
+            <Badge variant="secondary" className="text-xs px-2 py-0.5">
+              {selectedCount} of {totalSubThemes} selected
             </Badge>
           )}
+          <span className="text-xs">
+            Avg weight: {Math.round(group.avgWeight)} • {group.totalKeywords} keywords
+          </span>
         </div>
       </div>
     );
   };
 
-  // Sort themes by average weight (descending)
-  const sortedThemes = Object.entries(themeGroups).sort(([, a], [, b]) => b.avgWeight - a.avgWeight);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Theme Priority Selection</h3>
-        <div className="text-xs text-muted-foreground">
-          Weights drive keyword allocation and search emphasis
+        <div className="flex items-center gap-2">
+          {isUpdatingWeights && (
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <div className="animate-spin h-3 w-3 border border-current border-t-transparent rounded-full"></div>
+              Updating weights...
+            </div>
+          )}
+          <div className="text-xs text-muted-foreground">
+            Weights drive keyword allocation and search emphasis
+          </div>
         </div>
       </div>
 
@@ -153,7 +203,7 @@ export default function WeightedThemeSelector({
                     variant="ghost"
                     size="sm"
                     onClick={(e) => toggleThemeExpansion(theme, e)}
-                    className="text-xs ml-2 flex items-center gap-1 px-2"
+                    className="text-xs ml-2 flex items-center gap-1 px-2 shrink-0"
                   >
                     {isExpanded ? (
                       <>
@@ -176,7 +226,8 @@ export default function WeightedThemeSelector({
                   <div className="space-y-3">
                     {group.clusters.map((cluster) => {
                       const isSubSelected = selectedSubThemes.includes(cluster.sub_theme);
-                      const weight = cluster.priority_weight || 50;
+                      const pendingWeight = pendingWeightUpdates.get(cluster.id);
+                      const weight = pendingWeight !== undefined ? pendingWeight : (cluster.priority_weight || 50);
                       
                       return (
                         <div key={cluster.id} className="space-y-2 p-2 rounded-md bg-slate-50 hover:bg-slate-100 transition-colors">
@@ -192,6 +243,9 @@ export default function WeightedThemeSelector({
                               {getWeightIcon(weight)}
                               <span className="font-mono">{weight}</span>
                               <span>• {cluster.keywords?.length || 0} keywords</span>
+                              {pendingWeight !== undefined && (
+                                <div className="animate-pulse h-2 w-2 bg-blue-500 rounded-full"></div>
+                              )}
                             </div>
                           </div>
                           
@@ -201,7 +255,7 @@ export default function WeightedThemeSelector({
                               <div className="flex items-center gap-2">
                                 <Slider
                                   value={[weight]}
-                                  onValueChange={([newWeight]) => onWeightChange(cluster.id, newWeight)}
+                                  onValueChange={([newWeight]) => debouncedWeightUpdate(cluster.id, newWeight)}
                                   max={100}
                                   min={0}
                                   step={5}

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -68,12 +67,14 @@ export default function VisualPromptBuilder({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string>("gpt-4o");
+  const [isWeightUpdateMode, setIsWeightUpdateMode] = useState(false);
   
   const queryClient = useQueryClient();
   
   // Extract metadata from the initial prompt if it exists
   const metadata = initialPrompt ? extractPromptMetadata(initialPrompt) : null;
   
+  // Fetch clusters for keyword clustering
   const { data: clusters, isLoading: isLoadingClusters } = useQuery({
     queryKey: ['keyword-clusters'],
     queryFn: async () => {
@@ -231,7 +232,7 @@ export default function VisualPromptBuilder({
     return () => subscription.unsubscribe();
   }, [form.watch]);
 
-  // Add mutation for updating cluster weights
+  // Add mutation for updating cluster weights with optimistic updates
   const updateClusterWeightMutation = useMutation({
     mutationFn: async ({ clusterId, weight }: { clusterId: string, weight: number }) => {
       const { error } = await supabase
@@ -241,8 +242,14 @@ export default function VisualPromptBuilder({
       
       if (error) throw error;
     },
+    onMutate: () => {
+      setIsWeightUpdateMode(true);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['keyword-clusters'] });
+    },
+    onSettled: () => {
+      setTimeout(() => setIsWeightUpdateMode(false), 1000);
     }
   });
 
@@ -359,6 +366,11 @@ export default function VisualPromptBuilder({
           <CardTitle>{initialPrompt ? "Edit Prompt" : "Create New Prompt"}</CardTitle>
           <CardDescription>
             Build a prompt template for news search and content generation
+            {isWeightUpdateMode && (
+              <span className="ml-2 text-blue-600">
+                • Weight update mode active
+              </span>
+            )}
           </CardDescription>
         </CardHeader>
         
@@ -597,7 +609,8 @@ export default function VisualPromptBuilder({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            Select themes and adjust weights to control keyword allocation and search emphasis
+                            Select themes and adjust weights to control keyword allocation and search emphasis.
+                            Weight changes are automatically saved but won't regenerate the prompt.
                           </p>
                         </TooltipContent>
                       </Tooltip>

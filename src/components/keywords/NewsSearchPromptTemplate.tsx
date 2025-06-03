@@ -1,11 +1,10 @@
-
 import { Card, CardContent } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,19 +46,55 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   readOnly = false
 }) => {
   const [isCustomizing, setIsCustomizing] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const lastGenerationRef = useRef<string>('');
   
-  // Auto-generate template when component mounts or dependencies change
+  // Auto-generate template when component mounts or key dependencies change
   useEffect(() => {
     if (!value || value.trim() === "") {
       handleGenerateTemplate();
     }
   }, []);
   
+  // Only regenerate if there are significant changes (not just weight updates)
+  useEffect(() => {
+    if (value && isCustomizing) {
+      const currentKey = JSON.stringify({
+        themes: selectedThemes.sort(),
+        recency: searchSettings?.recency_filter,
+        domain: searchSettings?.domain_filter
+      });
+      
+      // Only auto-regenerate if key settings changed, not just weights
+      if (lastGenerationRef.current && lastGenerationRef.current !== currentKey) {
+        const shouldRegenerate = window.confirm(
+          "Theme or search settings have changed. Would you like to regenerate the prompt template?"
+        );
+        if (shouldRegenerate) {
+          handleGenerateTemplate();
+        }
+      }
+      lastGenerationRef.current = currentKey;
+    }
+  }, [selectedThemes, searchSettings?.recency_filter, searchSettings?.domain_filter]);
+  
   // Generate template prompt based on clusters and sources
   const handleGenerateTemplate = () => {
-    const template = generateTemplate();
-    onChange(template);
-    setIsCustomizing(true);
+    setIsGenerating(true);
+    try {
+      const template = generateTemplate();
+      onChange(template);
+      setIsCustomizing(true);
+      
+      // Update the generation key to current settings
+      lastGenerationRef.current = JSON.stringify({
+        themes: selectedThemes.sort(),
+        recency: searchSettings?.recency_filter,
+        domain: searchSettings?.domain_filter
+      });
+    } finally {
+      setTimeout(() => setIsGenerating(false), 300);
+    }
   };
   
   const getHoursFromRecency = (recency: string): string => {
@@ -278,9 +313,10 @@ Search for articles matching these weighted criteria and provide relevance score
               variant="secondary"
               size="sm"
               className="flex items-center gap-1"
+              disabled={isGenerating}
             >
-              <RefreshCw className="h-3.5 w-3.5" /> 
-              Regenerate Template
+              <RefreshCw className={`h-3.5 w-3.5 ${isGenerating ? 'animate-spin' : ''}`} /> 
+              {isGenerating ? 'Generating...' : 'Regenerate Template'}
             </Button>
           </div>
           
@@ -290,6 +326,7 @@ Search for articles matching these weighted criteria and provide relevance score
             <AlertDescription>
               This template uses your priority sources, keywords, and themes for targeted news discovery.
               {!readOnly && " You can edit it directly or regenerate from your current settings."}
+              {isCustomizing && " Weight adjustments won't automatically regenerate the template."}
             </AlertDescription>
           </Alert>
           
