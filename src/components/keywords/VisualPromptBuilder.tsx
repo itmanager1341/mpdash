@@ -67,6 +67,10 @@ export default function VisualPromptBuilder({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentModel, setCurrentModel] = useState<string>("llama-3.1-sonar-small-128k-online");
   
+  // Add missing state declarations
+  const [selectedPrimaryThemes, setSelectedPrimaryThemes] = useState<string[]>([]);
+  const [selectedSubThemes, setSelectedSubThemes] = useState<string[]>([]);
+  
   // Prompt-specific cluster weights (not saved to database)
   const [promptWeights, setPromptWeights] = useState<Record<string, number>>({});
   
