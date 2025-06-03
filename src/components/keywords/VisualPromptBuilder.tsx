@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,7 +21,7 @@ import { Info, AlertCircle, HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import NewsSearchPromptTemplate from "./NewsSearchPromptTemplate";
-import WeightedThemeSelector from "./WeightedThemeSelector";
+import ClusterWeightEditor from "./ClusterWeightEditor";
 
 const promptSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -64,10 +65,10 @@ export default function VisualPromptBuilder({
 }: VisualPromptBuilderProps) {
   const [activeTab, setActiveTab] = useState(initialActiveTab);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
   const [currentModel, setCurrentModel] = useState<string>("gpt-4o");
-  const [isWeightUpdateMode, setIsWeightUpdateMode] = useState(false);
+  
+  // Prompt-specific cluster weights (not saved to database)
+  const [promptWeights, setPromptWeights] = useState<Record<string, number>>({});
   
   const queryClient = useQueryClient();
   
@@ -80,7 +81,7 @@ export default function VisualPromptBuilder({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('keyword_clusters')
-        .select('id, primary_theme, sub_theme, keywords')
+        .select('id, primary_theme, sub_theme, description, keywords, professions, priority_weight')
         .order('primary_theme');
         
       if (error) throw error;
@@ -153,6 +154,10 @@ export default function VisualPromptBuilder({
       const metadata = extractPromptMetadata(initialPrompt);
       const cleanPromptText = getCleanPromptText(initialPrompt.prompt_text);
       
+      // Extract prompt-specific weights from metadata
+      const savedPromptWeights = metadata?.search_settings?.prompt_weights || {};
+      setPromptWeights(savedPromptWeights);
+      
       form.reset({
         function_name: initialPrompt.function_name,
         model: initialPrompt.model,
@@ -192,6 +197,7 @@ export default function VisualPromptBuilder({
       setCurrentModel("gpt-4o");
       setSelectedPrimaryThemes([]);
       setSelectedSubThemes([]);
+      setPromptWeights({});
       setSearchSettings({
         domain_filter: "auto",
         recency_filter: "day",
@@ -232,29 +238,56 @@ export default function VisualPromptBuilder({
     return () => subscription.unsubscribe();
   }, [form.watch]);
 
-  // Add mutation for updating cluster weights with optimistic updates
-  const updateClusterWeightMutation = useMutation({
-    mutationFn: async ({ clusterId, weight }: { clusterId: string, weight: number }) => {
-      const { error } = await supabase
-        .from('keyword_clusters')
-        .update({ priority_weight: weight })
-        .eq('id', clusterId);
-      
-      if (error) throw error;
-    },
-    onMutate: () => {
-      setIsWeightUpdateMode(true);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['keyword-clusters'] });
-    },
-    onSettled: () => {
-      setTimeout(() => setIsWeightUpdateMode(false), 1000);
+  // Initialize prompt weights from database weights when clusters load
+  useEffect(() => {
+    if (clusters && Object.keys(promptWeights).length === 0) {
+      const initialWeights: Record<string, number> = {};
+      clusters.forEach(cluster => {
+        initialWeights[cluster.sub_theme] = cluster.priority_weight || 0;
+      });
+      setPromptWeights(initialWeights);
     }
-  });
+  }, [clusters, promptWeights]);
 
-  const handleWeightChange = (clusterId: string, weight: number) => {
-    updateClusterWeightMutation.mutate({ clusterId, weight });
+  const handlePrimaryThemeSelect = (theme: string) => {
+    if (selectedPrimaryThemes.includes(theme)) {
+      setSelectedPrimaryThemes(selectedPrimaryThemes.filter(t => t !== theme));
+    } else {
+      setSelectedPrimaryThemes([...selectedPrimaryThemes, theme]);
+    }
+  };
+  
+  const handleSubThemeSelect = (theme: string) => {
+    if (selectedSubThemes.includes(theme)) {
+      setSelectedSubThemes(selectedSubThemes.filter(t => t !== theme));
+    } else {
+      setSelectedSubThemes([...selectedSubThemes, theme]);
+    }
+  };
+
+  const handleWeightChange = (subTheme: string, weight: number) => {
+    setPromptWeights(prev => ({
+      ...prev,
+      [subTheme]: weight
+    }));
+  };
+
+  const handleNormalizeWeights = () => {
+    const selectedClusters = clusters?.filter(c => selectedSubThemes.includes(c.sub_theme)) || [];
+    const totalWeight = selectedClusters.reduce((sum, cluster) => sum + (promptWeights[cluster.sub_theme] || 0), 0);
+    
+    if (totalWeight === 0) return;
+    
+    const normalizedWeights: Record<string, number> = {};
+    selectedClusters.forEach(cluster => {
+      const currentWeight = promptWeights[cluster.sub_theme] || 0;
+      normalizedWeights[cluster.sub_theme] = Math.round((currentWeight / totalWeight) * 100);
+    });
+    
+    setPromptWeights(prev => ({
+      ...prev,
+      ...normalizedWeights
+    }));
   };
 
   const handleSubmit = async (data: PromptFormValues) => {
@@ -273,7 +306,8 @@ export default function VisualPromptBuilder({
             primary: selectedPrimaryThemes,
             sub: selectedSubThemes,
             professions: data.selected_themes?.professions || []
-          }
+          },
+          prompt_weights: promptWeights
         }
       };
       
@@ -310,29 +344,6 @@ export default function VisualPromptBuilder({
     }
   };
 
-  // Get current form values for template generation
-  const currentFormValues = form.getValues();
-
-  // Extract unique primary and sub themes
-  const primaryThemeOptions = Array.from(new Set(clusters?.map(c => c.primary_theme) || []));
-  const subThemeOptions = Array.from(new Set(clusters?.map(c => c.sub_theme) || []));
-  
-  const handlePrimaryThemeSelect = (theme: string) => {
-    if (selectedPrimaryThemes.includes(theme)) {
-      setSelectedPrimaryThemes(selectedPrimaryThemes.filter(t => t !== theme));
-    } else {
-      setSelectedPrimaryThemes([...selectedPrimaryThemes, theme]);
-    }
-  };
-  
-  const handleSubThemeSelect = (theme: string) => {
-    if (selectedSubThemes.includes(theme)) {
-      setSelectedSubThemes(selectedSubThemes.filter(t => t !== theme));
-    } else {
-      setSelectedSubThemes([...selectedSubThemes, theme]);
-    }
-  };
-
   // Check if the selected model has online search capabilities
   const hasOnlineSearch = (modelName: string): boolean => {
     return (
@@ -359,6 +370,12 @@ export default function VisualPromptBuilder({
     { value: "perplexity/llama-3.1-turbo-8192-online", label: "Llama 3.1 Turbo Online", description: "Fast with online search" },
   ];
 
+  // Create clusters with prompt-specific weights for the template
+  const clustersWithPromptWeights = clusters?.map(cluster => ({
+    ...cluster,
+    priority_weight: promptWeights[cluster.sub_theme] || cluster.priority_weight || 0
+  })) || [];
+
   return (
     <div className="space-y-6">
       <Card>
@@ -366,11 +383,6 @@ export default function VisualPromptBuilder({
           <CardTitle>{initialPrompt ? "Edit Prompt" : "Create New Prompt"}</CardTitle>
           <CardDescription>
             Build a prompt template for news search and content generation
-            {isWeightUpdateMode && (
-              <span className="ml-2 text-blue-600">
-                • Weight update mode active
-              </span>
-            )}
           </CardDescription>
         </CardHeader>
         
@@ -599,7 +611,7 @@ export default function VisualPromptBuilder({
                 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium">Weighted Theme Selection</h3>
+                    <h3 className="text-sm font-medium">Cluster Weight Management</h3>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -609,8 +621,7 @@ export default function VisualPromptBuilder({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            Select themes and adjust weights to control keyword allocation and search emphasis.
-                            Weight changes are automatically saved but won't regenerate the prompt.
+                            Adjust weights for this specific prompt. These weights are saved with the prompt and don't affect global cluster weights.
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -620,14 +631,15 @@ export default function VisualPromptBuilder({
                   {isLoadingClusters ? (
                     <div>Loading clusters...</div>
                   ) : (
-                    <WeightedThemeSelector
+                    <ClusterWeightEditor
                       clusters={clusters || []}
                       selectedPrimaryThemes={selectedPrimaryThemes}
                       selectedSubThemes={selectedSubThemes}
+                      promptWeights={promptWeights}
                       onPrimaryThemeSelect={handlePrimaryThemeSelect}
                       onSubThemeSelect={handleSubThemeSelect}
                       onWeightChange={handleWeightChange}
-                      readOnly={false}
+                      onNormalizeWeights={handleNormalizeWeights}
                     />
                   )}
                 </div>
@@ -636,26 +648,24 @@ export default function VisualPromptBuilder({
               <TabsContent value="test" className="space-y-4 pt-4">
                 <div className="space-y-4">
                   <div className="space-y-2 mt-4">
-                    <h4 className="text-sm font-medium">Prompt Preview</h4>
+                    <h4 className="text-sm font-medium">Generated Prompt Preview</h4>
                     <Alert variant="default" className="bg-blue-50">
                       <Info className="h-4 w-4" />
                       <AlertTitle>Preview Mode</AlertTitle>
                       <AlertDescription>
-                        This is a preview of how your prompt will appear. It combines your selected settings, sources, and clusters.
+                        This preview uses your selected themes and custom weights. The prompt will be generated automatically and can be edited below.
                       </AlertDescription>
                     </Alert>
-                    <div className="space-y-2">
-                      <Label htmlFor="prompt_text">Prompt Text</Label>
-                      <Textarea
-                        id="prompt_text"
-                        placeholder="Enter your prompt template..."
-                        className="min-h-[200px] font-mono text-sm"
-                        {...form.register("prompt_text")}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        You can use variables like {"{title}"} and {"{content}"} which will be replaced with actual data.
-                      </p>
-                    </div>
+                    
+                    <NewsSearchPromptTemplate
+                      value={form.watch("prompt_text")}
+                      onChange={(value) => form.setValue("prompt_text", value)}
+                      clusters={clustersWithPromptWeights}
+                      sources={sources || []}
+                      searchSettings={searchSettings}
+                      selectedThemes={selectedPrimaryThemes}
+                      readOnly={false}
+                    />
                   </div>
                 </div>
               </TabsContent>
