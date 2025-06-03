@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, ChevronDown, ChevronRight } from "lucide-react";
 
 interface Cluster {
   id: string;
@@ -70,7 +70,8 @@ export default function WeightedThemeSelector({
     return "bg-red-100 text-red-800 border-red-200";
   };
 
-  const toggleThemeExpansion = (theme: string) => {
+  const toggleThemeExpansion = (theme: string, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent theme selection when clicking expand
     const newExpanded = new Set(expandedThemes);
     if (newExpanded.has(theme)) {
       newExpanded.delete(theme);
@@ -78,6 +79,32 @@ export default function WeightedThemeSelector({
       newExpanded.add(theme);
     }
     setExpandedThemes(newExpanded);
+  };
+
+  const getCollapsedPreview = (theme: string, group: any) => {
+    const selectedSubThemesInGroup = group.clusters.filter((cluster: Cluster) => 
+      selectedSubThemes.includes(cluster.sub_theme)
+    );
+    
+    const totalSubThemes = group.clusters.length;
+    const selectedCount = selectedSubThemesInGroup.length;
+    
+    // Show first few sub-themes as preview
+    const previewSubThemes = group.clusters.slice(0, 3).map((cluster: Cluster) => cluster.sub_theme);
+    const hasMore = totalSubThemes > 3;
+    
+    return (
+      <div className="text-xs text-muted-foreground mt-1">
+        <div className="flex items-center gap-2">
+          <span>{previewSubThemes.join(', ')}{hasMore ? ` +${totalSubThemes - 3} more` : ''}</span>
+          {selectedCount > 0 && (
+            <Badge variant="secondary" className="text-xs px-1 py-0">
+              {selectedCount}/{totalSubThemes} selected
+            </Badge>
+          )}
+        </div>
+      </div>
+    );
   };
 
   // Sort themes by average weight (descending)
@@ -100,36 +127,51 @@ export default function WeightedThemeSelector({
           return (
             <Card key={theme} className={`transition-all ${isSelected ? 'ring-2 ring-blue-500' : ''}`}>
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge 
-                      variant={isSelected ? "default" : "secondary"}
-                      className={`cursor-pointer ${getWeightColor(group.avgWeight)}`}
-                      onClick={() => onPrimaryThemeSelect(theme)}
-                    >
-                      <div className="flex items-center gap-1">
-                        {getWeightIcon(group.avgWeight)}
-                        {theme}
-                        <span className="ml-1 text-xs">({Math.round(group.avgWeight)})</span>
+                <div className="flex items-start justify-between">
+                  <div 
+                    className="flex-1 cursor-pointer" 
+                    onClick={() => onPrimaryThemeSelect(theme)}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge 
+                        variant={isSelected ? "default" : "secondary"}
+                        className={`${getWeightColor(group.avgWeight)} cursor-pointer`}
+                      >
+                        <div className="flex items-center gap-1">
+                          {getWeightIcon(group.avgWeight)}
+                          {theme}
+                          <span className="ml-1 text-xs">({Math.round(group.avgWeight)})</span>
+                        </div>
+                      </Badge>
+                      <div className="text-xs text-muted-foreground">
+                        {group.totalKeywords} keywords • {group.clusters.length} clusters
                       </div>
-                    </Badge>
-                    <div className="text-xs text-muted-foreground">
-                      {group.totalKeywords} keywords • {group.clusters.length} clusters
                     </div>
+                    {!isExpanded && getCollapsedPreview(theme, group)}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => toggleThemeExpansion(theme)}
-                    className="text-xs"
+                    onClick={(e) => toggleThemeExpansion(theme, e)}
+                    className="text-xs ml-2 flex items-center gap-1 px-2"
                   >
-                    {isExpanded ? 'Collapse' : 'Expand'}
+                    {isExpanded ? (
+                      <>
+                        <ChevronDown className="h-3 w-3" />
+                        Collapse
+                      </>
+                    ) : (
+                      <>
+                        <ChevronRight className="h-3 w-3" />
+                        Expand
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardHeader>
               
               {isExpanded && (
-                <CardContent className="pt-0">
+                <CardContent className="pt-0 animate-accordion-down">
                   <Separator className="mb-3" />
                   <div className="space-y-3">
                     {group.clusters.map((cluster) => {
@@ -137,7 +179,7 @@ export default function WeightedThemeSelector({
                       const weight = cluster.priority_weight || 50;
                       
                       return (
-                        <div key={cluster.id} className="space-y-2">
+                        <div key={cluster.id} className="space-y-2 p-2 rounded-md bg-slate-50 hover:bg-slate-100 transition-colors">
                           <div className="flex items-center justify-between">
                             <Badge 
                               variant={isSubSelected ? "default" : "outline"}
@@ -148,14 +190,14 @@ export default function WeightedThemeSelector({
                             </Badge>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                               {getWeightIcon(weight)}
-                              <span>{weight}</span>
+                              <span className="font-mono">{weight}</span>
                               <span>• {cluster.keywords?.length || 0} keywords</span>
                             </div>
                           </div>
                           
                           {!readOnly && onWeightChange && (
                             <div className="ml-4 space-y-1">
-                              <Label className="text-xs">Adjust Priority Weight</Label>
+                              <Label className="text-xs text-muted-foreground">Priority Weight</Label>
                               <div className="flex items-center gap-2">
                                 <Slider
                                   value={[weight]}
@@ -165,15 +207,18 @@ export default function WeightedThemeSelector({
                                   step={5}
                                   className="flex-1"
                                 />
-                                <span className="text-xs w-8 text-center">{weight}</span>
+                                <span className="text-xs font-mono w-8 text-center">{weight}</span>
                               </div>
                             </div>
                           )}
                           
                           {cluster.keywords && cluster.keywords.length > 0 && (
-                            <div className="ml-4 text-xs text-muted-foreground">
-                              Keywords: {cluster.keywords.slice(0, 5).join(', ')}
-                              {cluster.keywords.length > 5 && ` +${cluster.keywords.length - 5} more`}
+                            <div className="ml-4 text-xs text-muted-foreground bg-white p-2 rounded border">
+                              <span className="font-medium">Keywords: </span>
+                              {cluster.keywords.slice(0, 8).join(', ')}
+                              {cluster.keywords.length > 8 && (
+                                <span className="text-blue-600"> +{cluster.keywords.length - 8} more</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -187,9 +232,13 @@ export default function WeightedThemeSelector({
         })}
       </div>
       
-      <div className="text-xs text-muted-foreground bg-blue-50 p-2 rounded">
-        <strong>Weight Guide:</strong> High weights (70+) get more keywords and search emphasis. 
-        Medium weights (40-69) get balanced allocation. Low weights (0-39) get minimal but still represented coverage.
+      <div className="text-xs text-muted-foreground bg-blue-50 p-3 rounded-md border border-blue-200">
+        <div className="font-medium text-blue-900 mb-1">Weight Guide:</div>
+        <div className="space-y-1">
+          <div>• <strong>High weights (70+):</strong> Get more keywords and search emphasis</div>
+          <div>• <strong>Medium weights (40-69):</strong> Balanced allocation and coverage</div>
+          <div>• <strong>Low weights (0-39):</strong> Minimal but representative coverage</div>
+        </div>
       </div>
     </div>
   );
