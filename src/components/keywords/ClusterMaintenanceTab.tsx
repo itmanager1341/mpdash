@@ -50,19 +50,18 @@ export default function ClusterMaintenanceTab({ searchTerm }: ClusterMaintenance
   const filteredClusters = clusters?.filter(cluster =>
     cluster.primary_theme.toLowerCase().includes(searchTerm.toLowerCase()) ||
     cluster.primary_theme.toLowerCase().includes(localSearchTerm.toLowerCase()) ||
-    cluster.sub_themes?.some((theme: string) => 
-      theme.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      theme.toLowerCase().includes(localSearchTerm.toLowerCase())
-    )
+    cluster.sub_theme?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cluster.sub_theme?.toLowerCase().includes(localSearchTerm.toLowerCase())
   );
 
-  // Calculate cluster health metrics
+  // Calculate cluster health metrics based on general keyword tracking activity
   const getClusterHealth = (cluster: any) => {
-    const trackingCount = trackingData?.filter(t => 
-      t.cluster_id === cluster.id
-    ).length || 0;
+    // Since keyword_tracking doesn't have cluster_id, we'll use a simple heuristic
+    // based on whether the cluster has keywords and if any tracking data exists
+    const hasKeywords = cluster.keywords && cluster.keywords.length > 0;
+    const trackingCount = trackingData?.length || 0;
     
-    if (trackingCount === 0) return 'inactive';
+    if (!hasKeywords || trackingCount === 0) return 'inactive';
     if (trackingCount < 5) return 'low';
     if (trackingCount < 15) return 'medium';
     return 'high';
@@ -122,7 +121,7 @@ export default function ClusterMaintenanceTab({ searchTerm }: ClusterMaintenance
             ) : (
               filteredClusters?.map((cluster) => {
                 const health = getClusterHealth(cluster);
-                const trackingCount = trackingData?.filter(t => t.cluster_id === cluster.id).length || 0;
+                const keywordCount = cluster.keywords?.length || 0;
                 
                 return (
                   <Card key={cluster.id}>
@@ -130,8 +129,7 @@ export default function ClusterMaintenanceTab({ searchTerm }: ClusterMaintenance
                       <div>
                         <CardTitle className="text-base">{cluster.primary_theme}</CardTitle>
                         <CardDescription>
-                          {cluster.sub_themes?.length || 0} sub-themes • 
-                          Weight: {cluster.priority_weight || 50}%
+                          {cluster.sub_theme} • Weight: {cluster.priority_weight || 50}%
                         </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
@@ -148,7 +146,7 @@ export default function ClusterMaintenanceTab({ searchTerm }: ClusterMaintenance
                         <div className="flex items-center gap-4">
                           <span className="flex items-center gap-1">
                             <TrendingUp className="h-3 w-3" />
-                            {trackingCount} tracking entries
+                            {keywordCount} keywords
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="h-3 w-3" />

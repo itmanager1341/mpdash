@@ -150,10 +150,11 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
 
   // Helper function to get schedule info for a prompt
   const getPromptSchedule = (promptId: string) => {
-    return scheduledTasks?.find(task => 
-      task.parameters?.promptId === promptId ||
-      task.job_name.includes(allPrompts?.find(p => p.id === promptId)?.function_name.toLowerCase().replace(/\s+/g, '_') || '')
-    );
+    return scheduledTasks?.find(task => {
+      const params = task.parameters as { promptId?: string };
+      return params?.promptId === promptId ||
+        task.job_name.includes(allPrompts?.find(p => p.id === promptId)?.function_name.toLowerCase().replace(/\s+/g, '_') || '');
+    });
   };
   
   const filteredPrompts = allPrompts?.filter(prompt => 
