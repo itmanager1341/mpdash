@@ -95,12 +95,6 @@ const navigation = [
         description: "Keywords, clusters, and prompts"
       },
       {
-        name: "Editorial Settings",
-        href: "/editorial-dashboard",
-        icon: Database,
-        description: "AI prompts and automation"
-      },
-      {
         name: "Admin Settings",
         href: "/admin-settings",
         icon: Settings,

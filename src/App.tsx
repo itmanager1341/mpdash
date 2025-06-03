@@ -11,7 +11,6 @@ import MagazinePlanner from "./pages/MagazinePlanner";
 import ContentCalendar from "./pages/ContentCalendar";
 import Performance from "./pages/Performance";
 import KeywordManagement from "./pages/KeywordManagement";
-import EditorialDashboard from "./pages/EditorialDashboard";
 import Admin from "./pages/Admin";
 import AdminSettings from "./pages/AdminSettings";
 import LlmManagement from "./pages/LlmManagement";
@@ -38,7 +37,6 @@ function App() {
               <Route path="/content-calendar" element={<ContentCalendar />} />
               <Route path="/performance-dashboard" element={<Performance />} />
               <Route path="/keyword-management" element={<KeywordManagement />} />
-              <Route path="/editorial-dashboard" element={<EditorialDashboard />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin-settings" element={<AdminSettings />} />
               <Route path="/llm-management" element={<LlmManagement />} />
