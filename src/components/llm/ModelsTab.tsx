@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings, TestTube2, Search, DollarSign, Zap, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Settings, TestTube2, Search, DollarSign, Zap, Clock, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ModelTestingForm from "./ModelTestingForm";
@@ -44,7 +45,7 @@ export default function ModelsTab() {
   const [showTesting, setShowTesting] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
 
-  // Enhanced model data with comprehensive information
+  // Updated model data with current Perplexity pricing and naming
   const models: EnhancedModel[] = [
     {
       id: "gpt-4o",
@@ -61,7 +62,7 @@ export default function ModelsTab() {
       avgResponseTime: "2-4s",
       speed: "Medium",
       costTier: "Premium",
-      recommendedFor: ["Complex analysis", "Content generation", "Editorial tasks", "Multi-modal processing"]
+      recommendedFor: ["Complex editorial analysis", "Multi-step reasoning", "Content generation with citations", "Vision + text analysis", "Function calling for data retrieval"]
     },
     {
       id: "gpt-4o-mini",
@@ -78,7 +79,7 @@ export default function ModelsTab() {
       avgResponseTime: "1-2s",
       speed: "Fast",
       costTier: "Budget",
-      recommendedFor: ["Quick analysis", "Simple content tasks", "High-volume operations"]
+      recommendedFor: ["Quick article summaries", "Simple content tasks", "High-volume operations", "Basic content analysis", "Fast content generation"]
     },
     {
       id: "text-embedding-3-small",
@@ -95,11 +96,11 @@ export default function ModelsTab() {
       avgResponseTime: "200-500ms",
       speed: "Fast",
       costTier: "Budget",
-      recommendedFor: ["Content similarity", "Semantic search", "Content clustering"]
+      recommendedFor: ["Content similarity analysis", "Semantic search", "Content clustering", "Related article detection", "Keyword matching"]
     },
     {
       id: "llama-3.1-sonar-small-128k-online",
-      name: "Llama 3.1 Sonar Small",
+      name: "Llama 3.1 Sonar Small Online",
       provider: "Perplexity",
       type: "Real-time Search",
       description: "8B parameter model with live internet search capabilities",
@@ -112,11 +113,11 @@ export default function ModelsTab() {
       avgResponseTime: "3-8s",
       speed: "Medium",
       costTier: "Budget",
-      recommendedFor: ["News research", "Current events", "Real-time market data"]
+      recommendedFor: ["News research", "Current market trends", "Real-time competitor analysis", "Breaking news monitoring", "Quick fact-checking"]
     },
     {
       id: "llama-3.1-sonar-large-128k-online",
-      name: "Llama 3.1 Sonar Large",
+      name: "Llama 3.1 Sonar Large Online",
       provider: "Perplexity",
       type: "Real-time Search",
       description: "70B parameter model with comprehensive search capabilities",
@@ -129,7 +130,24 @@ export default function ModelsTab() {
       avgResponseTime: "5-12s",
       speed: "Slow",
       costTier: "Standard",
-      recommendedFor: ["Deep research", "Complex analysis", "Comprehensive content generation"]
+      recommendedFor: ["Deep market research", "Complex trend analysis", "Comprehensive news synthesis", "Multi-source fact verification", "Industry intelligence gathering"]
+    },
+    {
+      id: "llama-3.1-sonar-huge-128k-online",
+      name: "Llama 3.1 Sonar Huge Online",
+      provider: "Perplexity",
+      type: "Real-time Search",
+      description: "405B parameter model for the most demanding search and analysis tasks",
+      capabilities: ["text", "real-time-search", "advanced-analysis"],
+      maxTokens: 4096,
+      contextWindow: 127072,
+      isAvailable: true,
+      defaultSettings: { temperature: 0.2, topP: 0.9 },
+      costPer1MTokens: { input: 5.00, output: 5.00 },
+      avgResponseTime: "8-20s",
+      speed: "Slow",
+      costTier: "Premium",
+      recommendedFor: ["Executive-level research", "Strategic market analysis", "Complex regulatory research", "Multi-layered industry investigations", "High-stakes content verification"]
     },
     {
       id: "claude-3-5-sonnet",
@@ -146,7 +164,7 @@ export default function ModelsTab() {
       avgResponseTime: "3-6s",
       speed: "Medium",
       costTier: "Premium",
-      recommendedFor: ["Editorial analysis", "Long-form content", "Research synthesis"]
+      recommendedFor: ["Long-form editorial analysis", "Document synthesis", "Complex reasoning tasks", "Research paper analysis", "Multi-document comparison"]
     }
   ];
 
@@ -249,225 +267,242 @@ export default function ModelsTab() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4 justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">AI Models</h2>
-          <p className="text-muted-foreground">Compare and manage AI models with pricing and performance data</p>
-        </div>
-        <Button 
-          onClick={() => {
-            toast.info("API keys management", {
-              description: "Configure API keys in the API Keys tab.",
-            });
-          }}
-          variant="outline"
-        >
-          <Settings className="mr-2 h-4 w-4" />
-          Manage API Keys
-        </Button>
-      </div>
-
-      {/* Filters and Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filter & Search</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search models..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            <Select value={filterProvider} onValueChange={setFilterProvider}>
-              <SelectTrigger>
-                <SelectValue placeholder="Provider" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Providers</SelectItem>
-                {providers.map(provider => (
-                  <SelectItem key={provider} value={provider.toLowerCase()}>{provider}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger>
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {types.map(type => (
-                  <SelectItem key={type} value={type.toLowerCase()}>{type}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="cost">Cost</SelectItem>
-                <SelectItem value="speed">Speed</SelectItem>
-                <SelectItem value="tokens">Context Size</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button 
-              variant="outline" 
-              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            >
-              {sortOrder === 'asc' ? '↑' : '↓'} Sort
-            </Button>
+    <TooltipProvider>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">AI Models</h2>
+            <p className="text-muted-foreground">Compare and manage AI models with real-time pricing and performance data</p>
           </div>
-        </CardContent>
-      </Card>
+          <Button 
+            onClick={() => {
+              toast.info("API keys management", {
+                description: "Configure API keys in the API Keys tab.",
+              });
+            }}
+            variant="outline"
+          >
+            <Settings className="mr-2 h-4 w-4" />
+            Manage API Keys
+          </Button>
+        </div>
 
-      {/* Models Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Model</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Context</TableHead>
-                <TableHead>Cost/1M</TableHead>
-                <TableHead>Speed</TableHead>
-                <TableHead>Best For</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredModels.map((model) => {
-                const hasKey = hasActiveKey(model.provider);
-                
-                return (
-                  <TableRow key={model.id} className={!hasKey ? "opacity-70" : ""}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{model.name}</div>
-                        <div className="text-sm text-muted-foreground">{model.description}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{model.provider}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{model.type}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {model.contextWindow.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {model.costPer1MTokens ? (
-                          <>
-                            <div className="text-sm">
-                              <span className="text-muted-foreground">In:</span> ${model.costPer1MTokens.input}
-                            </div>
-                            {model.costPer1MTokens.output > 0 && (
-                              <div className="text-sm">
-                                <span className="text-muted-foreground">Out:</span> ${model.costPer1MTokens.output}
-                              </div>
-                            )}
-                            <Badge className={getCostTierColor(model.costTier)} variant="outline">
-                              {model.costTier}
-                            </Badge>
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">N/A</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getSpeedIcon(model.speed)}
-                        <span className="text-sm">{model.avgResponseTime}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        {model.recommendedFor?.slice(0, 2).map((use, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs mr-1">
-                            {use}
-                          </Badge>
-                        ))}
-                        {(model.recommendedFor?.length || 0) > 2 && (
-                          <div className="text-xs text-muted-foreground">
-                            +{(model.recommendedFor?.length || 0) - 2} more
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {hasKey ? (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 text-red-600" />
-                        )}
-                        <span className="text-sm">
-                          {hasKey ? "Available" : "No API Key"}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleConfigure(model)}
-                          disabled={!hasKey}
-                        >
-                          <Settings className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleTest(model)}
-                          disabled={!hasKey}
-                        >
-                          <TestTube2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-          
-          {filteredModels.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              No models found matching your criteria
+        {/* Filters and Search */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Filter & Search</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search models..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              <Select value={filterProvider} onValueChange={setFilterProvider}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Providers</SelectItem>
+                  {providers.map(provider => (
+                    <SelectItem key={provider} value={provider.toLowerCase()}>{provider}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {types.map(type => (
+                    <SelectItem key={type} value={type.toLowerCase()}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="cost">Cost</SelectItem>
+                  <SelectItem value="speed">Speed</SelectItem>
+                  <SelectItem value="tokens">Context Size</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="outline" 
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              >
+                {sortOrder === 'asc' ? '↑' : '↓'} Sort
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Testing Modal */}
-      {showTesting && selectedModel && (
-        <ModelTestingForm
-          model={selectedModel}
-          open={showTesting}
-          onOpenChange={setShowTesting}
-        />
-      )}
+        {/* Models Table */}
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Model</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Context</TableHead>
+                  <TableHead>Cost/1M Tokens</TableHead>
+                  <TableHead>Speed</TableHead>
+                  <TableHead>Best For</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredModels.map((model) => {
+                  const hasKey = hasActiveKey(model.provider);
+                  
+                  return (
+                    <TableRow key={model.id} className={!hasKey ? "opacity-70" : ""}>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{model.name}</div>
+                          <div className="text-sm text-muted-foreground max-w-xs">{model.description}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{model.provider}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{model.type}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {model.contextWindow.toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          {model.costPer1MTokens ? (
+                            <>
+                              <div className="text-sm">
+                                <span className="text-muted-foreground">In:</span> ${model.costPer1MTokens.input}
+                              </div>
+                              {model.costPer1MTokens.output > 0 && (
+                                <div className="text-sm">
+                                  <span className="text-muted-foreground">Out:</span> ${model.costPer1MTokens.output}
+                                </div>
+                              )}
+                              <Badge className={getCostTierColor(model.costTier)} variant="outline">
+                                {model.costTier}
+                              </Badge>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">N/A</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getSpeedIcon(model.speed)}
+                          <span className="text-sm">{model.avgResponseTime}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="space-y-1 max-w-40">
+                              {model.recommendedFor?.slice(0, 2).map((use, idx) => (
+                                <Badge key={idx} variant="outline" className="text-xs mr-1">
+                                  {use.length > 20 ? `${use.substring(0, 20)}...` : use}
+                                </Badge>
+                              ))}
+                              {(model.recommendedFor?.length || 0) > 2 && (
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  +{(model.recommendedFor?.length || 0) - 2} more
+                                  <Info className="h-3 w-3" />
+                                </div>
+                              )}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="left" className="max-w-sm">
+                            <div className="space-y-1">
+                              <p className="font-semibold">Best for:</p>
+                              <ul className="text-sm space-y-1">
+                                {model.recommendedFor?.map((use, idx) => (
+                                  <li key={idx}>• {use}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {hasKey ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <span className="text-sm">
+                            {hasKey ? "Available" : "No API Key"}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleConfigure(model)}
+                            disabled={!hasKey}
+                          >
+                            <Settings className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleTest(model)}
+                            disabled={!hasKey}
+                          >
+                            <TestTube2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            
+            {filteredModels.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                No models found matching your criteria
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Configuration Modal */}
-      {showConfig && selectedModel && (
-        <ModelConfigForm
-          model={selectedModel}
-          open={showConfig}
-          onOpenChange={setShowConfig}
-        />
-      )}
-    </div>
+        {/* Testing Modal */}
+        {showTesting && selectedModel && (
+          <ModelTestingForm
+            model={selectedModel}
+            open={showTesting}
+            onOpenChange={setShowTesting}
+          />
+        )}
+
+        {/* Configuration Modal */}
+        {showConfig && selectedModel && (
+          <ModelConfigForm
+            model={selectedModel}
+            open={showConfig}
+            onOpenChange={setShowConfig}
+          />
+        )}
+      </div>
+    </TooltipProvider>
   );
 }
