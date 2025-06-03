@@ -1,54 +1,22 @@
-
 import { ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { 
-  SidebarProvider, 
-  Sidebar, 
-  SidebarContent, 
-  SidebarHeader,
-  SidebarFooter,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarTrigger,
-  SidebarInset
-} from "@/components/ui/sidebar";
-import { 
-  CalendarDays, 
-  LayoutDashboard, 
-  Mail, 
-  Settings, 
-  BookOpen, 
-  PieChart, 
-  FileText, 
-  Sparkles, 
-  LogOut,
-  User,
-  Search,
-  Command,
-  Edit3,
-  Shield
-} from "lucide-react";
+import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
+import { CalendarDays, LayoutDashboard, Mail, Settings, BookOpen, PieChart, FileText, Sparkles, LogOut, User, Search, Command, Edit3, Shield } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel,
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-
 interface DashboardLayoutProps {
   children: ReactNode;
 }
-
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { profile, roles, signOut, isAdmin } = useAuth();
-  
+export default function DashboardLayout({
+  children
+}: DashboardLayoutProps) {
+  const {
+    profile,
+    roles,
+    signOut,
+    isAdmin
+  } = useAuth();
   const getInitials = () => {
     if (profile?.first_name && profile?.last_name) {
       return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
@@ -57,7 +25,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
     return "U";
   };
-  
   const getDisplayName = () => {
     if (profile?.first_name && profile?.last_name) {
       return `${profile.first_name} ${profile.last_name}`;
@@ -66,9 +33,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
     return "User";
   };
-
-  return (
-    <SidebarProvider>
+  return <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <Sidebar>
           <SidebarHeader className="flex items-center justify-between p-4">
@@ -93,10 +58,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="Editorial Workspace">
-                    <a href="/editorial-workspace">
-                      <Edit3 />
-                      <span>Editorial Workspace</span>
-                    </a>
+                    
                   </SidebarMenuButton>
                 </SidebarMenuItem>
                 <SidebarMenuItem>
@@ -169,8 +131,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                {isAdmin && (
-                  <>
+                {isAdmin && <>
                     <SidebarMenuItem>
                       <SidebarMenuButton asChild tooltip="Admin Dashboard">
                         <a href="/admin">
@@ -187,8 +148,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         </a>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  </>
-                )}
+                  </>}
               </SidebarMenu>
             </SidebarGroup>
           </SidebarContent>
@@ -211,11 +171,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                     <AvatarFallback>{getInitials()}</AvatarFallback>
                   </Avatar>
                   <span className="hidden md:inline-block">{getDisplayName()}</span>
-                  {roles.length > 0 && (
-                    <Badge variant="outline" className="ml-1 capitalize">
+                  {roles.length > 0 && <Badge variant="outline" className="ml-1 capitalize">
                       {roles[0]}
-                    </Badge>
-                  )}
+                    </Badge>}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
@@ -239,6 +197,5 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           </main>
         </SidebarInset>
       </div>
-    </SidebarProvider>
-  );
+    </SidebarProvider>;
 }
