@@ -139,10 +139,13 @@ export default function EnhancedArticleAnalysis({ onAnalysisComplete }: Enhanced
       const { data, error, count } = await query;
       if (error) throw error;
 
-      // Transform the data to include analysis info
+      // Transform the data to include analysis info with proper article_id
       const articlesWithAnalysis: ArticleWithAnalysis[] = data.map(article => ({
         ...article,
-        analysis: article.article_ai_analysis?.[0] || undefined
+        analysis: article.article_ai_analysis?.[0] ? {
+          ...article.article_ai_analysis[0],
+          article_id: article.id // Add the missing article_id property
+        } : undefined
       }));
 
       // Apply analysis filter
