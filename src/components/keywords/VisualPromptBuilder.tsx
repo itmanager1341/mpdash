@@ -20,6 +20,7 @@ import { Info, AlertCircle, HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import NewsSearchPromptTemplate from "./NewsSearchPromptTemplate";
+import WeightedThemeSelector from "./WeightedThemeSelector";
 
 const promptSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -226,6 +227,25 @@ export default function VisualPromptBuilder({
     
     return () => subscription.unsubscribe();
   }, [form.watch]);
+
+  // Add mutation for updating cluster weights
+  const updateClusterWeightMutation = useMutation({
+    mutationFn: async ({ clusterId, weight }: { clusterId: string, weight: number }) => {
+      const { error } = await supabase
+        .from('keyword_clusters')
+        .update({ priority_weight: weight })
+        .eq('id', clusterId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['keyword-clusters'] });
+    }
+  });
+
+  const handleWeightChange = (clusterId: string, weight: number) => {
+    updateClusterWeightMutation.mutate({ clusterId, weight });
+  };
 
   const handleSubmit = async (data: PromptFormValues) => {
     try {
@@ -564,7 +584,7 @@ export default function VisualPromptBuilder({
                 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium">Theme Selection</h3>
+                    <h3 className="text-sm font-medium">Weighted Theme Selection</h3>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -574,7 +594,7 @@ export default function VisualPromptBuilder({
                         </TooltipTrigger>
                         <TooltipContent>
                           <p className="max-w-xs">
-                            Select themes to include in your prompt for better context
+                            Select themes and adjust weights to control keyword allocation and search emphasis
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -584,39 +604,15 @@ export default function VisualPromptBuilder({
                   {isLoadingClusters ? (
                     <div>Loading clusters...</div>
                   ) : (
-                    <>
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Primary Themes</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {primaryThemeOptions.map((theme) => (
-                            <Badge 
-                              key={theme}
-                              variant={selectedPrimaryThemes.includes(theme) ? "default" : "secondary"}
-                              className="cursor-pointer"
-                              onClick={() => handlePrimaryThemeSelect(theme)}
-                            >
-                              {theme}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Sub Themes</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {subThemeOptions.map((theme) => (
-                            <Badge 
-                              key={theme}
-                              variant={selectedSubThemes.includes(theme) ? "default" : "secondary"}
-                              className="cursor-pointer"
-                              onClick={() => handleSubThemeSelect(theme)}
-                            >
-                              {theme}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </>
+                    <WeightedThemeSelector
+                      clusters={clusters || []}
+                      selectedPrimaryThemes={selectedPrimaryThemes}
+                      selectedSubThemes={selectedSubThemes}
+                      onPrimaryThemeSelect={handlePrimaryThemeSelect}
+                      onSubThemeSelect={handleSubThemeSelect}
+                      onWeightChange={handleWeightChange}
+                      readOnly={false}
+                    />
                   )}
                 </div>
               </TabsContent>

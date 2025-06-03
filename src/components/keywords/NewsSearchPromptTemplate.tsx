@@ -74,19 +74,23 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       s.source_type && s.source_type.toLowerCase().includes('competitor')
     );
     
-    // Filter clusters by selected themes or use top themes
+    // Filter clusters by selected themes or use top weighted themes
     let filteredClusters = [];
     if (selectedThemes && selectedThemes.length > 0) {
       filteredClusters = validClusters.filter(cluster => 
         selectedThemes.includes(cluster.primary_theme)
       );
     } else {
-      // Get unique primary themes, limit to top 5
-      const uniqueThemes = Array.from(new Set(validClusters.map(c => c.primary_theme))).slice(0, 5);
+      // Sort by priority weight and get top themes
+      const sortedClusters = validClusters.sort((a, b) => (b.priority_weight || 50) - (a.priority_weight || 50));
+      const uniqueThemes = Array.from(new Set(sortedClusters.map(c => c.primary_theme))).slice(0, 5);
       filteredClusters = validClusters.filter(cluster => 
         uniqueThemes.includes(cluster.primary_theme)
       );
     }
+    
+    // Calculate total weight for proportional allocation
+    const totalWeight = filteredClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0);
     
     const timeRange = searchSettings?.recency_filter
       ? getHoursFromRecency(searchSettings.recency_filter)
@@ -112,9 +116,9 @@ SEARCH & FILTER RULES:
       template += sourceQueries.join(' OR ') + '\n\n';
     }
 
-    template += `3. Content Focus Areas & Keywords:\n\n`;
+    template += `3. WEIGHTED Content Focus Areas & Keywords:\n\n`;
     
-    // Group clusters by primary theme with keywords and sub-themes
+    // Group clusters by primary theme with weights and keywords
     const clustersByTheme = filteredClusters.reduce((acc: Record<string, any[]>, cluster) => {
       const theme = cluster.primary_theme || "General";
       if (!acc[theme]) acc[theme] = [];
@@ -122,8 +126,25 @@ SEARCH & FILTER RULES:
       return acc;
     }, {});
     
-    Object.entries(clustersByTheme).forEach(([theme, themeClusters]: [string, any[]]) => {
-      template += `${theme}:\n`;
+    // Sort themes by aggregate weight
+    const sortedThemeEntries = Object.entries(clustersByTheme).sort(([, a], [, b]) => {
+      const weightA = a.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / a.length;
+      const weightB = b.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / b.length;
+      return weightB - weightA;
+    });
+    
+    sortedThemeEntries.forEach(([theme, themeClusters]: [string, any[]]) => {
+      // Calculate theme aggregate weight
+      const themeWeight = themeClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0) / themeClusters.length;
+      const weightPercentage = totalWeight > 0 ? Math.round((themeWeight / totalWeight) * 100 * themeClusters.length) : 0;
+      
+      // Add weight emphasis
+      let emphasis = "";
+      if (themeWeight >= 70) emphasis = " [HIGH PRIORITY - Focus heavily on this area]";
+      else if (themeWeight >= 40) emphasis = " [MEDIUM PRIORITY - Balanced coverage]";
+      else emphasis = " [LOW PRIORITY - Minimal but representative coverage]";
+      
+      template += `${theme} (Priority Weight: ${Math.round(themeWeight)}, Search Allocation: ${weightPercentage}%)${emphasis}:\n`;
       
       // Collect all keywords and sub-themes for this primary theme
       const allKeywords: string[] = [];
@@ -133,9 +154,11 @@ SEARCH & FILTER RULES:
         if (cluster.sub_theme && !subThemes.includes(cluster.sub_theme)) {
           subThemes.push(cluster.sub_theme);
         }
-        // Safely handle keywords array
+        // Safely handle keywords array with weight-based allocation
         if (cluster.keywords && Array.isArray(cluster.keywords)) {
-          allKeywords.push(...cluster.keywords);
+          const clusterWeight = cluster.priority_weight || 50;
+          const keywordAllocation = Math.max(3, Math.round((clusterWeight / 100) * 12)); // 3-12 keywords based on weight
+          allKeywords.push(...cluster.keywords.slice(0, keywordAllocation));
         }
       });
       
@@ -144,9 +167,9 @@ SEARCH & FILTER RULES:
         template += `  Sub-areas: ${subThemes.join(', ')}\n`;
       }
       
-      // Add unique keywords (limit to most relevant)
+      // Add unique keywords with weight-based selection
       if (allKeywords.length > 0) {
-        const uniqueKeywords = Array.from(new Set(allKeywords)).slice(0, 8);
+        const uniqueKeywords = Array.from(new Set(allKeywords));
         template += `  Keywords: ${uniqueKeywords.join(', ')}\n`;
       }
       
@@ -168,12 +191,41 @@ SEARCH & FILTER RULES:
 • Exclude consumer-focused content and basic homebuying advice
 • Look for competitive intelligence and market opportunities
 
-SCORING CRITERIA:
-- Direct impact on mortgage business operations (30%)
-- Regulatory/policy implications (25%)
-- Market trends and data (20%)
-- Technology and innovation (15%)
-- Competitive landscape changes (10%)
+DYNAMIC SCORING CRITERIA (Based on Content Weights):
+`;
+
+    // Calculate dynamic scoring based on cluster weights
+    const highWeightThemes = sortedThemeEntries.filter(([, clusters]) => {
+      const avgWeight = clusters.reduce((sum, c) => sum + (c.priority_weight || 50), 0) / clusters.length;
+      return avgWeight >= 70;
+    }).map(([theme]) => theme);
+
+    const mediumWeightThemes = sortedThemeEntries.filter(([, clusters]) => {
+      const avgWeight = clusters.reduce((sum, c) => sum + (c.priority_weight || 50), 0) / clusters.length;
+      return avgWeight >= 40 && avgWeight < 70;
+    }).map(([theme]) => theme);
+
+    if (highWeightThemes.length > 0) {
+      template += `- High Priority Topics (${highWeightThemes.join(', ')}): 40%\n`;
+      template += `- Regulatory/policy implications: 25%\n`;
+      template += `- Market trends and data: 20%\n`;
+      template += `- Technology and innovation: 10%\n`;
+      template += `- General competitive landscape: 5%\n`;
+    } else {
+      // Fallback to balanced scoring
+      template += `- Direct impact on mortgage business operations: 30%\n`;
+      template += `- Regulatory/policy implications: 25%\n`;
+      template += `- Market trends and data: 20%\n`;
+      template += `- Technology and innovation: 15%\n`;
+      template += `- Competitive landscape changes: 10%\n`;
+    }
+
+    template += `
+WEIGHT-BASED SEARCH STRATEGY:
+• Give higher relevance scores to articles matching high-priority themes (70+ weight)
+• Ensure balanced representation across all selected themes
+• Adjust keyword density in search queries based on cluster weights
+• Prioritize sources that frequently cover high-weight topic areas
 
 OUTPUT FORMAT:
 Return 5-10 articles in this JSON structure:
@@ -183,16 +235,17 @@ Return 5-10 articles in this JSON structure:
     {
       "title": "Full headline of the article",
       "url": "Direct link to article", 
-      "focus_area": "One of the primary themes above",
+      "focus_area": "One of the weighted themes above",
       "summary": "1-2 sentence summary highlighting business impact and urgency",
       "source": "Source name and tier",
       "relevance_score": 85,
-      "justification": "Brief explanation of score and business relevance"
+      "cluster_weight": 75,
+      "justification": "Brief explanation of score, weight consideration, and business relevance"
     }
   ]
 }
 
-Search for articles matching these criteria and provide relevance scores (0-100) with justification.`;
+Search for articles matching these weighted criteria and provide relevance scores (0-100) with cluster weight consideration and justification.`;
 
     return template;
   };

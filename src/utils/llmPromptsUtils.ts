@@ -123,3 +123,39 @@ export function isNewsSearchPrompt(prompt: LlmPrompt): boolean {
 export function filterNewsSearchPrompts(prompts: LlmPrompt[]): LlmPrompt[] {
   return prompts.filter(isNewsSearchPrompt);
 }
+
+export function calculateClusterWeightDistribution(clusters: any[], selectedThemes: string[] = []) {
+  const filteredClusters = selectedThemes.length > 0 
+    ? clusters.filter(c => selectedThemes.includes(c.primary_theme))
+    : clusters;
+    
+  const totalWeight = filteredClusters.reduce((sum, cluster) => sum + (cluster.priority_weight || 50), 0);
+  
+  return filteredClusters.map(cluster => ({
+    ...cluster,
+    weightPercentage: totalWeight > 0 ? Math.round((cluster.priority_weight || 50) / totalWeight * 100) : 0,
+    keywordAllocation: Math.max(3, Math.round(((cluster.priority_weight || 50) / 100) * 12))
+  }));
+}
+
+export function generateWeightedScoringCriteria(clusters: any[], selectedThemes: string[] = []) {
+  const weightedClusters = calculateClusterWeightDistribution(clusters, selectedThemes);
+  
+  // Group by weight tiers
+  const highPriority = weightedClusters.filter(c => (c.priority_weight || 50) >= 70);
+  const mediumPriority = weightedClusters.filter(c => (c.priority_weight || 50) >= 40 && (c.priority_weight || 50) < 70);
+  const lowPriority = weightedClusters.filter(c => (c.priority_weight || 50) < 40);
+  
+  return {
+    highPriority: highPriority.map(c => c.primary_theme),
+    mediumPriority: mediumPriority.map(c => c.primary_theme),
+    lowPriority: lowPriority.map(c => c.primary_theme),
+    scoringPercentages: {
+      high: Math.max(30, Math.min(50, highPriority.length * 10)),
+      regulatory: 25,
+      market: 20,
+      technology: 15,
+      competitive: Math.max(5, 30 - highPriority.length * 5)
+    }
+  };
+}
