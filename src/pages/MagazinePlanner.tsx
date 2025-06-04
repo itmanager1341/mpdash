@@ -1,6 +1,6 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -78,10 +78,7 @@ export default function MagazinePlanner() {
     }
   });
 
-  // Note: magazine_issues table doesn't exist in the schema, so we'll simulate it with local state
-  // In a real implementation, you would need to create this table in Supabase
-
-  const handleNewsItemDrop = (newsItem: NewsItem, targetIssueId: string) => {
+  const handleNewsItemAdd = (newsItem: NewsItem, targetIssueId: string) => {
     setIssues(prev => prev.map(issue => {
       if (issue.id === targetIssueId) {
         const isAlreadyAdded = issue.content.some(
@@ -108,7 +105,7 @@ export default function MagazinePlanner() {
     toast.success(`Added "${newsItem.original_title}" to issue`);
   };
 
-  const handleDraftDrop = (draft: any, targetIssueId: string) => {
+  const handleDraftAdd = (draft: any, targetIssueId: string) => {
     setIssues(prev => prev.map(issue => {
       if (issue.id === targetIssueId) {
         const isAlreadyAdded = issue.content.some(
@@ -133,55 +130,6 @@ export default function MagazinePlanner() {
     }));
     
     toast.success(`Added "${draft.title || draft.theme}" to issue`);
-  };
-
-  const handleDragEnd = (result: any) => {
-    const { destination, source, draggableId } = result;
-
-    if (!destination) {
-      return;
-    }
-
-    if (
-      destination.droppableId === source.droppableId &&
-      destination.index === source.index
-    ) {
-      return;
-    }
-
-    const startIssue = issues.find(issue => issue.id === source.droppableId);
-    const endIssue = issues.find(issue => issue.id === destination.droppableId);
-
-    if (!startIssue || !endIssue) {
-      return;
-    }
-
-    if (startIssue === endIssue) {
-      const newContent = Array.from(startIssue.content);
-      const [removed] = newContent.splice(source.index, 1);
-      newContent.splice(destination.index, 0, removed);
-
-      setIssues(prev => prev.map(issue =>
-        issue.id === startIssue.id
-          ? { ...issue, content: newContent }
-          : issue
-      ));
-    } else {
-      const startContent = Array.from(startIssue.content);
-      const [removed] = startContent.splice(source.index, 1);
-      const endContent = Array.from(endIssue.content);
-      endContent.splice(destination.index, 0, removed);
-
-      setIssues(prev => prev.map(issue => {
-        if (issue.id === startIssue.id) {
-          return { ...issue, content: startContent };
-        }
-        if (issue.id === endIssue.id) {
-          return { ...issue, content: endContent };
-        }
-        return issue;
-      }));
-    }
   };
 
   const createNewIssue = async () => {
@@ -309,7 +257,7 @@ export default function MagazinePlanner() {
         const parsed = JSON.parse(item.content_variants);
         return parsed.metadata || {};
       } else if (item.content_variants && typeof item.content_variants === 'object') {
-        return item.content_variants.metadata || {};
+        return (item.content_variants as any).metadata || {};
       }
       return {};
     } catch (error) {
@@ -400,14 +348,7 @@ export default function MagazinePlanner() {
                   {newsItems?.map((newsItem) => (
                     <div
                       key={newsItem.id}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify({
-                          type: 'news',
-                          data: newsItem
-                        }));
-                      }}
-                      className="p-3 border rounded-lg cursor-move hover:bg-muted/50 transition-colors"
+                      className="p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
                     >
                       <h4 className="font-medium text-sm line-clamp-2">
                         {newsItem.original_title}
@@ -424,6 +365,19 @@ export default function MagazinePlanner() {
                           ))}
                         </div>
                       )}
+                      <div className="mt-2">
+                        {issues.map((issue) => (
+                          <Button
+                            key={issue.id}
+                            variant="outline"
+                            size="sm"
+                            className="mr-1 mb-1"
+                            onClick={() => handleNewsItemAdd(newsItem, issue.id)}
+                          >
+                            Add to {issue.title}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -445,14 +399,7 @@ export default function MagazinePlanner() {
                   {drafts?.map((draft) => (
                     <div
                       key={draft.id}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('application/json', JSON.stringify({
-                          type: 'draft',
-                          data: draft
-                        }));
-                      }}
-                      className="p-3 border rounded-lg cursor-move hover:bg-muted/50 transition-colors"
+                      className="p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
                     >
                       <h4 className="font-medium text-sm line-clamp-2">
                         {draft.title || draft.theme}
@@ -470,6 +417,19 @@ export default function MagazinePlanner() {
                           </Badge>
                         )}
                       </div>
+                      <div className="mt-2">
+                        {issues.map((issue) => (
+                          <Button
+                            key={issue.id}
+                            variant="outline"
+                            size="sm"
+                            className="mr-1 mb-1"
+                            onClick={() => handleDraftAdd(draft, issue.id)}
+                          >
+                            Add to {issue.title}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -479,109 +439,88 @@ export default function MagazinePlanner() {
         </div>
 
         {/* Center Panel - Issues */}
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="space-y-6">
-            {issues.map((issue) => (
-              <Card key={issue.id}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle>
-                      <Input
-                        type="text"
-                        placeholder="Issue Title"
-                        value={issue.title}
-                        onChange={(e) => updateIssue(issue.id, 'title', e.target.value)}
-                      />
-                    </CardTitle>
-                    <Badge className={getStatusColor(issue.status)}>
-                      {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
-                    </Badge>
-                  </div>
-                  <Textarea
-                    placeholder="Issue Description"
-                    className="mt-2"
-                    value={issue.description}
-                    onChange={(e) => updateIssue(issue.id, 'description', e.target.value)}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <Droppable droppableId={issue.id} type="CONTENT">
-                    {(provided) => (
-                      <div
-                        {...provided.droppableProps}
-                        ref={provided.innerRef}
-                        className="space-y-4"
-                      >
-                        {issue.content.map((content, index) => (
-                          <Draggable
-                            key={content.id}
-                            draggableId={content.id}
-                            index={index}
-                          >
-                            {(provided) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-muted/50 transition-colors"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                                  <span className="font-medium text-sm">{content.title}</span>
-                                  <Badge className={getPriorityColor(content.priority)}>
-                                    {content.priority.charAt(0).toUpperCase() + content.priority.slice(1)}
-                                  </Badge>
-                                  {content.status !== 'pending' && (
-                                    <Badge className={getStatusColor(content.status)}>
-                                      {content.status.charAt(0).toUpperCase() + content.status.slice(1)}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Input
-                                    type="number"
-                                    placeholder="Word Count"
-                                    className="w-24 text-sm"
-                                    value={content.wordCount}
-                                    onChange={(e) => updateContent(issue.id, content.id, 'wordCount', parseInt(e.target.value))}
-                                  />
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removeContentFromIssue(issue.id, content.id)}
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        <div className="text-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addContentToIssue(issue.id, 'article')}
-                          >
-                            Add Article
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => addContentToIssue(issue.id, 'feature')}
-                          >
-                            Add Feature
-                          </Button>
-                        </div>
+        <div className="space-y-6">
+          {issues.map((issue) => (
+            <Card key={issue.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>
+                    <Input
+                      type="text"
+                      placeholder="Issue Title"
+                      value={issue.title}
+                      onChange={(e) => updateIssue(issue.id, 'title', e.target.value)}
+                    />
+                  </CardTitle>
+                  <Badge className={getStatusColor(issue.status)}>
+                    {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
+                  </Badge>
+                </div>
+                <Textarea
+                  placeholder="Issue Description"
+                  className="mt-2"
+                  value={issue.description}
+                  onChange={(e) => updateIssue(issue.id, 'description', e.target.value)}
+                />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {issue.content.map((content, index) => (
+                    <div
+                      key={content.id}
+                      className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                        <span className="font-medium text-sm">{content.title}</span>
+                        <Badge className={getPriorityColor(content.priority)}>
+                          {content.priority.charAt(0).toUpperCase() + content.priority.slice(1)}
+                        </Badge>
+                        {content.status !== 'pending' && (
+                          <Badge className={getStatusColor(content.status)}>
+                            {content.status.charAt(0).toUpperCase() + content.status.slice(1)}
+                          </Badge>
+                        )}
                       </div>
-                    )}
-                  </Droppable>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </DragDropContext>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Word Count"
+                          className="w-24 text-sm"
+                          value={content.wordCount}
+                          onChange={(e) => updateContent(issue.id, content.id, 'wordCount', parseInt(e.target.value))}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeContentFromIssue(issue.id, content.id)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addContentToIssue(issue.id, 'article')}
+                    >
+                      Add Article
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addContentToIssue(issue.id, 'feature')}
+                    >
+                      Add Feature
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
         {/* Right Panel - Actions */}
         <div>

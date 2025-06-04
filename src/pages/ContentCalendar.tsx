@@ -1,6 +1,7 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Calendar, momentLocalizer } from "react-big-calendar";
+import { Calendar, momentLocalizer, View } from "react-big-calendar";
 import moment from "moment";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import "react-big-calendar/lib/css/react-big-calendar.css";
 const localizer = momentLocalizer(moment);
 
 export default function ContentCalendar() {
-  const [view, setView] = useState('month');
+  const [view, setView] = useState<View>('month');
 
   // Fetch articles and news for calendar
   const { data: articles } = useQuery({
@@ -47,7 +48,7 @@ export default function ContentCalendar() {
   const events = [
     ...(articles?.map(article => ({
       id: article.id,
-      title: article.title || article.original_title || 'Untitled Article',
+      title: article.title || 'Untitled Article',
       start: new Date(article.published_at),
       end: new Date(article.published_at),
       resource: { type: 'article', data: article }
