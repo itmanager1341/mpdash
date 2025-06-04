@@ -1,4 +1,3 @@
-
 import { ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
@@ -103,6 +102,14 @@ export default function DashboardLayout({
             <SidebarGroup>
               <SidebarGroupLabel>Management</SidebarGroupLabel>
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Jobs">
+                    <a href="/jobs">
+                      <Command />
+                      <span>Jobs</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild tooltip="LLM Management">
                     <a href="/llm-management">

@@ -7,7 +7,6 @@ import PromptsTab from "@/components/llm/PromptsTab";
 import ModelsTab from "@/components/llm/ModelsTab";
 import UsageAnalyticsTab from "@/components/llm/UsageAnalyticsTab";
 import ApiKeysManager from "@/components/admin/ApiKeysManager";
-import ScheduledTasksTab from "@/components/llm/ScheduledTasksTab";
 
 export default function LlmManagement() {
   const [activeTab, setActiveTab] = useState("models");
@@ -18,7 +17,7 @@ export default function LlmManagement() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tabParam = params.get('tab');
-    if (tabParam && ['models', 'prompts', 'api-keys', 'scheduling', 'usage'].includes(tabParam)) {
+    if (tabParam && ['models', 'prompts', 'api-keys', 'usage'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [location.search]);
@@ -35,15 +34,14 @@ export default function LlmManagement() {
     <DashboardLayout>
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">LLM & API Management</h1>
-        <p className="text-muted-foreground">Centralized management of AI models, prompts, API keys, and automated tasks</p>
+        <p className="text-muted-foreground">Centralized management of AI models, prompts, and API keys</p>
       </div>
       
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="mb-6 grid grid-cols-5 sm:w-[800px]">
+        <TabsList className="mb-6 grid grid-cols-4 sm:w-[600px]">
           <TabsTrigger value="models">Models</TabsTrigger>
           <TabsTrigger value="prompts">Prompts</TabsTrigger>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-          <TabsTrigger value="scheduling">Scheduling</TabsTrigger>
           <TabsTrigger value="usage">Analytics</TabsTrigger>
         </TabsList>
         
@@ -57,10 +55,6 @@ export default function LlmManagement() {
         
         <TabsContent value="api-keys" className="space-y-6">
           <ApiKeysManager />
-        </TabsContent>
-        
-        <TabsContent value="scheduling" className="space-y-6">
-          <ScheduledTasksTab />
         </TabsContent>
         
         <TabsContent value="usage" className="space-y-6">

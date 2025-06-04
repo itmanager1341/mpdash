@@ -15,6 +15,7 @@ import Admin from "./pages/Admin";
 import AdminSettings from "./pages/AdminSettings";
 import LlmManagement from "./pages/LlmManagement";
 import Documentation from "./pages/Documentation";
+import Jobs from "./pages/Jobs";
 import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 
@@ -40,6 +41,7 @@ function App() {
               <Route path="/admin" element={<Admin />} />
               <Route path="/admin-settings" element={<AdminSettings />} />
               <Route path="/llm-management" element={<LlmManagement />} />
+              <Route path="/jobs" element={<Jobs />} />
               <Route path="/documentation" element={<Documentation />} />
             </Routes>
           </AuthProvider>
