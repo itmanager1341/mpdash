@@ -2,10 +2,9 @@
 import { useState } from "react";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ScheduledImportSettings from "@/components/admin/ScheduledImportSettings";
-import JobExecutionHistory from "@/components/admin/JobExecutionHistory";
-import CronStatusChecker from "@/components/admin/CronStatusChecker";
-import { Clock, History } from "lucide-react";
+import ScheduledJobsTable from "@/components/jobs/ScheduledJobsTable";
+import JobExecutionLogsTable from "@/components/jobs/JobExecutionLogsTable";
+import { Calendar, History } from "lucide-react";
 
 export default function Jobs() {
   const [activeTab, setActiveTab] = useState("scheduled-jobs");
@@ -25,7 +24,7 @@ export default function Jobs() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="scheduled-jobs" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
+              <Calendar className="h-4 w-4" />
               Scheduled Jobs
             </TabsTrigger>
             <TabsTrigger value="execution-logs" className="flex items-center gap-2">
@@ -35,12 +34,11 @@ export default function Jobs() {
           </TabsList>
 
           <TabsContent value="scheduled-jobs" className="space-y-6">
-            <CronStatusChecker />
-            <ScheduledImportSettings />
+            <ScheduledJobsTable />
           </TabsContent>
 
           <TabsContent value="execution-logs" className="space-y-6">
-            <JobExecutionHistory />
+            <JobExecutionLogsTable />
           </TabsContent>
         </Tabs>
       </div>
