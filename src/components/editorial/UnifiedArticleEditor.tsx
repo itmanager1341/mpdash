@@ -35,12 +35,12 @@ export default function UnifiedArticleEditor({
   onSave, 
   onRefresh 
 }: UnifiedArticleEditorProps) {
-  const [title, setTitle] = useState(draft?.title || draft?.theme || '');
-  const [theme, setTheme] = useState(draft?.theme || '');
-  const [headline, setHeadline] = useState(draft?.content_variants?.editorial_content?.headline || '');
-  const [summary, setSummary] = useState(draft?.content_variants?.editorial_content?.summary || draft.summary || '');
-  const [content, setContent] = useState(draft?.content_variants?.editorial_content?.full_content || draft.outline || '');
-  const [tags, setTags] = useState<string[]>(draft?.content_variants?.metadata?.tags || []);
+  const [title, setTitle] = useState('');
+  const [theme, setTheme] = useState('');
+  const [headline, setHeadline] = useState('');
+  const [summary, setSummary] = useState('');
+  const [content, setContent] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -49,7 +49,7 @@ export default function UnifiedArticleEditor({
   const [seoScore, setSeoScore] = useState(0);
 
   useEffect(() => {
-    // Update state when draft changes
+    // Update state when draft changes with proper null checks
     if (draft) {
       setTitle(draft.title || draft.theme || '');
       setTheme(draft.theme || '');
@@ -57,6 +57,14 @@ export default function UnifiedArticleEditor({
       setSummary(draft.content_variants?.editorial_content?.summary || draft.summary || '');
       setContent(draft.content_variants?.editorial_content?.full_content || draft.outline || '');
       setTags(draft.content_variants?.metadata?.tags || []);
+    } else {
+      // Reset to empty values when no draft
+      setTitle('');
+      setTheme('');
+      setHeadline('');
+      setSummary('');
+      setContent('');
+      setTags([]);
     }
   }, [draft]);
 
@@ -127,6 +135,11 @@ Format the response as JSON with: {"headline": "...", "summary": "...", "content
   };
 
   const handleSave = async () => {
+    if (!draft) {
+      toast.error("No draft to save");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const contentVariants = {
@@ -209,7 +222,7 @@ Format the response as JSON with: {"headline": "...", "summary": "...", "content
                 Generate Content
               </Button>
             )}
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving || !draft}>
               {isSaving ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -227,7 +240,7 @@ Format the response as JSON with: {"headline": "...", "summary": "...", "content
             <div className="flex flex-wrap gap-2">
               {selectedSources.map((source) => (
                 <Badge key={source.id} variant="secondary" className="text-xs">
-                  {source.source}: {source.original_title.slice(0, 30)}...
+                  {source.source}: {source.original_title?.slice(0, 30) || 'Untitled'}...
                 </Badge>
               ))}
             </div>
