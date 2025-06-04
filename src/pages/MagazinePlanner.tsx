@@ -1,392 +1,671 @@
-
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import DashboardLayout from "@/components/layout/DashboardLayout";
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { 
-  Calendar,
-  Plus,
-  Search,
-  Filter,
-  BookOpen,
-  Clock,
-  User,
-  Tag,
-  ArrowRight,
-  MoreHorizontal,
-  Edit,
-  Trash2
+  FileText, 
+  Edit, 
+  GripVertical, 
+  Plus, 
+  Save, 
+  Loader2, 
+  CheckCircle, 
+  AlertTriangle,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { NewsItem } from "@/types/news";
 
+interface IssueContent {
+  id: string;
+  type: 'article' | 'feature' | 'news' | 'draft';
+  title: string;
+  status: 'pending' | 'draft' | 'ready' | 'published';
+  wordCount: number;
+  priority: 'high' | 'medium' | 'low';
+}
+
+interface Issue {
+  id: string;
+  title: string;
+  description: string;
+  status: 'planning' | 'drafting' | 'review' | 'scheduled' | 'published';
+  content: IssueContent[];
+  updated_at: string;
+}
+
 export default function MagazinePlanner() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedIssue, setSelectedIssue] = useState<string | null>(null);
-  const [showNewIssueDialog, setShowNewIssueDialog] = useState(false);
-  const [newIssueTitle, setNewIssueTitle] = useState("");
-  const [issueDate, setIssueDate] = useState("");
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [newIssueTitle, setNewIssueTitle] = useState('');
+  const [newIssueDescription, setNewIssueDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch approved magazine articles
-  const { data: magazineArticles, isLoading, refetch } = useQuery({
-    queryKey: ['magazine-articles', searchTerm],
-    queryFn: async () => {
-      let query = supabase
-        .from('news')
-        .select('*')
-        .contains('destinations', ['magazine'])
-        .eq('status', 'approved')
-        .order('timestamp', { ascending: false });
-      
-      if (searchTerm) {
-        query = query.or(`original_title.ilike.%${searchTerm}%,summary.ilike.%${searchTerm}%`);
-      }
-      
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as NewsItem[];
-    }
-  });
-
-  // Fetch editor briefs for magazine issues
-  const { data: magazineIssues } = useQuery({
-    queryKey: ['magazine-issues'],
+  // Fetch news items for sources
+  const { data: newsItems } = useQuery({
+    queryKey: ['magazine-news-items'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('editor_briefs')
+        .from('news')
         .select('*')
-        .contains('destinations', ['magazine'])
-        .order('created_at', { ascending: false });
-      
+        .eq('status', 'approved')
+        .order('timestamp', { ascending: false })
+        .limit(50);
+
       if (error) throw error;
       return data;
     }
   });
 
-  const createNewIssue = async () => {
-    if (!newIssueTitle.trim() || !issueDate) {
-      toast.error("Please provide both title and date for the new issue");
+  // Fetch editor drafts
+  const { data: drafts } = useQuery({
+    queryKey: ['magazine-editor-drafts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('editor_briefs')
+        .select('*')
+        .order('updated_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Load existing issues on mount
+  useQuery({
+    queryKey: ['magazine-issues'],
+    queryFn: async () => {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('magazine_issues')
+        .select('*')
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+      setIssues(data.map(issue => ({
+        ...issue,
+        content: issue.content || []
+      })));
+      setIsLoading(false);
+      return data;
+    }
+  });
+
+  const handleNewsItemDrop = (newsItem: NewsItem, targetIssueId: string) => {
+    setIssues(prev => prev.map(issue => {
+      if (issue.id === targetIssueId) {
+        const isAlreadyAdded = issue.content.some(
+          content => content.type === 'news' && content.id === newsItem.id
+        );
+        
+        if (!isAlreadyAdded) {
+          return {
+            ...issue,
+            content: [...issue.content, {
+              id: newsItem.id,
+              type: 'news' as const,
+              title: newsItem.original_title,
+              status: 'pending',
+              wordCount: 0,
+              priority: 'medium'
+            }]
+          };
+        }
+      }
+      return issue;
+    }));
+    
+    toast.success(`Added "${newsItem.original_title}" to issue`);
+  };
+
+  const handleDraftDrop = (draft: any, targetIssueId: string) => {
+    setIssues(prev => prev.map(issue => {
+      if (issue.id === targetIssueId) {
+        const isAlreadyAdded = issue.content.some(
+          content => content.type === 'draft' && content.id === draft.id
+        );
+        
+        if (!isAlreadyAdded) {
+          return {
+            ...issue,
+            content: [...issue.content, {
+              id: draft.id,
+              type: 'draft' as const,
+              title: draft.title || draft.theme,
+              status: 'pending',
+              wordCount: 0,
+              priority: 'medium'
+            }]
+          };
+        }
+      }
+      return issue;
+    }));
+    
+    toast.success(`Added "${draft.title || draft.theme}" to issue`);
+  };
+
+  const handleDragEnd = (result: any) => {
+    const { destination, source, draggableId } = result;
+
+    if (!destination) {
       return;
     }
 
+    if (
+      destination.droppableId === source.droppableId &&
+      destination.index === source.index
+    ) {
+      return;
+    }
+
+    const startIssue = issues.find(issue => issue.id === source.droppableId);
+    const endIssue = issues.find(issue => issue.id === destination.droppableId);
+
+    if (!startIssue || !endIssue) {
+      return;
+    }
+
+    if (startIssue === endIssue) {
+      const newContent = Array.from(startIssue.content);
+      const [removed] = newContent.splice(source.index, 1);
+      newContent.splice(destination.index, 0, removed);
+
+      setIssues(prev => prev.map(issue =>
+        issue.id === startIssue.id
+          ? { ...issue, content: newContent }
+          : issue
+      ));
+    } else {
+      const startContent = Array.from(startIssue.content);
+      const [removed] = startContent.splice(source.index, 1);
+      const endContent = Array.from(endIssue.content);
+      endContent.splice(destination.index, 0, removed);
+
+      setIssues(prev => prev.map(issue => {
+        if (issue.id === startIssue.id) {
+          return { ...issue, content: startContent };
+        }
+        if (issue.id === endIssue.id) {
+          return { ...issue, content: endContent };
+        }
+        return issue;
+      }));
+    }
+  };
+
+  const createNewIssue = async () => {
+    if (!newIssueTitle.trim()) {
+      toast.error("Issue title is required");
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const { error } = await supabase
-        .from('editor_briefs')
+      const { data, error } = await supabase
+        .from('magazine_issues')
         .insert({
           title: newIssueTitle,
-          theme: 'magazine_issue',
-          destinations: ['magazine'],
-          status: 'planned',
-          content_variants: {
-            metadata: {
-              issue_date: issueDate,
-              created_from: 'magazine_planner'
-            }
-          }
-        });
+          description: newIssueDescription,
+          status: 'planning',
+          content: []
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
-      toast.success("New magazine issue created");
-      setNewIssueTitle("");
-      setIssueDate("");
-      setShowNewIssueDialog(false);
-      refetch();
+      setIssues([...issues, {
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        status: data.status,
+        content: [],
+        updated_at: data.updated_at
+      }]);
+      setNewIssueTitle('');
+      setNewIssueDescription('');
+      toast.success("New issue created");
     } catch (error) {
       console.error("Error creating issue:", error);
-      toast.error("Failed to create magazine issue");
+      toast.error("Failed to create issue");
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const addArticleToIssue = async (articleId: string, issueId: string) => {
+  const updateIssue = async (issueId: string, field: string, value: string) => {
+    setIssues(prev => prev.map(issue =>
+      issue.id === issueId ? { ...issue, [field]: value } : issue
+    ));
+
+    // Optimistically update, but also save to database
     try {
       const { error } = await supabase
-        .from('news')
-        .update({ 
-          editor_brief_id: issueId,
-          status: 'queued_magazine'
-        })
-        .eq('id', articleId);
+        .from('magazine_issues')
+        .update({ [field]: value })
+        .eq('id', issueId);
 
       if (error) throw error;
-
-      toast.success("Article added to magazine issue");
-      refetch();
     } catch (error) {
-      console.error("Error adding article to issue:", error);
-      toast.error("Failed to add article to issue");
+      console.error("Error updating issue:", error);
+      toast.error("Failed to update issue");
     }
   };
 
-  const getArticlesByIssue = (issueId: string) => {
-    return magazineArticles?.filter(article => article.editor_brief_id === issueId) || [];
+  const updateContent = async (issueId: string, contentId: string, field: string, value: string | number) => {
+    setIssues(prev => prev.map(issue => {
+      if (issue.id === issueId) {
+        return {
+          ...issue,
+          content: issue.content.map(content => {
+            if (content.id === contentId) {
+              return { ...content, [field]: value };
+            }
+            return content;
+          })
+        };
+      }
+      return issue;
+    }));
   };
 
-  const getUnassignedArticles = () => {
-    return magazineArticles?.filter(article => !article.editor_brief_id) || [];
+  const addContentToIssue = (issueId: string, contentType: 'article' | 'feature') => {
+    const newContent = {
+      id: Math.random().toString(36).substr(2, 9),
+      type: contentType,
+      title: `New ${contentType}`,
+      status: 'pending' as const,
+      wordCount: 0,
+      priority: 'medium' as const
+    };
+
+    setIssues(prev => prev.map(issue => 
+      issue.id === issueId 
+        ? { ...issue, content: [...issue.content, newContent] }
+        : issue
+    ));
+  };
+
+  const removeContentFromIssue = (issueId: string, contentId: string) => {
+    setIssues(prev => prev.map(issue =>
+      issue.id === issueId
+        ? { ...issue, content: issue.content.filter(content => content.id !== contentId) }
+        : issue
+    ));
+  };
+
+  const saveAllChanges = async () => {
+    setIsSaving(true);
+    try {
+      for (const issue of issues) {
+        const { error } = await supabase
+          .from('magazine_issues')
+          .update({
+            title: issue.title,
+            description: issue.description,
+            status: issue.status,
+            content: issue.content
+          })
+          .eq('id', issue.id);
+
+        if (error) throw error;
+      }
+      toast.success("All changes saved successfully");
+    } catch (error) {
+      console.error("Error saving changes:", error);
+      toast.error("Failed to save changes");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'published':
+        return 'bg-green-100 text-green-800';
+      case 'review':
+        return 'bg-blue-100 text-blue-800';
+      case 'drafting':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'planning':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-100 text-red-800';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'low':
+        return 'bg-green-100 text-green-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getMetadata = (item: any) => {
+    try {
+      // Handle the case where metadata might be a string or already an object
+      if (typeof item.content_variants === 'string') {
+        const parsed = JSON.parse(item.content_variants);
+        return parsed.metadata || {};
+      } else if (item.content_variants && typeof item.content_variants === 'object') {
+        return item.content_variants.metadata || {};
+      }
+      return {};
+    } catch (error) {
+      console.error('Error parsing metadata:', error);
+      return {};
+    }
   };
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Magazine Planner</h1>
-            <p className="text-muted-foreground">
-              Plan and organize content for MortgagePoint Magazine
-            </p>
-          </div>
-          <Button onClick={() => setShowNewIssueDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Issue
+    <div className="p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Magazine Planner</h1>
+          <p className="text-muted-foreground">
+            Plan and organize content for upcoming magazine issues
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={saveAllChanges} disabled={isLoading || isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Save All Changes
+              </>
+            )}
           </Button>
         </div>
+      </div>
 
-        {/* Search and Filters */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="border rounded-lg mt-6 p-4">
+        <h3 className="font-medium text-lg mb-4">Create New Issue</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
             <Input
-              placeholder="Search articles..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
+              type="text"
+              placeholder="Issue Title"
+              value={newIssueTitle}
+              onChange={(e) => setNewIssueTitle(e.target.value)}
             />
           </div>
-          <Button variant="outline">
-            <Filter className="h-4 w-4 mr-2" />
-            Filters
-          </Button>
+          <div>
+            <Input
+              type="text"
+              placeholder="Issue Description"
+              value={newIssueDescription}
+              onChange={(e) => setNewIssueDescription(e.target.value)}
+            />
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={createNewIssue}
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Creating...
+            </>
+          ) : (
+            <>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Issue
+            </>
+          )}
+        </Button>
+      </div>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+        {/* Left Panel - Sources */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Available Sources
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-96">
+                <div className="space-y-2">
+                  {newsItems?.map((newsItem) => (
+                    <div
+                      key={newsItem.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify({
+                          type: 'news',
+                          data: newsItem
+                        }));
+                      }}
+                      className="p-3 border rounded-lg cursor-move hover:bg-muted/50 transition-colors"
+                    >
+                      <h4 className="font-medium text-sm line-clamp-2">
+                        {newsItem.original_title}
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {newsItem.source} • {new Date(newsItem.timestamp).toLocaleDateString()}
+                      </p>
+                      {newsItem.matched_clusters && newsItem.matched_clusters.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {newsItem.matched_clusters.slice(0, 2).map((cluster, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              {cluster}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+
+          {/* Drafts Panel */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Edit className="h-5 w-5" />
+                Available Drafts
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-96">
+                <div className="space-y-2">
+                  {drafts?.map((draft) => (
+                    <div
+                      key={draft.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/json', JSON.stringify({
+                          type: 'draft',
+                          data: draft
+                        }));
+                      }}
+                      className="p-3 border rounded-lg cursor-move hover:bg-muted/50 transition-colors"
+                    >
+                      <h4 className="font-medium text-sm line-clamp-2">
+                        {draft.title || draft.theme}
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {new Date(draft.updated_at).toLocaleDateString()}
+                      </p>
+                      <div className="flex gap-1 mt-2">
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {draft.status?.replace('_', ' ')}
+                        </Badge>
+                        {getMetadata(draft).tags && (
+                          <Badge variant="secondary" className="text-xs">
+                            {getMetadata(draft).tags.length} tags
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* New Issue Dialog */}
-        {showNewIssueDialog && (
-          <Card className="border-2 border-primary">
+        {/* Center Panel - Issues */}
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="space-y-6">
+            {issues.map((issue) => (
+              <Card key={issue.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>
+                      <Input
+                        type="text"
+                        placeholder="Issue Title"
+                        value={issue.title}
+                        onChange={(e) => updateIssue(issue.id, 'title', e.target.value)}
+                      />
+                    </CardTitle>
+                    <Badge className={getStatusColor(issue.status)}>
+                      {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
+                    </Badge>
+                  </div>
+                  <Textarea
+                    placeholder="Issue Description"
+                    className="mt-2"
+                    value={issue.description}
+                    onChange={(e) => updateIssue(issue.id, 'description', e.target.value)}
+                  />
+                </CardHeader>
+                <CardContent>
+                  <Droppable droppableId={issue.id} type="CONTENT">
+                    {(provided) => (
+                      <div
+                        {...provided.droppableProps}
+                        ref={provided.innerRef}
+                        className="space-y-4"
+                      >
+                        {issue.content.map((content, index) => (
+                          <Draggable
+                            key={content.id}
+                            draggableId={content.id}
+                            index={index}
+                          >
+                            {(provided) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className="flex items-center justify-between p-3 border rounded-lg bg-white hover:bg-muted/50 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                                  <span className="font-medium text-sm">{content.title}</span>
+                                  <Badge className={getPriorityColor(content.priority)}>
+                                    {content.priority.charAt(0).toUpperCase() + content.priority.slice(1)}
+                                  </Badge>
+                                  {content.status !== 'pending' && (
+                                    <Badge className={getStatusColor(content.status)}>
+                                      {content.status.charAt(0).toUpperCase() + content.status.slice(1)}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="number"
+                                    placeholder="Word Count"
+                                    className="w-24 text-sm"
+                                    value={content.wordCount}
+                                    onChange={(e) => updateContent(issue.id, content.id, 'wordCount', parseInt(e.target.value))}
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeContentFromIssue(issue.id, content.id)}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        <div className="text-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addContentToIssue(issue.id, 'article')}
+                          >
+                            Add Article
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addContentToIssue(issue.id, 'feature')}
+                          >
+                            Add Feature
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Droppable>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </DragDropContext>
+
+        {/* Right Panel - Actions */}
+        <div>
+          <Card>
             <CardHeader>
-              <CardTitle>Create New Magazine Issue</CardTitle>
+              <CardTitle>Issue Actions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Issue Title</label>
-                <Input
-                  value={newIssueTitle}
-                  onChange={(e) => setNewIssueTitle(e.target.value)}
-                  placeholder="e.g., March 2024 Issue"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Issue Date</label>
-                <Input
-                  type="date"
-                  value={issueDate}
-                  onChange={(e) => setIssueDate(e.target.value)}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={createNewIssue}>Create Issue</Button>
-                <Button variant="outline" onClick={() => setShowNewIssueDialog(false)}>
-                  Cancel
-                </Button>
+            <CardContent>
+              <div className="space-y-4">
+                {issues.map((issue) => (
+                  <div key={issue.id} className="space-y-2">
+                    <h4 className="font-medium">{issue.title}</h4>
+                    <div className="flex flex-col gap-2">
+                      <Button variant="outline" size="sm">
+                        View Issue
+                      </Button>
+                      <Input
+                        type="text"
+                        placeholder="Update Status"
+                        className="text-sm"
+                        value={issue.status}
+                        onChange={(e) => updateIssue(issue.id, 'status', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
-        )}
-
-        <Tabs defaultValue="issues" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="issues">Issues</TabsTrigger>
-            <TabsTrigger value="unassigned">
-              Unassigned Articles ({getUnassignedArticles().length})
-            </TabsTrigger>
-            <TabsTrigger value="calendar">Calendar View</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="issues" className="space-y-6">
-            {isLoading ? (
-              <div className="text-center py-8">Loading magazine issues...</div>
-            ) : magazineIssues && magazineIssues.length > 0 ? (
-              <div className="grid gap-6">
-                {magazineIssues.map((issue) => {
-                  const issueArticles = getArticlesByIssue(issue.id);
-                  
-                  return (
-                    <Card key={issue.id} className="overflow-hidden">
-                      <CardHeader>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <CardTitle className="flex items-center gap-3">
-                              <BookOpen className="h-5 w-5" />
-                              {issue.title}
-                            </CardTitle>
-                            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                              <div className="flex items-center gap-1">
-                                <Calendar className="h-4 w-4" />
-                                <span>{issue.content_variants?.metadata?.issue_date || 'No date set'}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <Clock className="h-4 w-4" />
-                                <span>{new Date(issue.created_at).toLocaleDateString()}</span>
-                              </div>
-                              <Badge variant="outline" className="capitalize">
-                                {issue.status?.replace('_', ' ')}
-                              </Badge>
-                            </div>
-                          </div>
-                          <Button variant="ghost" size="sm">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      
-                      <CardContent>
-                        {issueArticles.length > 0 ? (
-                          <div className="space-y-3">
-                            <div className="text-sm font-medium">
-                              Articles ({issueArticles.length})
-                            </div>
-                            <div className="grid gap-3">
-                              {issueArticles.map((article) => (
-                                <div
-                                  key={article.id}
-                                  className="flex items-start justify-between p-3 border rounded-lg bg-muted/20"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <h4 className="font-medium line-clamp-1 mb-1">
-                                      {article.original_title}
-                                    </h4>
-                                    <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                                      {article.summary}
-                                    </p>
-                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                      <span>{article.source}</span>
-                                      <span>{new Date(article.timestamp).toLocaleDateString()}</span>
-                                      {article.perplexity_score && (
-                                        <span>Score: {article.perplexity_score.toFixed(1)}</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-1 ml-3">
-                                    <Button variant="ghost" size="sm">
-                                      <Edit className="h-4 w-4" />
-                                    </Button>
-                                    <Button variant="ghost" size="sm">
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-muted-foreground">
-                            <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No articles assigned to this issue yet</p>
-                            <p className="text-sm">Drag articles from the unassigned tab or use the assign button</p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <BookOpen className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
-                <h3 className="text-lg font-semibold mb-2">No Magazine Issues</h3>
-                <p className="text-muted-foreground mb-4">
-                  Create your first magazine issue to start planning content
-                </p>
-                <Button onClick={() => setShowNewIssueDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First Issue
-                </Button>
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="unassigned" className="space-y-4">
-            <div className="text-sm text-muted-foreground mb-4">
-              Articles approved for magazine but not yet assigned to an issue
-            </div>
-            
-            {getUnassignedArticles().length > 0 ? (
-              <div className="grid gap-4">
-                {getUnassignedArticles().map((article) => (
-                  <Card key={article.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-medium line-clamp-2 mb-2">
-                            {article.original_title}
-                          </h3>
-                          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                            {article.summary}
-                          </p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>{article.source}</span>
-                            <span>{new Date(article.timestamp).toLocaleDateString()}</span>
-                            {article.perplexity_score && (
-                              <span>Score: {article.perplexity_score.toFixed(1)}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          {magazineIssues && magazineIssues.length > 0 ? (
-                            <select
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  addArticleToIssue(article.id, e.target.value);
-                                }
-                              }}
-                              className="text-sm border rounded px-3 py-1"
-                              defaultValue=""
-                            >
-                              <option value="" disabled>Assign to issue...</option>
-                              {magazineIssues.map((issue) => (
-                                <option key={issue.id} value={issue.id}>
-                                  {issue.title}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div className="text-xs text-muted-foreground">
-                              Create an issue first
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <Tag className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
-                <h3 className="text-lg font-semibold mb-2">All Articles Assigned</h3>
-                <p className="text-muted-foreground">
-                  All approved magazine articles have been assigned to issues
-                </p>
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="calendar">
-            <div className="text-center py-12">
-              <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
-              <h3 className="text-lg font-semibold mb-2">Calendar View</h3>
-              <p className="text-muted-foreground">
-                Calendar view for magazine planning coming soon
-              </p>
-            </div>
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }

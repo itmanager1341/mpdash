@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,8 @@ import {
   Link, 
   BarChart,
   Clock,
-  CheckCircle
+  CheckCircle,
+  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -225,7 +227,7 @@ Format the response as JSON with: {"headline": "...", "summary": "...", "content
             <div className="flex flex-wrap gap-2">
               {selectedSources.map((source) => (
                 <Badge key={source.id} variant="secondary" className="text-xs">
-                  {source.source}: {source.headline.slice(0, 30)}...
+                  {source.source}: {source.original_title.slice(0, 30)}...
                 </Badge>
               ))}
             </div>

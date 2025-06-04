@@ -18,7 +18,7 @@ export default function NewsArticleMatching() {
       const { data, error } = await supabase
         .from('news')
         .select(`
-          id, headline, summary, publication_status, 
+          id, original_title, summary, publication_status, 
           published_article_id, publication_confidence_score,
           timestamp
         `)
@@ -121,7 +121,7 @@ export default function NewsArticleMatching() {
               return (
                 <div key={newsItem.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex-1">
-                    <div className="font-medium truncate">{newsItem.headline}</div>
+                    <div className="font-medium truncate">{newsItem.original_title}</div>
                     <div className="text-sm text-muted-foreground">
                       {new Date(newsItem.timestamp).toLocaleDateString()}
                     </div>

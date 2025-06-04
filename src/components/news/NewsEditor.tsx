@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +33,7 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
 
   useEffect(() => {
     // Load existing data
-    setOriginalTitle(newsItem.original_title || newsItem.headline || '');
+    setOriginalTitle(newsItem.original_title || '');
     setOriginalAuthor(newsItem.original_author || '');
     setOriginalPublicationDate(newsItem.original_publication_date || newsItem.timestamp || '');
     setSourceContent(newsItem.source_content || '');
