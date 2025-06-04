@@ -59,7 +59,12 @@ export default function MagazinePlanner() {
         .limit(50);
 
       if (error) throw error;
-      return data;
+      
+      // Transform the data to match NewsItem type
+      return data?.map(item => ({
+        ...item,
+        template_type: (item.template_type as NewsItem['template_type']) || undefined
+      })) as NewsItem[];
     }
   });
 
