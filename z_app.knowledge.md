@@ -11,7 +11,7 @@ The MP Editorial Dashboard is a comprehensive content management system designed
 ## Core Features
 
 1. **Today's Briefing**: AI-curated news suggestions with quick approval actions
-2. **Content Planning**: Tools for MPDaily and Magazine planning
+2. **Content Planning**: tbd
 3. **Content Calendar**: Visualization of publishing schedule across channels
 4. **Performance Dashboard**: Metrics and analytics for published content
 5. **Admin Settings**: System configuration and API management
