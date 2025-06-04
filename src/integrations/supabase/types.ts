@@ -717,7 +717,6 @@ export type Database = {
           editorial_content: string | null
           editorial_headline: string | null
           editorial_summary: string | null
-          headline: string
           id: string
           is_competitor_covered: boolean | null
           last_scraped_at: string | null
@@ -748,7 +747,6 @@ export type Database = {
           editorial_content?: string | null
           editorial_headline?: string | null
           editorial_summary?: string | null
-          headline: string
           id?: string
           is_competitor_covered?: boolean | null
           last_scraped_at?: string | null
@@ -779,7 +777,6 @@ export type Database = {
           editorial_content?: string | null
           editorial_headline?: string | null
           editorial_summary?: string | null
-          headline?: string
           id?: string
           is_competitor_covered?: boolean | null
           last_scraped_at?: string | null

@@ -1,16 +1,24 @@
-
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Save, Sparkles, FileText, RefreshCw } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { 
+  Save, 
+  Eye, 
+  Sparkles, 
+  FileText, 
+  Link, 
+  BarChart,
+  Clock,
+  CheckCircle
+} from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { NewsItem } from "@/types/news";
+import DraftPreviewModal from "./DraftPreviewModal";
 
 interface UnifiedArticleEditorProps {
   draft: any;
@@ -19,174 +27,146 @@ interface UnifiedArticleEditorProps {
   onRefresh: () => void;
 }
 
-export default function UnifiedArticleEditor({
-  draft,
-  selectedSources,
-  onSave,
-  onRefresh
+export default function UnifiedArticleEditor({ 
+  draft, 
+  selectedSources, 
+  onSave, 
+  onRefresh 
 }: UnifiedArticleEditorProps) {
-  const [title, setTitle] = useState("");
-  const [headline, setHeadline] = useState("");
-  const [summary, setSummary] = useState("");
-  const [content, setContent] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [title, setTitle] = useState(draft?.title || draft?.theme || '');
+  const [theme, setTheme] = useState(draft?.theme || '');
+  const [headline, setHeadline] = useState(draft?.content_variants?.editorial_content?.headline || '');
+  const [summary, setSummary] = useState(draft?.content_variants?.editorial_content?.summary || draft.summary || '');
+  const [content, setContent] = useState(draft?.content_variants?.editorial_content?.full_content || draft.outline || '');
+  const [tags, setTags] = useState<string[]>(draft?.content_variants?.metadata?.tags || []);
   const [isSaving, setIsSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  
+  // SEO scoring
+  const [seoScore, setSeoScore] = useState(0);
 
-  // Fetch default model settings
-  const { data: modelSettings } = useQuery({
-    queryKey: ['model-settings'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('llm_prompts')
-        .select('*')
-        .eq('function_name', 'default_content_generation')
-        .single();
-      
-      if (error) {
-        // Return default if no settings found
-        return { model: 'gpt-4o-mini' };
-      }
-      return { model: data.model };
-    }
-  });
-
-  // Update form when draft changes
   useEffect(() => {
+    // Update state when draft changes
     if (draft) {
-      const editorialContent = draft.content_variants?.editorial_content || {};
-      setTitle(draft.title || "");
-      setHeadline(editorialContent.headline || "");
-      setSummary(editorialContent.summary || "");
-      setContent(editorialContent.full_content || "");
-    } else {
-      setTitle("");
-      setHeadline("");
-      setSummary("");
-      setContent("");
+      setTitle(draft.title || draft.theme || '');
+      setTheme(draft.theme || '');
+      setHeadline(draft.content_variants?.editorial_content?.headline || '');
+      setSummary(draft.content_variants?.editorial_content?.summary || draft.summary || '');
+      setContent(draft.content_variants?.editorial_content?.full_content || draft.outline || '');
+      setTags(draft.content_variants?.metadata?.tags || []);
     }
   }, [draft]);
 
-  const handleGenerateOutline = async () => {
-    if (selectedSources.length === 0 && !draft) {
-      toast.warning("Please select sources or create a draft first");
+  const generateFromSources = async () => {
+    if (selectedSources.length === 0) {
+      toast.warning("Please select sources first");
       return;
     }
 
     setIsGenerating(true);
+    toast.info("Generating content from selected sources...");
     
     try {
-      const sourcesText = selectedSources.map(s => 
-        `Title: ${s.headline}\nSummary: ${s.summary}\nSource: ${s.source}`
-      ).join('\n\n');
+      const sourcesContext = selectedSources.map(source => 
+        `Title: ${source.original_title}\nSummary: ${source.summary}\nSource: ${source.source}`
+      ).join('\n\n---\n\n');
 
-      const prompt = `Based on the following source articles, create a comprehensive article outline and draft:
-
-${sourcesText}
-
-Please provide:
-1. A compelling headline (8-12 words)
-2. A concise summary (2-3 sentences)
-3. A detailed article structure with key points
-4. Initial content draft (400-600 words)
-
-Focus on insights relevant to mortgage industry professionals.`;
-
-      const model = modelSettings?.model || 'gpt-4o-mini';
-      
       const { data, error } = await supabase.functions.invoke('test-llm-prompt', {
         body: {
-          prompt_text: prompt,
-          model: model,
-          input_data: { sources: selectedSources }
+          prompt_text: `Based on these ${selectedSources.length} source articles, create a comprehensive article for mortgage industry professionals:
+
+${sourcesContext}
+
+Generate:
+1. A compelling headline (8-12 words)
+2. A 2-3 sentence summary 
+3. A 400-600 word article with practical insights
+
+Focus on:
+- Market implications for mortgage professionals
+- Actionable insights
+- Industry trends and analysis
+- Professional development angles
+
+Format the response as JSON with: {"headline": "...", "summary": "...", "content": "..."}`,
+          model: 'gpt-4o',
+          input_data: { 
+            sources: selectedSources.map(s => ({ 
+              title: s.original_title, 
+              summary: s.summary, 
+              source: s.source 
+            }))
+          }
         }
       });
-
+      
       if (error) throw error;
-
-      // Parse the AI response and populate fields
-      const aiContent = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
-      const lines = aiContent.split('\n').filter(line => line.trim());
       
-      // Extract headline, summary, and content from AI response
-      let generatedHeadline = "";
-      let generatedSummary = "";
-      let generatedContent = aiContent;
-
-      // Simple parsing - look for patterns
-      const headlineMatch = aiContent.match(/(?:headline|title):\s*(.+)/i);
-      if (headlineMatch) {
-        generatedHeadline = headlineMatch[1].trim();
+      try {
+        const result = typeof data.output === 'string' ? JSON.parse(data.output) : data.output;
+        setHeadline(result.headline || '');
+        setSummary(result.summary || '');
+        setContent(result.content || '');
+        toast.success("Content generated from sources!");
+      } catch (parseError) {
+        // Fallback if JSON parsing fails
+        const output = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
+        setContent(output);
+        toast.success("Content generated! Please review and format as needed.");
       }
-
-      const summaryMatch = aiContent.match(/(?:summary):\s*(.+)/i);
-      if (summaryMatch) {
-        generatedSummary = summaryMatch[1].trim();
-      }
-
-      setHeadline(generatedHeadline || `AI Analysis: ${selectedSources[0]?.headline || 'Multi-Source Article'}`);
-      setSummary(generatedSummary || "AI-generated article based on selected sources");
-      setContent(generatedContent);
       
-      toast.success("Article outline generated successfully");
     } catch (error) {
-      console.error("Error generating outline:", error);
-      toast.error("Failed to generate outline");
+      console.error('Error generating content:', error);
+      toast.error("Failed to generate content from sources");
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleSave = async () => {
-    if (!draft && !title) {
-      toast.warning("Please enter a title");
-      return;
-    }
-
     setIsSaving(true);
-
     try {
-      const draftData = {
-        title: title || "Untitled Article",
-        status: 'draft',
-        theme: selectedSources.length > 0 ? 'multi-source' : 'original',
-        content_variants: {
-          ...draft?.content_variants,
-          editorial_content: {
-            headline,
-            summary,
-            full_content: content,
-            cta: "Learn more about this development..."
-          },
-          metadata: {
-            ...draft?.content_variants?.metadata,
-            source_count: selectedSources.length,
-            last_edited: new Date().toISOString(),
-            editor_notes: "Edited in unified dashboard"
-          }
-        }
+      const contentVariants = {
+        ...draft.content_variants,
+        editorial_content: {
+          headline,
+          summary,
+          full_content: content,
+          cta: "Read more..."
+        },
+        metadata: {
+          seo_title: headline || title,
+          seo_description: summary,
+          tags,
+          ...(draft.content_variants?.metadata || {})
+        },
+        status: content.trim() && headline.trim() ? "ready" : "draft"
       };
 
-      if (draft?.id) {
-        // Update existing draft
-        const { error } = await supabase
-          .from('editor_briefs')
-          .update(draftData)
-          .eq('id', draft.id);
+      console.log("Saving editor brief with data:", { title, theme, contentVariants });
 
-        if (error) throw error;
-      } else {
-        // Create new draft
-        const { error } = await supabase
-          .from('editor_briefs')
-          .insert(draftData);
+      const { error } = await supabase
+        .from("editor_briefs")
+        .update({
+          title: title || theme,
+          theme,
+          summary,
+          content_variants: contentVariants,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", draft.id);
 
-        if (error) throw error;
+      if (error) {
+        console.error("Save error:", error);
+        throw error;
       }
 
+      toast.success("Draft saved successfully");
       onSave();
     } catch (error) {
       console.error("Error saving draft:", error);
-      toast.error("Failed to save draft");
+      toast.error("Failed to save draft: " + (error.message || "Unknown error"));
     } finally {
       setIsSaving(false);
     }
@@ -194,17 +174,11 @@ Focus on insights relevant to mortgage industry professionals.`;
 
   if (!draft && selectedSources.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-muted/10">
-        <div className="text-center space-y-6 max-w-md">
-          <div className="flex justify-center">
-            <FileText className="h-20 w-20 text-muted-foreground" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-semibold">Ready to create</h3>
-            <p className="text-muted-foreground">
-              Select sources from the left panel and click "Create Article" to begin, or choose an existing draft
-            </p>
-          </div>
+      <div className="flex items-center justify-center h-full text-muted-foreground">
+        <div className="text-center">
+          <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+          <p className="text-lg font-medium mb-2">No Article Selected</p>
+          <p className="text-sm">Select sources or choose a draft to start editing</p>
         </div>
       </div>
     );
@@ -222,7 +196,7 @@ Focus on insights relevant to mortgage industry professionals.`;
             {selectedSources.length > 0 && (
               <Button
                 variant="outline"
-                onClick={handleGenerateOutline}
+                onClick={generateFromSources}
                 disabled={isGenerating}
               >
                 {isGenerating ? (
@@ -230,7 +204,7 @@ Focus on insights relevant to mortgage industry professionals.`;
                 ) : (
                   <Sparkles className="h-4 w-4 mr-2" />
                 )}
-                Generate Outline
+                Generate Content
               </Button>
             )}
             <Button onClick={handleSave} disabled={isSaving}>
@@ -301,6 +275,15 @@ Focus on insights relevant to mortgage industry professionals.`;
           />
         </div>
       </div>
+
+      <DraftPreviewModal
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        title={title}
+        headline={headline}
+        summary={summary}
+        content={content}
+      />
     </div>
   );
 }

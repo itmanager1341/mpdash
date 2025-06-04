@@ -1,216 +1,216 @@
 
-import React from "react";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { useState } from "react";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { NewsItem } from "@/types/news";
-import { ArrowRight, Check, X, Eye } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Textarea } from "@/components/ui/textarea";
 import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel,
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger,
-  DropdownMenuCheckboxItem
-} from "@/components/ui/dropdown-menu";
+  Clock, 
+  ExternalLink, 
+  TrendingUp, 
+  Edit3, 
+  Save, 
+  X,
+  ChevronDown,
+  ChevronUp
+} from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { NewsItem } from "@/types/news";
+import ArticleApproval from "./ArticleApproval";
 
 interface EnhancedNewsCardProps {
   newsItem: NewsItem;
-  onDismiss: (item: NewsItem) => void;
-  onDetailsClick: (item: NewsItem) => void;
-  onStatusChange: () => void;
+  onApproved: () => void;
+  showApprovalActions?: boolean;
 }
 
-export const EnhancedNewsCard: React.FC<EnhancedNewsCardProps> = ({
-  newsItem,
-  onDismiss,
-  onDetailsClick,
-  onStatusChange
-}) => {
-  const [isUpdating, setIsUpdating] = React.useState(false);
+const EnhancedNewsCard = ({ newsItem, onApproved, showApprovalActions = true }: EnhancedNewsCardProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedSummary, setEditedSummary] = useState(newsItem.summary || "");
+  const [isSaving, setIsSaving] = useState(false);
 
-  // Helper function to format dates relative to now
-  const formatTimestamp = (timestamp: string) => {
+  const handleSaveEdit = async () => {
     try {
-      return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-    } catch (e) {
-      return "Unknown date";
-    }
-  };
-
-  // Function to handle updating a news item's destination and status
-  const handleUpdateNewsItem = async (destinations: string[]) => {
-    setIsUpdating(true);
-    try {
+      setIsSaving(true);
+      
       const { error } = await supabase
-        .from('news')
-        .update({
-          destinations,
-          status: destinations.length > 0 ? 'approved' : 'pending'
-        })
-        .eq('id', newsItem.id);
-
+        .from("news")
+        .update({ summary: editedSummary })
+        .eq("id", newsItem.id);
+      
       if (error) throw error;
-      onStatusChange();
+      
+      toast.success("Summary updated successfully");
+      setIsEditing(false);
+      onApproved(); // Refresh the data
+      
     } catch (err) {
-      console.error("Error updating news item:", err);
+      console.error("Error updating summary:", err);
+      toast.error("Failed to update summary");
     } finally {
-      setIsUpdating(false);
+      setIsSaving(false);
     }
   };
+
+  const handleCancelEdit = () => {
+    setEditedSummary(newsItem.summary || "");
+    setIsEditing(false);
+  };
+
+  const openOriginalArticle = () => {
+    if (newsItem.url) {
+      window.open(newsItem.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Determine display title
+  const displayTitle = newsItem.original_title || "Untitled Article";
 
   return (
-    <Card className="overflow-hidden flex flex-col">
-      <div className="bg-muted/30 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center">
-          <Badge variant="outline" className="mr-2 capitalize">
-            {newsItem.source || "Unknown source"}
-          </Badge>
-          {newsItem.perplexity_score !== null && (
-            <Badge variant={
-              newsItem.perplexity_score > 4 ? "default" :
-              newsItem.perplexity_score > 3 ? "secondary" : 
-              "outline"
-            }>
-              Score: {newsItem.perplexity_score.toFixed(1)}
-            </Badge>
-          )}
-        </div>
-        
-        {newsItem.timestamp && (
-          <span className="text-xs text-muted-foreground">
-            {formatTimestamp(newsItem.timestamp)}
-          </span>
-        )}
-      </div>
-      
-      <CardContent className="pt-4 flex-grow">
-        <h3 className="font-semibold text-lg mb-3 line-clamp-2">{newsItem.headline}</h3>
-        <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
-          {newsItem.summary || "No summary available"}
-        </p>
-        
-        {newsItem.matched_clusters && newsItem.matched_clusters.length > 0 && (
-          <div className="mb-3">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Matched Clusters</p>
-            <div className="flex flex-wrap gap-1.5">
-              {newsItem.matched_clusters.slice(0, 3).map((cluster, index) => (
-                <Badge key={index} variant="outline" className="bg-primary/10">
-                  {cluster}
-                </Badge>
-              ))}
-              {newsItem.matched_clusters.length > 3 && (
-                <Badge variant="outline">+{newsItem.matched_clusters.length - 3} more</Badge>
+    <Card className="w-full hover:shadow-md transition-shadow">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-lg leading-tight mb-2 line-clamp-2">
+              {displayTitle}
+            </h3>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <Clock className="h-4 w-4" />
+              <span>{new Date(newsItem.timestamp).toLocaleDateString()}</span>
+              <span>•</span>
+              <span>{newsItem.source}</span>
+              {newsItem.perplexity_score && (
+                <>
+                  <span>•</span>
+                  <div className="flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3" />
+                    <span>{newsItem.perplexity_score.toFixed(1)}</span>
+                  </div>
+                </>
               )}
             </div>
           </div>
-        )}
-      </CardContent>
-      
-      <CardFooter className="border-t bg-muted/5 pt-3 flex justify-between items-center gap-2">
-        <Button 
-          variant="ghost"
-          size="sm"
-          onClick={() => onDetailsClick(newsItem)}
-        >
-          <Eye className="h-4 w-4 mr-1" />
-          View
-        </Button>
-        
-        <div className="flex items-center gap-1.5">
-          {newsItem.status !== 'dismissed' && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => onDismiss(newsItem)}
-            >
-              <X className="h-4 w-4 mr-1" />
-              Dismiss
-            </Button>
-          )}
           
-          {newsItem.status !== 'dismissed' && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="default" 
+          <div className="flex gap-2">
+            {newsItem.url && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={openOriginalArticle}
+                className="flex-shrink-0"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="flex-shrink-0"
+            >
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-0">
+        <div className="space-y-3">
+          {/* Summary section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Summary</span>
+              {!isEditing && (
+                <Button
+                  variant="ghost"
                   size="sm"
-                  disabled={isUpdating}
+                  onClick={() => setIsEditing(true)}
+                  className="h-6 px-2"
                 >
-                  <Check className="h-4 w-4 mr-1" />
-                  Approve
+                  <Edit3 className="h-3 w-3" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Approve For:</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
-                  checked={newsItem.destinations?.includes("mpdaily")}
-                  onCheckedChange={(checked) => {
-                    const newDestinations = [...(newsItem.destinations || [])];
-                    if (checked) {
-                      if (!newDestinations.includes("mpdaily")) {
-                        newDestinations.push("mpdaily");
-                      }
-                    } else {
-                      const index = newDestinations.indexOf("mpdaily");
-                      if (index >= 0) {
-                        newDestinations.splice(index, 1);
-                      }
-                    }
-                    handleUpdateNewsItem(newDestinations);
-                  }}
-                >
-                  MPDaily
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={newsItem.destinations?.includes("magazine")}
-                  onCheckedChange={(checked) => {
-                    const newDestinations = [...(newsItem.destinations || [])];
-                    if (checked) {
-                      if (!newDestinations.includes("magazine")) {
-                        newDestinations.push("magazine");
-                      }
-                    } else {
-                      const index = newDestinations.indexOf("magazine");
-                      if (index >= 0) {
-                        newDestinations.splice(index, 1);
-                      }
-                    }
-                    handleUpdateNewsItem(newDestinations);
-                  }}
-                >
-                  Magazine
-                </DropdownMenuCheckboxItem>
-                <DropdownMenuCheckboxItem
-                  checked={newsItem.destinations?.includes("website")}
-                  onCheckedChange={(checked) => {
-                    const newDestinations = [...(newsItem.destinations || [])];
-                    if (checked) {
-                      if (!newDestinations.includes("website")) {
-                        newDestinations.push("website");
-                      }
-                    } else {
-                      const index = newDestinations.indexOf("website");
-                      if (index >= 0) {
-                        newDestinations.splice(index, 1);
-                      }
-                    }
-                    handleUpdateNewsItem(newDestinations);
-                  }}
-                >
-                  Website
-                </DropdownMenuCheckboxItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            </div>
+            
+            {isEditing ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={editedSummary}
+                  onChange={(e) => setEditedSummary(e.target.value)}
+                  placeholder="Edit the summary..."
+                  rows={3}
+                  className="text-sm"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSaveEdit}
+                    disabled={isSaving}
+                  >
+                    <Save className="h-3 w-3 mr-1" />
+                    {isSaving ? "Saving..." : "Save"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {newsItem.summary || "No summary available"}
+              </p>
+            )}
+          </div>
+
+          {/* Keywords */}
+          {newsItem.matched_clusters && newsItem.matched_clusters.length > 0 && (
+            <div>
+              <span className="text-sm font-medium block mb-2">Keywords</span>
+              <div className="flex flex-wrap gap-1">
+                {newsItem.matched_clusters.slice(0, isExpanded ? undefined : 3).map((cluster, index) => (
+                  <Badge key={index} variant="secondary" className="text-xs">
+                    {cluster}
+                  </Badge>
+                ))}
+                {!isExpanded && newsItem.matched_clusters.length > 3 && (
+                  <Badge variant="outline" className="text-xs">
+                    +{newsItem.matched_clusters.length - 3} more
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Competitor coverage */}
+          {newsItem.is_competitor_covered && (
+            <div className="flex items-center gap-2">
+              <Badge variant="destructive" className="text-xs">
+                Competitor Covered
+              </Badge>
+            </div>
           )}
         </div>
-      </CardFooter>
+      </CardContent>
+
+      {showApprovalActions && (
+        <CardFooter className="pt-2">
+          <ArticleApproval
+            newsItem={newsItem}
+            onApproved={onApproved}
+            mode="multiselect"
+          />
+        </CardFooter>
+      )}
     </Card>
   );
 };
 
-// Import supabase at the top level of the file to avoid TypeScript errors
-import { supabase } from "@/integrations/supabase/client";
+export default EnhancedNewsCard;

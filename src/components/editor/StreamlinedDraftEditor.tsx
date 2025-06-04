@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,7 +34,7 @@ export default function StreamlinedDraftEditor({
 }: StreamlinedDraftEditorProps) {
   // Editorial content state
   const [headline, setHeadline] = useState(
-    newsItem.content_variants?.editorial_content?.headline || newsItem.headline
+    newsItem.content_variants?.editorial_content?.headline || newsItem.original_title
   );
   const [summary, setSummary] = useState(
     newsItem.content_variants?.editorial_content?.summary || newsItem.summary
@@ -71,7 +70,7 @@ export default function StreamlinedDraftEditor({
     try {
       let prompt = "";
       const sourceContent = newsItem.content_variants?.source_content || {
-        original_title: newsItem.headline,
+        original_title: newsItem.original_title,
         original_summary: newsItem.summary
       };
       
@@ -151,7 +150,7 @@ Return only the 3 summaries, numbered.`;
     setIsGenerating(true);
     try {
       const sourceContent = newsItem.content_variants?.source_content || {
-        original_title: newsItem.headline,
+        original_title: newsItem.original_title,
         original_summary: newsItem.summary
       };
 
@@ -189,7 +188,7 @@ Focus on practical implications and industry impact.`,
     try {
       const contentVariants = {
         source_content: newsItem.content_variants?.source_content || {
-          original_title: newsItem.headline,
+          original_title: newsItem.original_title,
           original_summary: newsItem.summary,
           author: newsItem.source,
           publication_date: newsItem.timestamp
@@ -229,7 +228,7 @@ Focus on practical implications and industry impact.`,
 
       const contentVariants = {
         source_content: newsItem.content_variants?.source_content || {
-          original_title: newsItem.headline,
+          original_title: newsItem.original_title,
           original_summary: newsItem.summary,
           author: newsItem.source,
           publication_date: newsItem.timestamp

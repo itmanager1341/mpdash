@@ -35,13 +35,13 @@ interface ImprovedDraftEditorProps {
 export default function ImprovedDraftEditor({ newsItem, open, onOpenChange, onSave }: ImprovedDraftEditorProps) {
   // Source content (read-only)
   const sourceContent = newsItem.content_variants?.source_content || {
-    original_title: newsItem.headline,
+    original_title: newsItem.original_title,
     original_summary: newsItem.summary
   };
 
   // Editorial content state
   const [headline, setHeadline] = useState(
-    newsItem.content_variants?.editorial_content?.headline || newsItem.headline
+    newsItem.content_variants?.editorial_content?.headline || newsItem.original_title
   );
   const [summary, setSummary] = useState(
     newsItem.content_variants?.editorial_content?.summary || newsItem.summary
