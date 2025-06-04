@@ -43,31 +43,31 @@ export const checkForDuplicateNews = async (newsItem: PerplexityNewsItem): Promi
       return true; // Duplicate found
     }
     
-    // Get headline from either property
-    const headline = newsItem.headline || newsItem.title || "";
+    // Get title from either property
+    const title = newsItem.headline || newsItem.title || "";
     
-    // Skip headline similarity check for very short headlines or system messages
-    if (headline && headline.length > 15 && !headline.includes("News Import Information")) {
-      const { data: headlineMatches, error: headlineError } = await supabase
+    // Skip title similarity check for very short titles or system messages
+    if (title && title.length > 15 && !title.includes("News Import Information")) {
+      const { data: titleMatches, error: titleError } = await supabase
         .from('news')
-        .select('id, headline')
-        .ilike('headline', `%${headline.substring(0, 15)}%`)
+        .select('id, original_title')
+        .ilike('original_title', `%${title.substring(0, 15)}%`)
         .limit(5);
       
-      if (headlineError) {
-        console.error("Error checking for headline duplicates:", headlineError);
+      if (titleError) {
+        console.error("Error checking for title duplicates:", titleError);
         return false; // Continue with import if we can't check
       }
       
-      // Check for headline similarity (basic implementation)
-      const similarHeadlineFound = headlineMatches?.some(item => {
+      // Check for title similarity (basic implementation)
+      const similarTitleFound = titleMatches?.some(item => {
         // Calculate similarity (very basic - in production use a proper similarity algorithm)
-        const normalizedA = item.headline.toLowerCase();
-        const normalizedB = headline.toLowerCase();
+        const normalizedA = (item.original_title || "").toLowerCase();
+        const normalizedB = title.toLowerCase();
         return normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA);
       });
       
-      return !!similarHeadlineFound;
+      return !!similarTitleFound;
     }
     
     return false;
@@ -82,26 +82,26 @@ export const checkForDuplicateNews = async (newsItem: PerplexityNewsItem): Promi
  */
 export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => {
   try {
-    // Normalize and clean the data before insertion
-    const headline = newsItem.headline || newsItem.title || "";
+    // Normalize and clean the data before insertion - map title to original_title
+    const title = newsItem.headline || newsItem.title || "";
     const summary = newsItem.summary || newsItem.description || "";
     const source = newsItem.source || (newsItem.url ? new URL(newsItem.url).hostname.replace('www.', '') : "");
     const score = newsItem.perplexity_score || newsItem.relevance_score || newsItem.score || 0.5;
     const matched_clusters = Array.isArray(newsItem.matched_clusters) ? newsItem.matched_clusters : 
                              Array.isArray(newsItem.clusters) ? newsItem.clusters : [];
                              
-    if (!headline || !newsItem.url) {
-      return { success: false, error: "Missing required headline or URL" };
+    if (!title || !newsItem.url) {
+      return { success: false, error: "Missing required title or URL" };
     }
 
     // For system messages or temp data, don't insert
-    if (headline.includes("News Import Information") || newsItem.url === "#") {
-      console.log("Skipping system message or placeholder data:", headline);
+    if (title.includes("News Import Information") || newsItem.url === "#") {
+      console.log("Skipping system message or placeholder data:", title);
       return { success: false, error: "System message or placeholder data" };
     }
     
     const cleanedItem = {
-      headline: headline.trim(),
+      original_title: title.trim(), // Map title to original_title field
       url: newsItem.url.trim(),
       summary: summary.trim(),
       source: source.trim(),
@@ -126,7 +126,7 @@ export const insertPerplexityNewsItem = async (newsItem: PerplexityNewsItem) => 
       return { success: false, error: error.message };
     }
     
-    console.log("Successfully inserted news item:", cleanedItem.headline);
+    console.log("Successfully inserted news item:", cleanedItem.original_title);
     return { success: true };
   } catch (err) {
     console.error("Error inserting news item:", err);

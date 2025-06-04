@@ -1,7 +1,7 @@
 
 export interface NewsItem {
   id: string;
-  headline: string;
+  // Removed headline field - use original_title instead
   summary: string;
   status: 'pending' | 'approved_for_editing' | 'approved' | 'dismissed' | string;
   

@@ -147,8 +147,8 @@ export function NewsEditor({ newsItem, onSave, onCancel }: NewsEditorProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <h4 className="font-medium text-sm text-muted-foreground mb-1">Current Headline</h4>
-                <p className="text-sm">{newsItem.headline}</p>
+                <h4 className="font-medium text-sm text-muted-foreground mb-1">Current Title</h4>
+                <p className="text-sm">{newsItem.original_title || "No title set"}</p>
               </div>
               <div>
                 <h4 className="font-medium text-sm text-muted-foreground mb-1">Source & URL</h4>

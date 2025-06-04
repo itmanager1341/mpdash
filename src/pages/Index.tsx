@@ -349,7 +349,7 @@ const Index = () => {
           {selectedItem && (
             <>
               <SheetHeader>
-                <SheetTitle>{selectedItem.headline}</SheetTitle>
+                <SheetTitle>{selectedItem.original_title || "Untitled"}</SheetTitle>
                 <SheetDescription>
                   Source: <a href={selectedItem.url} target="_blank" rel="noopener noreferrer" className="underline">{selectedItem.source}</a>
                 </SheetDescription>

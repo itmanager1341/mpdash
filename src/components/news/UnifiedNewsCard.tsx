@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { toast } from "sonner";
 import { Edit, ExternalLink, MoreHorizontal, Trash2, CheckCircle2, FileEdit } from "lucide-react";
@@ -90,8 +89,8 @@ export function UnifiedNewsCard({
   const isPending = newsItem.status === 'pending';
   const isReadyForEnhancement = newsItem.status === 'approved_for_editing';
   
-  // Use editorial headline if available, otherwise fall back to original headline
-  const displayHeadline = newsItem.editorial_headline || newsItem.headline;
+  // Use editorial headline if available, otherwise fall back to original_title
+  const displayHeadline = newsItem.editorial_headline || newsItem.original_title || "Untitled";
   const displaySummary = newsItem.editorial_summary || newsItem.summary;
   
   return (

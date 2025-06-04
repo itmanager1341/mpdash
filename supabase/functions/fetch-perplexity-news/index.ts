@@ -591,7 +591,7 @@ function extractArticlesFromMarkdown(markdown: string): any[] {
 
 function normalizeArticle(article: any): NewsArticle {
   return {
-    title: article.title || article.headline || "Untitled Article",
+    title: article.title || article.headline || "Untitled Article", // Ensure we use title consistently
     url: article.url || "#",
     source: article.source || (article.url ? new URL(article.url).hostname.replace('www.', '') : "Unknown Source"),
     summary: article.summary || article.description || "",
