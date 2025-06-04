@@ -92,54 +92,6 @@ export type Database = {
           },
         ]
       }
-      article_import_logs: {
-        Row: {
-          articles_found: number | null
-          articles_imported: number | null
-          articles_skipped: number | null
-          created_at: string
-          date_range_end: string | null
-          date_range_start: string | null
-          error_message: string | null
-          id: string
-          import_completed_at: string | null
-          import_parameters: Json | null
-          import_started_at: string
-          imported_by: string | null
-          status: string
-        }
-        Insert: {
-          articles_found?: number | null
-          articles_imported?: number | null
-          articles_skipped?: number | null
-          created_at?: string
-          date_range_end?: string | null
-          date_range_start?: string | null
-          error_message?: string | null
-          id?: string
-          import_completed_at?: string | null
-          import_parameters?: Json | null
-          import_started_at?: string
-          imported_by?: string | null
-          status?: string
-        }
-        Update: {
-          articles_found?: number | null
-          articles_imported?: number | null
-          articles_skipped?: number | null
-          created_at?: string
-          date_range_end?: string | null
-          date_range_start?: string | null
-          error_message?: string | null
-          id?: string
-          import_completed_at?: string | null
-          import_parameters?: Json | null
-          import_started_at?: string
-          imported_by?: string | null
-          status?: string
-        }
-        Relationships: []
-      }
       article_metrics: {
         Row: {
           article_id: string
@@ -512,6 +464,51 @@ export type Database = {
           theme?: string
           title?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      job_execution_logs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          details: Json | null
+          duration_ms: number | null
+          execution_type: string
+          id: string
+          job_name: string
+          message: string | null
+          parameters_used: Json | null
+          started_at: string
+          status: string
+          triggered_by: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          execution_type?: string
+          id?: string
+          job_name: string
+          message?: string | null
+          parameters_used?: Json | null
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          details?: Json | null
+          duration_ms?: number | null
+          execution_type?: string
+          id?: string
+          job_name?: string
+          message?: string | null
+          parameters_used?: Json | null
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
         }
         Relationships: []
       }
@@ -1017,6 +1014,29 @@ export type Database = {
           next_run: string
         }[]
       }
+      get_job_execution_logs: {
+        Args: {
+          p_job_name?: string
+          p_status?: string
+          p_execution_type?: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          completed_at: string | null
+          created_at: string
+          details: Json | null
+          duration_ms: number | null
+          execution_type: string
+          id: string
+          job_name: string
+          message: string | null
+          parameters_used: Json | null
+          started_at: string
+          status: string
+          triggered_by: string | null
+        }[]
+      }
       get_job_settings: {
         Args: { job_name_param: string }
         Returns: {
@@ -1089,6 +1109,18 @@ export type Database = {
         Args: { "": string } | { "": unknown } | { "": unknown }
         Returns: unknown
       }
+      log_job_execution: {
+        Args: {
+          p_job_name: string
+          p_execution_type?: string
+          p_status?: string
+          p_message?: string
+          p_details?: Json
+          p_parameters_used?: Json
+          p_triggered_by?: string
+        }
+        Returns: string
+      }
       log_llm_usage: {
         Args: {
           p_function_name: string
@@ -1136,6 +1168,15 @@ export type Database = {
       sparsevec_typmod_in: {
         Args: { "": unknown[] }
         Returns: number
+      }
+      update_job_execution_status: {
+        Args: {
+          p_log_id: string
+          p_status: string
+          p_message?: string
+          p_details?: Json
+        }
+        Returns: boolean
       }
       update_job_settings: {
         Args: { job_name_param: string; settings_json: Json }

@@ -15,6 +15,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let logId: string | null = null;
+  
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -27,15 +29,30 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     // Parse request body
-    const { manual = false, promptId = null, modelOverride = null, limit = null } = await req.json().catch(() => ({}));
+    const { manual = false, promptId = null, modelOverride = null, limit = null, triggeredBy = null } = await req.json().catch(() => ({}));
+    
+    const executionType = manual ? 'manual' : 'scheduled';
+    const jobName = promptId ? `news_search_${promptId.substring(0, 8)}` : 'news_import';
     
     console.log(`Running news import. Manual: ${manual}, PromptId: ${promptId || 'default'}, ModelOverride: ${modelOverride || 'none'}, Limit: ${limit || 'default'}`);
+    
+    // Start logging the job execution
+    const { data: logResult } = await supabase.rpc('log_job_execution', {
+      p_job_name: jobName,
+      p_execution_type: executionType,
+      p_status: 'running',
+      p_message: 'Starting news import job',
+      p_triggered_by: triggeredBy
+    });
+    
+    logId = logResult;
     
     // If promptId is provided, use that specific prompt
     let keywords = [];
     let minScore = 0.6;
-    let finalLimit = limit || 10; // Use passed limit or default
+    let finalLimit = limit || 10;
     let promptToUse = promptId;
+    let jobParameters = {};
     
     // Try to get the job configuration first if no specific prompt is provided
     if (!promptId) {
@@ -55,6 +72,14 @@ serve(async (req) => {
 
       // Check if job is enabled or manual override
       if (!jobConfig.is_enabled && !manual) {
+        if (logId) {
+          await supabase.rpc('update_job_execution_status', {
+            p_log_id: logId,
+            p_status: 'error',
+            p_message: 'News import job is disabled'
+          });
+        }
+        
         return new Response(JSON.stringify({
           success: false,
           message: "News import job is disabled",
@@ -66,19 +91,36 @@ serve(async (req) => {
 
       // Extract parameters from job config
       const params = jobConfig.parameters || {};
+      jobParameters = params;
       
-      // Extract parameters
       keywords = Array.isArray(params.keywords) ? params.keywords : [];
       minScore = params.minScore || 0.6;
-      finalLimit = params.limit || finalLimit; // Use job config limit if available
+      finalLimit = params.limit || finalLimit;
       promptToUse = params.promptId || null;
     }
     
     // Ensure keywords is an array and has at least one default value if empty
     if (keywords.length === 0) {
-      // Add some default keywords if none are configured
       keywords = ["mortgage rates", "housing market", "federal reserve", "interest rates", "home equity", "foreclosure"];
       console.log(`No keywords configured, using defaults: ${keywords.join(', ')}`);
+    }
+    
+    // Update log with job parameters
+    if (logId) {
+      await supabase.rpc('update_job_execution_status', {
+        p_log_id: logId,
+        p_status: 'running',
+        p_message: `Running with ${keywords.length} keywords, min score ${minScore}, limit ${finalLimit}`,
+        p_details: {
+          parameters_used: {
+            keywords,
+            minScore,
+            limit: finalLimit,
+            promptId: promptToUse,
+            modelOverride
+          }
+        }
+      });
     }
     
     console.log(`Running news import with ${keywords.length} keywords, min score ${minScore}, limit ${finalLimit}, prompt ${promptToUse || 'default'}`);
@@ -91,8 +133,7 @@ serve(async (req) => {
           keywords,
           promptId: promptToUse,
           minScore,
-          limit: finalLimit, // Pass the final limit to the fetch function
-          // Pass model override if provided
+          limit: finalLimit,
           ...(modelOverride ? { modelOverride } : {})
         }
       }
@@ -111,8 +152,20 @@ serve(async (req) => {
     console.log(`Successfully fetched ${newsData.articles.length} articles`);
     
     if (newsData.articles.length === 0) {
-      // Log the full response to understand what we're getting
       console.log("Got empty articles array. Full response:", JSON.stringify(newsData));
+      
+      if (logId) {
+        await supabase.rpc('update_job_execution_status', {
+          p_log_id: logId,
+          p_status: 'success',
+          p_message: 'No articles found matching criteria',
+          p_details: {
+            articles_found: 0,
+            keywords_used: keywords,
+            response_debug: newsData
+          }
+        });
+      }
       
       return new Response(JSON.stringify({
         success: false,
@@ -146,13 +199,11 @@ serve(async (req) => {
         return false;
       }
       
-      // Skip system messages or placeholders
       if (article.headline.includes("News Import Information") && article.url === "#") {
         console.log("Skipping system message:", article.headline);
         return false;
       }
       
-      // Skip if URL doesn't look like a valid URL
       try {
         new URL(article.url);
         return true;
@@ -164,6 +215,20 @@ serve(async (req) => {
     
     if (validArticles.length === 0) {
       console.error("No valid articles to insert after filtering");
+      
+      if (logId) {
+        await supabase.rpc('update_job_execution_status', {
+          p_log_id: logId,
+          p_status: 'error',
+          p_message: 'No valid articles found for insertion',
+          p_details: {
+            original_count: newsData.articles.length,
+            valid_count: 0,
+            debug: newsData.debug || {}
+          }
+        });
+      }
+      
       return new Response(JSON.stringify({
         success: false,
         message: "No valid articles found for insertion",
@@ -183,7 +248,6 @@ serve(async (req) => {
     
     for (const article of validArticles) {
       try {
-        // Check if article URL already exists
         const { data: existing } = await supabase
           .from('news')
           .select('id')
@@ -191,7 +255,6 @@ serve(async (req) => {
           .maybeSingle();
         
         if (!existing) {
-          // For debugging: log the article we're about to insert
           console.log(`Inserting article: "${article.headline}" from ${article.source}`);
           
           const { error: insertError } = await supabase
@@ -215,44 +278,34 @@ serve(async (req) => {
       }
     }
     
-    if (insertedCount === 0 && validArticles.length > 0) {
-      console.error("No articles were inserted despite having valid articles to insert. Check for schema issues or duplicates.");
-    }
+    // Update job execution status
+    const finalStatus = insertedCount > 0 ? 'success' : (errorCount > 0 ? 'error' : 'success');
+    const finalMessage = insertedCount > 0 ? 
+                        `Successfully imported ${insertedCount} new articles` : 
+                        `Found ${validArticles.length} articles but none were new`;
     
-    // Log the job execution
-    try {
-      await supabase
-        .from('job_logs')
-        .insert([{
-          job_name: promptId ? `news_search_${promptId.substring(0, 8)}` : 'news_import',
-          status: insertedCount > 0 ? 'success' : (errorCount > 0 ? 'error' : 'warning'),
-          message: insertedCount > 0 ? 
-                   `Imported ${insertedCount} new articles` : 
-                   `Found ${validArticles.length} articles but none were inserted`,
-          execution_time: new Date().toISOString(),
-          details: {
-            articles_found: newsData.articles.length,
-            valid_articles: validArticles.length,
-            articles_inserted: insertedCount,
-            articles_skipped: skippedCount,
-            articles_error: errorCount,
-            prompt_used: promptToUse || 'default',
-            limit_used: finalLimit,
-            validation_results: validArticles.map(a => ({
-              headline: a.headline,
-              url: a.url,
-              source: a.source,
-              valid: true
-            })),
-            model_used: modelOverride || 'default from configuration'
+    if (logId) {
+      await supabase.rpc('update_job_execution_status', {
+        p_log_id: logId,
+        p_status: finalStatus,
+        p_message: finalMessage,
+        p_details: {
+          articles_found: newsData.articles.length,
+          valid_articles: validArticles.length,
+          articles_inserted: insertedCount,
+          articles_skipped: skippedCount,
+          articles_error: errorCount,
+          model_used: modelOverride || 'default from configuration',
+          execution_summary: {
+            keywords_used: keywords,
+            min_score_threshold: minScore,
+            limit_applied: finalLimit
           }
-        }]);
-    } catch (logError) {
-      console.error("Failed to log job execution:", logError);
-      // Continue execution - this is not a critical error
+        }
+      });
     }
 
-    // If this was a job from the scheduled task, update its last run timestamp
+    // If this was a scheduled job, update its last run timestamp
     if (!manual && !promptId) {
       try {
         await supabase
@@ -268,16 +321,13 @@ serve(async (req) => {
           .eq('job_name', 'news_import');
       } catch (updateError) {
         console.error("Failed to update job status:", updateError);
-        // Continue execution - this is not a critical error
       }
     }
 
     return new Response(
       JSON.stringify({
         success: insertedCount > 0,
-        message: insertedCount > 0 ? 
-                 `News import job ran successfully` : 
-                 `Found ${validArticles.length} articles but none were inserted`,
+        message: finalMessage,
         details: {
           articles_found: newsData.articles.length,
           valid_articles: validArticles.length,
@@ -285,14 +335,7 @@ serve(async (req) => {
           articles_skipped: skippedCount,
           articles_error: errorCount,
           execution_time: new Date().toISOString(),
-          prompt_used: promptToUse || 'default',
-          limit_used: finalLimit,
-          debug: newsData.debug || {},
-          articles: validArticles.map(a => ({
-            headline: a.headline,
-            url: a.url,
-            source: a.source
-          })),
+          log_id: logId,
           model_used: modelOverride || 'default from configuration'
         }
       }),
@@ -302,27 +345,26 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error in run-news-import function:", error);
     
-    // Create a Supabase client to log the error
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-      
-      if (supabaseUrl && serviceRoleKey) {
-        const supabase = createClient(supabaseUrl, serviceRoleKey);
+    // Update log with error if we have a log ID
+    if (logId) {
+      try {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') || '', 
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        );
         
-        // Log error to job_logs table
-        await supabase
-          .from('job_logs')
-          .insert([{
-            job_name: 'news_import',
-            status: 'error',
-            message: error instanceof Error ? error.message : 'Unknown error',
-            execution_time: new Date().toISOString(),
-            details: error instanceof Error ? error.stack : null
-          }]);
+        await supabase.rpc('update_job_execution_status', {
+          p_log_id: logId,
+          p_status: 'error',
+          p_message: error instanceof Error ? error.message : 'Unknown error occurred',
+          p_details: {
+            error_type: error instanceof Error ? error.constructor.name : 'UnknownError',
+            error_stack: error instanceof Error ? error.stack : null
+          }
+        });
+      } catch (logError) {
+        console.error("Could not update error log:", logError);
       }
-    } catch (logError) {
-      console.error("Could not log error to database:", logError);
     }
     
     return new Response(

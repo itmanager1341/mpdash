@@ -257,3 +257,49 @@ export interface NewsWithPublication {
   url: string;
   status: string | null;
 }
+
+// Interface for job execution logs - matches the new Supabase schema
+export interface JobExecutionLog {
+  id: string;
+  job_name: string;
+  execution_type: 'scheduled' | 'manual' | 'test';
+  status: 'running' | 'success' | 'error' | 'cancelled';
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+  message: string | null;
+  details: Json;
+  parameters_used: Json;
+  triggered_by: string | null;
+  created_at: string;
+}
+
+// Enhanced interface for usage analytics with job execution data
+export interface EnhancedUsageAnalytics extends UsageAnalytics {
+  jobExecutionBreakdown?: Array<{
+    job_name: string;
+    total_executions: number;
+    success_rate: number;
+    average_duration: number;
+    last_execution: string;
+  }>;
+  executionTrends?: Array<{
+    date: string;
+    scheduled_runs: number;
+    manual_runs: number;
+    success_count: number;
+    error_count: number;
+  }>;
+}
+
+// Interface for job health metrics
+export interface JobHealthMetrics {
+  job_name: string;
+  health_status: 'healthy' | 'warning' | 'error' | 'disabled';
+  last_execution: string | null;
+  success_rate: number;
+  average_duration: number;
+  total_executions: number;
+  recent_errors: number;
+  next_scheduled_run: string | null;
+}
