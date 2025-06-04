@@ -1,66 +1,115 @@
 
 # Editorial Workflow Guide
 
-## Content Types
+## Content Creation Philosophy
 
-1. **News Updates**:
-   - Brief, timely updates on industry developments
-   - Typical length: 150-300 words
-   - Primary channel: MPDaily
+The editorial workflow focuses on creating high-quality website articles using AI assistance and a comprehensive news source repository.
 
-2. **Analysis Articles**:
-   - In-depth examination of trends or events
-   - Typical length: 800-1200 words
-   - Primary channels: Magazine, Website
+## Article Types
+
+1. **Original Analysis**:
+   - Editor-created content using approved news sources
+   - Typical length: 800-1500 words
+   - AI-assisted research and outline generation
+
+2. **News Synthesis**:
+   - Articles combining multiple news sources from repository
+   - Typical length: 600-1000 words
+   - Focus on connecting trends and providing context
 
 3. **Feature Stories**:
    - Comprehensive coverage of major topics
    - Typical length: 1500+ words
-   - Primary channel: Magazine
+   - Deep research using news corpus and additional sources
 
-4. **Data Reports**:
-   - Data-driven analysis with visualizations
-   - Typical length: 600-1000 words
-   - Primary channels: Website, Magazine
+4. **Data-Driven Reports**:
+   - Analysis incorporating economic data and industry metrics
+   - Typical length: 800-1200 words
+   - Enhanced with FRED data and visualizations
 
-## Editorial Calendar Planning
+## Editorial Process
 
-1. **Daily Planning (MPDaily)**:
-   - Morning meeting: Review AI suggestions
-   - Mid-day: Finalize selections
-   - Afternoon: Schedule next day's email
+### 1. News Review and Repository Building
+- **Daily Review**: Evaluate AI-discovered news items
+- **Binary Decisions**: Simple approve (add to repository) or dismiss (delete)
+- **Quality Focus**: Assess relevance, accuracy, and research value
+- **No Routing**: No need to decide publication channels during review
 
-2. **Magazine Planning**:
-   - Monthly theme selection (6 weeks before publication)
-   - Article assignments (4 weeks before publication)
-   - Draft submissions (2 weeks before publication)
-   - Final edits (1 week before publication)
+### 2. Article Planning
+- **Source Research**: Use approved news repository for topic identification
+- **Brief Creation**: Create `editor_briefs` with AI assistance
+- **Outline Development**: Generate article structures using news sources
+- **Reference Integration**: Link to relevant approved news items
 
-3. **Website Planning**:
-   - Weekly content calendar review
-   - Coverage gap analysis
-   - Evergreen content planning
+### 3. Content Development
+- **AI-Assisted Writing**: Use news corpus for context and research
+- **Source Attribution**: Proper citation of news repository items
+- **Editorial Enhancement**: Add analysis, context, and professional insight
+- **Quality Review**: Ensure accuracy and editorial standards
+
+### 4. Publication Process
+- **Website Primary**: All articles target website publication
+- **Optional Distribution**: 
+  - Include in MPDaily email (editor choice)
+  - Feature in Magazine issues (editor choice)
+- **Performance Tracking**: Monitor website metrics and engagement
 
 ## Content Standards
 
-1. **Style Guide**:
-   - AP Style with industry-specific modifications
-   - Formal but accessible tone
-   - Data-backed statements
+### 1. Research Requirements
+- **Primary Sources**: Approved news items from repository
+- **Secondary Sources**: Additional research as needed
+- **Attribution Standards**: Clear citation of all sources
+- **Fact Verification**: Cross-reference multiple sources when possible
 
-2. **Source Requirements**:
-   - Primary sources preferred
-   - Minimum of 2 sources per article
-   - Competitor attribution guidelines
+### 2. Editorial Voice
+- **Authoritative**: Professional expertise and industry knowledge
+- **Accessible**: Clear communication for industry audience
+- **Analytical**: Context and interpretation beyond news reporting
+- **Practical**: Focus on actionable insights for readers
 
-3. **Editorial Voice**:
-   - Authoritative but not academic
-   - Practical focus on industry applications
-   - Reader-focused (addressing "so what?" factor)
+### 3. Quality Metrics
+- **Accuracy**: Factual correctness and proper attribution
+- **Relevance**: Value to mortgage industry professionals
+- **Originality**: Unique analysis and editorial perspective
+- **Engagement**: Reader interaction and sharing metrics
 
-## Approval Process
+## AI Integration
 
-1. **First Review**: Content editor
-2. **Second Review**: Subject matter expert (for technical accuracy)
-3. **Final Approval**: Managing editor
-4. **Publication**: According to channel-specific schedule
+### 1. Research Assistance
+- **Source Discovery**: AI helps identify relevant news from repository
+- **Trend Analysis**: Pattern recognition across news corpus
+- **Context Generation**: Background information and related topics
+- **Citation Suggestions**: Appropriate source recommendations
+
+### 2. Content Enhancement
+- **Outline Generation**: AI-assisted article structure development
+- **Draft Creation**: Initial content generation using news sources
+- **Fact Checking**: Verification against repository sources
+- **Style Optimization**: Consistency with editorial voice
+
+### 3. Performance Optimization
+- **SEO Enhancement**: Keyword optimization and search visibility
+- **Readability**: Content structure and accessibility improvements
+- **Engagement**: Headline and summary optimization
+- **Distribution**: Channel-specific formatting when needed
+
+## Workflow Management
+
+### 1. Daily Operations
+- **Morning**: Review overnight news discoveries
+- **Midday**: Approve/dismiss news items for repository
+- **Afternoon**: Create and develop article briefs
+- **Evening**: Review and prepare content for publication
+
+### 2. Quality Assurance
+- **Source Verification**: Ensure approved news quality
+- **Content Review**: Editorial standards compliance
+- **Publication Check**: Final review before website posting
+- **Performance Monitor**: Track article success metrics
+
+### 3. Continuous Improvement
+- **Repository Curation**: Regular review of source quality
+- **AI Training**: Feedback on content generation quality
+- **Process Optimization**: Workflow efficiency improvements
+- **Standard Updates**: Editorial guidelines refinement
