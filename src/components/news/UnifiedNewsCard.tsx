@@ -1,19 +1,12 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Edit, ExternalLink, MoreHorizontal, Trash2, CheckCircle2, Globe, FileEdit } from "lucide-react";
+import { Edit, ExternalLink, MoreHorizontal, Trash2, CheckCircle2, FileEdit } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { NewsItem } from "@/types/news";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverContent,
@@ -42,26 +35,25 @@ export function UnifiedNewsCard({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   
-  // Handle initial approval (moves to approved_for_editing status)
-  const handleApprovalForEditing = async () => {
+  // Handle moving to enhancement phase
+  const handleEnhanceContent = async () => {
     setIsProcessing(true);
     try {
       const { error } = await supabase
         .from('news')
         .update({ 
-          status: 'approved_for_editing',
-          destinations: [] // Clear destinations until final routing
+          status: 'approved_for_editing'
         })
         .eq('id', newsItem.id);
       
       if (error) throw error;
       
-      toast.success("Article approved for editorial enhancement");
+      toast.success("Article moved to enhancement phase");
       onStatusChange?.();
       
     } catch (err) {
-      console.error("Error approving article for editing:", err);
-      toast.error("Failed to approve article");
+      console.error("Error moving article to enhancement:", err);
+      toast.error("Failed to move article to enhancement");
     } finally {
       setIsProcessing(false);
     }
@@ -80,7 +72,7 @@ export function UnifiedNewsCard({
 
   // Get status display info
   const getStatusDisplay = () => {
-    const { status, destinations } = newsItem;
+    const { status } = newsItem;
     
     if (status === 'pending') {
       return { variant: "outline" as const, label: "Pending Review", color: "bg-amber-50 text-amber-700 border-amber-200" };
@@ -88,25 +80,15 @@ export function UnifiedNewsCard({
     if (status === 'approved_for_editing') {
       return { variant: "default" as const, label: "Ready for Enhancement", color: "bg-blue-50 text-blue-700 border-blue-200" };
     }
-    if (status === 'approved' && destinations?.length) {
-      const channelLabels = destinations
-        .filter(d => d !== 'website')
-        .map(d => d.charAt(0).toUpperCase() + d.slice(1));
-      return { 
-        variant: "default" as const, 
-        label: channelLabels.length ? `Approved: ${channelLabels.join(', ')}` : "Approved", 
-        color: "bg-green-50 text-green-700 border-green-200" 
-      };
-    }
-    if (status === 'dismissed') {
-      return { variant: "secondary" as const, label: "Dismissed", color: "bg-gray-50 text-gray-700 border-gray-200" };
+    if (status === 'enhanced') {
+      return { variant: "default" as const, label: "Enhanced - Ready for Editorial Hub", color: "bg-green-50 text-green-700 border-green-200" };
     }
     return { variant: "outline" as const, label: status || "Unknown", color: "" };
   };
 
   const statusDisplay = getStatusDisplay();
   const isPending = newsItem.status === 'pending';
-  const isApprovedForEditing = newsItem.status === 'approved_for_editing';
+  const isReadyForEnhancement = newsItem.status === 'approved_for_editing';
   
   // Use editorial headline if available, otherwise fall back to original headline
   const displayHeadline = newsItem.editorial_headline || newsItem.headline;
@@ -120,15 +102,14 @@ export function UnifiedNewsCard({
             {statusDisplay.label}
           </Badge>
           
-          <div className="flex gap-1">
+          <div className="flex gap-2 items-center">
+            {/* Always show perplexity score */}
+            <span className="text-sm font-medium text-muted-foreground">
+              Score: {newsItem.perplexity_score?.toFixed(1) || "N/A"}
+            </span>
             {newsItem.editorial_headline && (
               <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
                 Enhanced
-              </Badge>
-            )}
-            {newsItem.perplexity_score && newsItem.perplexity_score > 7 && (
-              <Badge variant="outline">
-                Score: {newsItem.perplexity_score.toFixed(1)}
               </Badge>
             )}
             {newsItem.is_competitor_covered && (
@@ -178,28 +159,31 @@ export function UnifiedNewsCard({
       <CardFooter className="pt-4 flex justify-between items-center gap-2">
         {showActions && (
           <div className="flex gap-2 flex-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDetailsClick?.(newsItem)}
-            >
-              View Details
-            </Button>
-            
             {isPending && (
-              <Button 
-                variant="default" 
-                size="sm"
-                disabled={isProcessing}
-                className="flex items-center gap-2"
-                onClick={handleApprovalForEditing}
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                {isProcessing ? "Processing..." : "Approve for Editing"}
-              </Button>
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  disabled={isProcessing}
+                  onClick={handleDismiss}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Dismiss
+                </Button>
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  disabled={isProcessing}
+                  className="flex items-center gap-2"
+                  onClick={handleEnhanceContent}
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  {isProcessing ? "Processing..." : "Enhance Content"}
+                </Button>
+              </>
             )}
 
-            {isApprovedForEditing && onEditClick && (
+            {isReadyForEnhancement && onEditClick && (
               <Button 
                 variant="default" 
                 size="sm"
@@ -207,7 +191,17 @@ export function UnifiedNewsCard({
                 onClick={() => onEditClick(newsItem)}
               >
                 <FileEdit className="h-4 w-4" />
-                Enhance Content
+                Fix Source Fields
+              </Button>
+            )}
+
+            {!isPending && !isReadyForEnhancement && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onDetailsClick?.(newsItem)}
+              >
+                View Details
               </Button>
             )}
           </div>
@@ -231,18 +225,15 @@ export function UnifiedNewsCard({
                   <ExternalLink className="mr-2 h-4 w-4" />
                   View Source
                 </Button>
-                {(isPending || isApprovedForEditing) && onDismiss && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={handleDismiss}
-                    disabled={isProcessing}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Dismiss
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start"
+                  onClick={() => onDetailsClick?.(newsItem)}
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  View Details
+                </Button>
               </div>
             </PopoverContent>
           </Popover>

@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -33,7 +34,7 @@ const Index = () => {
   const [editingItem, setEditingItem] = useState<NewsItem | null>(null);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isEditingOpen, setIsEditingOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<"pending" | "approved_editing" | "all">("pending");
+  const [viewMode, setViewMode] = useState<"pending" | "ready_enhancement">("pending");
   const [isAddNewsDialogOpen, setIsAddNewsDialogOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
@@ -46,7 +47,6 @@ const Index = () => {
   const { data: sourcesList } = useQuery({
     queryKey: ['news-sources'],
     queryFn: async () => {
-      // First, fetch all sources where source is not null
       const { data, error } = await supabase
         .from('news')
         .select('source')
@@ -55,7 +55,6 @@ const Index = () => {
       
       if (error) throw new Error(error.message);
       
-      // Extract unique sources
       const sources = [...new Set(data.map(item => item.source))];
       return sources as string[];
     }
@@ -73,7 +72,6 @@ const Index = () => {
       
       if (error) throw new Error(error.message);
       
-      // Format clusters as "Primary: Subtheme"
       return data.map(c => `${c.primary_theme}: ${c.sub_theme}`);
     }
   });
@@ -86,7 +84,7 @@ const Index = () => {
       
       if (viewMode === "pending") {
         query = query.eq('status', 'pending');
-      } else if (viewMode === "approved_editing") {
+      } else if (viewMode === "ready_enhancement") {
         query = query.eq('status', 'approved_for_editing');
       }
       
@@ -115,17 +113,17 @@ const Index = () => {
     setIsSheetOpen(true);
   };
 
-  // Simplified dismiss handler
+  // Simplified dismiss handler - permanently delete
   const handleDismiss = async (item: NewsItem) => {
     try {
       const { error } = await supabase
         .from('news')
-        .update({ status: 'dismissed', destinations: [] })
+        .delete()
         .eq('id', item.id);
       
       if (error) throw error;
       
-      toast.success("Article dismissed");
+      toast.success("Article dismissed and removed");
       refetch();
     } catch (err) {
       console.error("Error dismissing article:", err);
@@ -167,7 +165,6 @@ const Index = () => {
     toast.info("Analyzing current news items for keyword clusters...");
     
     try {
-      // Call the edge function to analyze news items and update clusters
       const { data, error } = await supabase.functions.invoke('analyze-news-clusters', {
         body: { parameters: { source: "content_analysis" } }
       });
@@ -207,18 +204,17 @@ const Index = () => {
   return (
     <DashboardLayout>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">News Workflow</h1>
+        <h1 className="text-3xl font-bold mb-2">Today's Briefing</h1>
         <p className="text-muted-foreground">
-          Review, enhance, and route content through the editorial workflow
+          Review news discoveries and enhance source information for Editorial Hub
         </p>
       </div>
       
       <div className="flex justify-between items-center mb-6">
-        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "approved_editing" | "all")}>
+        <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as "pending" | "ready_enhancement")}>
           <TabsList>
             <TabsTrigger value="pending">Pending Review</TabsTrigger>
-            <TabsTrigger value="approved_editing">Ready for Enhancement</TabsTrigger>
-            <TabsTrigger value="all">All Content</TabsTrigger>
+            <TabsTrigger value="ready_enhancement">Ready for Enhancement</TabsTrigger>
           </TabsList>
         </Tabs>
         
@@ -329,7 +325,7 @@ const Index = () => {
           <p className="text-muted-foreground">
             {viewMode === "pending" 
               ? "No pending content to review. Try adjusting filters or adding content manually." 
-              : "No content matches your current filters."}
+              : "No content ready for enhancement."}
           </p>
         </div>
       )}
@@ -340,10 +336,7 @@ const Index = () => {
             key={item.id}
             newsItem={item}
             onDismiss={handleDismiss}
-            onDetailsClick={(item) => {
-              setSelectedItem(item);
-              setIsSheetOpen(true);
-            }}
+            onDetailsClick={openDetailView}
             onEditClick={handleEditClick}
             onStatusChange={refetch}
           />
@@ -387,10 +380,9 @@ const Index = () => {
                     <div className="mt-2">
                       {selectedItem.status && (
                         <Badge 
-                          variant={selectedItem.status === "approved" ? "success" : 
-                                  selectedItem.status === "pending" ? "warning" : 
-                                  selectedItem.status === "dismissed" ? "outline" : 
-                                  selectedItem.status === "drafted_mpdaily" ? "purple" : "outline"} 
+                          variant={selectedItem.status === "enhanced" ? "default" : 
+                                  selectedItem.status === "pending" ? "outline" : 
+                                  selectedItem.status === "approved_for_editing" ? "secondary" : "outline"} 
                           className="text-sm"
                         >
                           {selectedItem.status.charAt(0).toUpperCase() + selectedItem.status.slice(1)}
@@ -398,19 +390,6 @@ const Index = () => {
                       )}
                     </div>
                   </div>
-
-                  {selectedItem.destinations && selectedItem.destinations.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium">Destinations</h3>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {selectedItem.destinations.map((destination, index) => (
-                          <Badge key={index} variant="secondary" className="capitalize">
-                            {destination}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   
                   <div>
                     <h3 className="text-sm font-medium">Matched Clusters</h3>
@@ -426,37 +405,12 @@ const Index = () => {
                   </div>
                 </div>
               </div>
-              
-              <div className="mt-6 space-y-2">
-                {selectedItem.status === "pending" && (
-                  <>
-                    <Card variant="outline" className="p-4">
-                      <CardContent className="p-0">
-                        <h4 className="font-medium mb-2">Change Status</h4>
-                        <div className="flex flex-col gap-2">
-                          <Button 
-                            variant="default" 
-                            onClick={() => {
-                              handleDismiss(selectedItem).then(() => {
-                                setIsSheetOpen(false);
-                              });
-                            }}
-                            className="w-full justify-center"
-                          >
-                            Dismiss Article
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </>
-                )}
-              </div>
             </>
           )}
         </SheetContent>
       </Sheet>
 
-      {/* Editorial enhancement sheet */}
+      {/* Enhancement sheet - simplified for source field fixes only */}
       <Sheet open={isEditingOpen} onOpenChange={setIsEditingOpen}>
         <SheetContent className="w-full sm:max-w-4xl">
           {editingItem && (

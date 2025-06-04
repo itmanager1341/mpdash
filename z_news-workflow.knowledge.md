@@ -15,63 +15,42 @@ The editorial workflow centers on news discovery, binary review, and building a 
 
 - **Manual Addition**: Editors can manually add news items when needed
 
-### 2. Binary News Review
-- **Simple Approve/Dismiss**: Editors review AI-suggested news items with only two options:
-  - **Approve**: Add to news repository as source material
-  - **Dismiss**: Permanently remove (deleted from system)
+### 2. Binary News Review (Today's Briefing)
+- **Simple Review Process**: Editors review AI-suggested news items with two options:
+  - **Dismiss**: Permanently delete from system (not relevant/redundant)
+  - **Enhance Content**: Move to source field enhancement for completion
 - **No routing decisions**: No need to choose between MPDaily, Magazine, or Website during review
-- **No daily limits**: Editors can approve as many relevant items as needed
-- **Focus on quality**: Decisions based on relevance, accuracy, and potential value as source material
+- **Focus on completeness**: Decisions based on relevance, accuracy, and potential value as source material
 
-### 3. News Repository Building
-- **Source Corpus**: Approved news items stored in `news` table with complete metadata:
-  - Original author and publication details
-  - Source URL and publication date
-  - Full article content and summary
-  - Perplexity relevance scores
-  - Matched keyword clusters
-- **Research Foundation**: This corpus serves as the primary source for:
+### 3. Source Field Enhancement
+- **Human verification**: Ensure article source information is complete before passing to Editorial Hub
+- **Source field fixes only**:
+  - Original author field population
+  - Content scraping retry if needed
+  - Source attribution verification
+  - Publication date correction
+- **Article remains in news table**: Enhanced articles stay in news table as sources for Editorial Hub
+
+### 4. Editorial Hub Integration
+- **Source Repository**: Enhanced news items in news table serve as source material for:
   - Article research and fact-checking
   - Citation and attribution
   - AI-assisted content generation
   - Trend analysis and topic development
-
-## Article Creation Process
-
-### 1. Editor Brief Creation
-- **New Articles**: Editors create original articles in `editor_briefs` table
-- **AI Assistance**: System helps generate article outlines using approved news sources
-- **Source Integration**: Reference approved news items for research and citations
-
-### 2. Content Development
-- **Website Focus**: All articles target website publication as primary channel
-- **Flexible Distribution**: Editors may later choose to include articles in:
-  - MPDaily email (editor's discretion)
-  - Magazine issues (editor's discretion)
-- **AI Enhancement**: Content generation assisted by AI using news corpus
-
-### 3. Publication Workflow
-- **Single Channel**: Website as the primary and default publication target
-- **Optional Distribution**: Secondary channels selected by editorial choice, not workflow requirement
+- **Article Creation**: New articles created in `editor_briefs` table using news sources as reference
 
 ## Status Tracking
 
 News items move through simple statuses:
 - `pending`: Awaiting editorial review
-- `approved`: Added to source repository
-- `dismissed`: Permanently removed (deleted)
-
-Editor briefs follow separate article workflow:
-- `draft`: Initial creation and development
-- `review`: Editorial review process
-- `approved`: Ready for publication
-- `published`: Live on website
-- `archived`: No longer active
+- `approved_for_editing`: Ready for source field enhancement
+- `enhanced`: Complete source information, ready for Editorial Hub use
+- Dismissed items are permanently deleted from system
 
 ## Key Benefits of Simplified Workflow
 
-1. **Faster Decision Making**: Binary approve/dismiss reduces cognitive load
-2. **Better Source Management**: Comprehensive news repository for research
-3. **Flexible Publishing**: Website-first approach with optional distribution
-4. **AI-Enhanced Creation**: Rich source corpus enables better AI assistance
-5. **Reduced Complexity**: Eliminates multiple routing decisions during review
+1. **Faster Decision Making**: Binary review reduces cognitive load
+2. **Complete Source Management**: Human verification ensures quality source data
+3. **Seamless Editorial Integration**: Enhanced news items ready for article creation
+4. **Reduced Complexity**: Eliminates multiple routing decisions during review
+5. **Quality Assurance**: Human-in-the-loop ensures completeness before Editorial Hub
