@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,32 +7,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChevronDown, ChevronRight, RefreshCw, Filter } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { formatDistanceToNow } from "date-fns";
 
-interface JobLog {
+interface ExecutionLog {
   id: string;
-  job_name: string;
+  type: 'llm' | 'import' | 'sync';
+  name: string;
   status: string;
+  timestamp: string;
   message: string | null;
-  execution_time: string;
   details: any;
-  created_at: string;
-}
-
-interface SyncOperation {
-  id: string;
-  operation_type: string;
-  status: string;
-  total_items: number;
-  completed_items: number;
-  created_at: string;
-  updated_at: string;
-  results_summary: any;
-  error_details: any;
+  duration: number | null;
 }
 
 const JobExecutionLogsTable = () => {
@@ -41,26 +27,41 @@ const JobExecutionLogsTable = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  const { data: jobLogs, isLoading: isLoadingJobs, refetch: refetchJobs } = useQuery({
-    queryKey: ["job-logs", statusFilter, typeFilter, searchTerm],
+  const { data: llmLogs, isLoading: isLoadingLlm, refetch: refetchLlm } = useQuery({
+    queryKey: ["llm-usage-logs", statusFilter],
     queryFn: async () => {
       let query = supabase
-        .from("job_logs")
+        .from("llm_usage_logs")
         .select("*")
-        .order("execution_time", { ascending: false })
-        .limit(100);
+        .order("created_at", { ascending: false })
+        .limit(50);
 
       if (statusFilter !== "all") {
         query = query.eq("status", statusFilter);
       }
 
-      if (searchTerm) {
-        query = query.ilike("job_name", `%${searchTerm}%`);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const { data: importLogs, isLoading: isLoadingImports, refetch: refetchImports } = useQuery({
+    queryKey: ["import-logs", statusFilter],
+    queryFn: async () => {
+      let query = supabase
+        .from("article_import_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter);
       }
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as JobLog[];
+      return data || [];
     },
   });
 
@@ -79,29 +80,54 @@ const JobExecutionLogsTable = () => {
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as SyncOperation[];
+      return data || [];
     },
   });
 
-  const combinedLogs = [
-    ...(jobLogs?.map(log => ({
+  const combinedLogs: ExecutionLog[] = [
+    ...(llmLogs?.map(log => ({
       id: log.id,
-      type: "job",
-      name: log.job_name,
+      type: 'llm' as const,
+      name: log.function_name,
       status: log.status,
-      timestamp: log.execution_time,
-      message: log.message,
-      details: log.details,
-      duration: null
+      timestamp: log.created_at,
+      message: log.error_message || `${log.model} - ${log.total_tokens} tokens`,
+      details: { 
+        model: log.model,
+        tokens: log.total_tokens,
+        cost: log.estimated_cost,
+        metadata: log.operation_metadata 
+      },
+      duration: log.duration_ms
+    })) || []),
+    ...(importLogs?.map(log => ({
+      id: log.id,
+      type: 'import' as const,
+      name: 'Article Import',
+      status: log.status,
+      timestamp: log.created_at,
+      message: log.error_message || `${log.articles_imported} articles imported`,
+      details: {
+        imported: log.articles_imported,
+        skipped: log.articles_skipped,
+        found: log.articles_found,
+        parameters: log.import_parameters
+      },
+      duration: log.import_completed_at && log.import_started_at ? 
+        new Date(log.import_completed_at).getTime() - new Date(log.import_started_at).getTime() : null
     })) || []),
     ...(syncOps?.map(op => ({
       id: op.id,
-      type: "sync",
+      type: 'sync' as const,
       name: op.operation_type,
       status: op.status,
       timestamp: op.created_at,
       message: `${op.completed_items}/${op.total_items} items processed`,
-      details: { results: op.results_summary, errors: op.error_details },
+      details: { 
+        results: op.results_summary, 
+        errors: op.error_details,
+        decisions: op.merge_decisions 
+      },
       duration: op.updated_at ? new Date(op.updated_at).getTime() - new Date(op.created_at).getTime() : null
     })) || [])
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -146,7 +172,7 @@ const JobExecutionLogsTable = () => {
     return `${minutes}m`;
   };
 
-  const isLoading = isLoadingJobs || isLoadingSyncs;
+  const isLoading = isLoadingLlm || isLoadingImports || isLoadingSyncs;
 
   return (
     <div className="space-y-4">
@@ -156,7 +182,8 @@ const JobExecutionLogsTable = () => {
           variant="outline" 
           size="sm" 
           onClick={() => {
-            refetchJobs();
+            refetchLlm();
+            refetchImports();
             refetchSyncs();
           }}
           disabled={isLoading}
@@ -187,8 +214,9 @@ const JobExecutionLogsTable = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="job">Jobs</SelectItem>
-              <SelectItem value="sync">Sync Ops</SelectItem>
+              <SelectItem value="llm">LLM</SelectItem>
+              <SelectItem value="import">Import</SelectItem>
+              <SelectItem value="sync">Sync</SelectItem>
             </SelectContent>
           </Select>
           <Input
