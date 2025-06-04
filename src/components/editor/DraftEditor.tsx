@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,7 +28,7 @@ interface DraftEditorProps {
 }
 
 const DraftEditor = ({ newsItem, open, onOpenChange, onSave }: DraftEditorProps) => {
-  const [title, setTitle] = useState(newsItem.content_variants?.editorial_content?.headline || newsItem.headline);
+  const [title, setTitle] = useState(newsItem.content_variants?.editorial_content?.headline || newsItem.original_title);
   const [summary, setSummary] = useState(newsItem.content_variants?.editorial_content?.summary || newsItem.summary);
   const [cta, setCta] = useState(newsItem.content_variants?.editorial_content?.cta || "Read more about this story...");
   const [fullContent, setFullContent] = useState(newsItem.content_variants?.editorial_content?.full_content || "");
@@ -45,7 +45,7 @@ const DraftEditor = ({ newsItem, open, onOpenChange, onSave }: DraftEditorProps)
 
       const contentVariants = {
         source_content: {
-          original_title: newsItem.content_variants?.source_content?.original_title || newsItem.headline,
+          original_title: newsItem.content_variants?.source_content?.original_title || newsItem.original_title,
           original_summary: newsItem.content_variants?.source_content?.original_summary || newsItem.summary,
           author: newsItem.content_variants?.source_content?.author,
           publication_date: newsItem.content_variants?.source_content?.publication_date

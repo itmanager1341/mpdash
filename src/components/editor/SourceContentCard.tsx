@@ -11,7 +11,7 @@ interface SourceContentCardProps {
 
 export function SourceContentCard({ newsItem }: SourceContentCardProps) {
   const sourceContent = newsItem.content_variants?.source_content || {
-    original_title: newsItem.headline,
+    original_title: newsItem.original_title,
     original_summary: newsItem.summary,
     author: 'Unknown',
     publication_date: newsItem.timestamp

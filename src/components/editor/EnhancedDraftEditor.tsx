@@ -32,13 +32,13 @@ interface EnhancedDraftEditorProps {
 const EnhancedDraftEditor = ({ newsItem, open, onOpenChange, onSave }: EnhancedDraftEditorProps) => {
   // Source content (read-only)
   const sourceContent = newsItem.content_variants?.source_content || {
-    original_title: newsItem.headline,
+    original_title: newsItem.original_title,
     original_summary: newsItem.summary
   };
 
   // Editorial content (editable)
   const [headline, setHeadline] = useState(
-    newsItem.content_variants?.editorial_content?.headline || newsItem.headline
+    newsItem.content_variants?.editorial_content?.headline || newsItem.original_title
   );
   const [summary, setSummary] = useState(
     newsItem.content_variants?.editorial_content?.summary || newsItem.summary
@@ -204,8 +204,8 @@ Do not include the headline in the content - just the article body.`,
         source_content: {
           original_title: sourceContent.original_title,
           original_summary: sourceContent.original_summary,
-          author: sourceContent.author || null,
-          publication_date: sourceContent.publication_date || null
+          author: sourceContent.author || newsItem.original_author,
+          publication_date: sourceContent.publication_date || newsItem.original_publication_date
         },
         editorial_content: {
           headline,
@@ -216,9 +216,10 @@ Do not include the headline in the content - just the article body.`,
         metadata: {
           seo_title: headline,
           seo_description: summary.substring(0, 160),
-          tags: []
+          tags: [],
+          workflow_stage: 'ready_for_publication'
         },
-        status: "draft"
+        status: "ready"
       };
 
       const { error } = await supabase
@@ -231,7 +232,7 @@ Do not include the headline in the content - just the article body.`,
 
       if (error) throw error;
 
-      toast.success("Draft saved successfully");
+      toast.success("Enhanced draft saved successfully");
       onSave();
       onOpenChange(false);
     } catch (error) {
@@ -242,169 +243,140 @@ Do not include the headline in the content - just the article body.`,
     }
   };
 
-  const getPreviewHtml = () => {
-    return `
-      <div class="max-w-3xl mx-auto">
-        <h1 class="text-2xl font-bold mb-4">${headline}</h1>
-        <div class="text-sm text-gray-600 mb-2">Source: ${newsItem.source}</div>
-        <div class="text-sm text-gray-500 mb-4 italic">${cta}</div>
-        <div class="prose">
-          ${fullContent}
-        </div>
-      </div>
-    `;
-  };
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-4xl overflow-y-auto" side="right">
         <SheetHeader>
-          <SheetTitle>MPDaily Article Editor</SheetTitle>
+          <SheetTitle>Enhanced Article Editor</SheetTitle>
           <SheetDescription>
-            Create marketing-optimized content for MPDaily publication
+            Create optimized content with AI assistance
           </SheetDescription>
         </SheetHeader>
-        
+
         <div className="mt-6 space-y-6">
-          {/* Source Content Reference */}
-          <Card className="border-muted">
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <ExternalLink className="h-4 w-4" />
+          {/* Source Reference */}
+          <Card className="bg-blue-50 border-blue-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center justify-between">
                 Source Reference
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(newsItem.url, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Source
+                </Button>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div>
-                <Label className="text-xs text-muted-foreground">Original Title</Label>
-                <p className="text-sm">{sourceContent.original_title}</p>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Original Summary</Label>
-                <p className="text-sm text-muted-foreground">{sourceContent.original_summary}</p>
-              </div>
-              <div className="flex gap-2">
-                <Badge variant="outline">{newsItem.source}</Badge>
-                {newsItem.perplexity_score && (
-                  <Badge variant="secondary">Score: {newsItem.perplexity_score.toFixed(1)}</Badge>
-                )}
+            <CardContent>
+              <div className="space-y-2">
+                <div>
+                  <h4 className="font-medium text-sm">Original Title</h4>
+                  <p className="text-sm text-muted-foreground">{sourceContent.original_title}</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">Summary</h4>
+                  <p className="text-sm text-muted-foreground">{sourceContent.original_summary}</p>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <Badge variant="outline">{newsItem.source}</Badge>
+                  {newsItem.perplexity_score && (
+                    <Badge variant="secondary">Score: {newsItem.perplexity_score.toFixed(1)}</Badge>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Tabs defaultValue="edit" className="w-full">
-            <TabsList className="mb-4">
-              <TabsTrigger value="edit">
-                <Lightbulb className="h-4 w-4 mr-2" />
-                Edit Content
-              </TabsTrigger>
-              <TabsTrigger value="preview">
-                <Eye className="h-4 w-4 mr-2" />
-                Preview
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="edit" className="space-y-6">
-              {/* Marketing Headline */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="headline">Marketing Headline</Label>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={generateHeadlineSuggestions}
-                    disabled={isGenerating}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {isGenerating ? "Generating..." : "AI Suggestions"}
-                  </Button>
-                </div>
-                <Input
-                  id="headline"
-                  value={headline}
-                  onChange={(e) => setHeadline(e.target.value)}
-                  placeholder="Compelling, marketing-optimized headline..."
-                />
+          {/* Editorial Content */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="headline">Marketing Headline</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateHeadlineSuggestions}
+                  disabled={isGenerating}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  AI Suggestions
+                </Button>
               </div>
-
-              {/* Editorial Summary */}
-              <div className="space-y-2">
-                <Label htmlFor="summary">Editorial Summary</Label>
-                <Textarea
-                  id="summary"
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  placeholder="Editorial summary for meta description and reference..."
-                  rows={3}
-                />
-              </div>
-
-              {/* Call-to-Action */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="cta">Call-to-Action Teaser</Label>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={generateCTASuggestions}
-                    disabled={isGenerating}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {isGenerating ? "Generating..." : "AI CTAs"}
-                  </Button>
-                </div>
-                <Textarea
-                  id="cta"
-                  value={cta}
-                  onChange={(e) => setCta(e.target.value)}
-                  placeholder="Compelling 1-2 sentence teaser that creates curiosity..."
-                  rows={2}
-                />
-              </div>
-
-              <Separator />
-
-              {/* Full Article Content */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="full-content">Full Article Content</Label>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={expandToFullArticle}
-                    disabled={isGenerating}
-                  >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    {isGenerating ? "Generating..." : "AI Expand"}
-                  </Button>
-                </div>
-                <Textarea
-                  id="full-content"
-                  value={fullContent}
-                  onChange={(e) => setFullContent(e.target.value)}
-                  placeholder="Full article content with proper attribution..."
-                  rows={12}
-                  className="font-mono text-sm"
-                />
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="preview">
-              <div 
-                className="border rounded-md p-6 bg-white min-h-[400px]"
-                dangerouslySetInnerHTML={{ __html: getPreviewHtml() }}
+              <Input
+                id="headline"
+                value={headline}
+                onChange={(e) => setHeadline(e.target.value)}
+                placeholder="Optimized headline for email and web"
               />
-            </TabsContent>
-          </Tabs>
+            </div>
 
-          <SheetFooter className="mt-8">
-            <Button 
-              onClick={handleSaveDraft} 
-              disabled={isSaving || isGenerating} 
-              className="w-full sm:w-auto"
-            >
+            <div className="space-y-2">
+              <Label htmlFor="summary">Editorial Summary</Label>
+              <Textarea
+                id="summary"
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
+                placeholder="Refined summary for the article"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="cta">Call-to-Action Teaser</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={generateCTASuggestions}
+                  disabled={isGenerating}
+                >
+                  <Lightbulb className="h-4 w-4 mr-2" />
+                  CTA Ideas
+                </Button>
+              </div>
+              <Input
+                id="cta"
+                value={cta}
+                onChange={(e) => setCta(e.target.value)}
+                placeholder="Compelling reason to read more..."
+              />
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="full-content">Full Article Content</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={expandToFullArticle}
+                  disabled={isGenerating || !headline || !summary}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate Article
+                </Button>
+              </div>
+              <Textarea
+                id="full-content"
+                value={fullContent}
+                onChange={(e) => setFullContent(e.target.value)}
+                placeholder="Complete article content..."
+                rows={12}
+                className="font-mono text-sm"
+              />
+            </div>
+          </div>
+
+          <SheetFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDraft} disabled={isSaving || isGenerating}>
               <Save className="h-4 w-4 mr-2" />
-              {isSaving ? "Saving..." : "Save Draft"}
+              {isSaving ? "Saving..." : "Save Enhanced Draft"}
             </Button>
           </SheetFooter>
         </div>

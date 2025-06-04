@@ -110,7 +110,7 @@ export default function AIResearchPanel({
     
     try {
       const sourcesContext = selectedSources.map(s => 
-        `${s.headline}: ${s.summary}`
+        `${s.original_title}: ${s.summary}`
       ).join('\n\n');
 
       const prompt = `Based on these articles, suggest 3-5 unique angle ideas for new content:
@@ -226,7 +226,7 @@ Format as numbered list with brief explanations.`;
                   <Card key={article.id} className="text-sm">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm line-clamp-2">
-                        {article.headline}
+                        {article.original_title}
                       </CardTitle>
                       <CardDescription className="text-xs">
                         {article.source} • Score: {article.perplexity_score?.toFixed(1)}

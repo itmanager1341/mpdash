@@ -40,7 +40,7 @@ export default function UnifiedEditorial() {
       }
       
       if (searchTerm) {
-        query = query.or(`headline.ilike.%${searchTerm}%,summary.ilike.%${searchTerm}%,source.ilike.%${searchTerm}%`);
+        query = query.or(`original_title.ilike.%${searchTerm}%,summary.ilike.%${searchTerm}%,source.ilike.%${searchTerm}%`);
       }
       
       const { data, error } = await query.order('timestamp', { ascending: false });
@@ -93,7 +93,7 @@ export default function UnifiedEditorial() {
           source_content: {
             selected_sources: selectedSources.map(s => ({
               id: s.id,
-              headline: s.headline,
+              original_title: s.original_title,
               summary: s.summary,
               source: s.source,
               url: s.url

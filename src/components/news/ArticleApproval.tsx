@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, Newspaper, BookOpen, Globe, X } from "lucide-react";
@@ -53,7 +54,7 @@ const ArticleApproval = ({ newsItem, onApproved, mode = "dropdown" }: ArticleApp
         const { error: articleCreateError } = await supabase
           .from("articles")
           .insert({ 
-            title: newsItem.headline,
+            title: newsItem.original_title,
             status: "unpublished_reference",
             source_news_id: newsItem.id,
             content_variants: {

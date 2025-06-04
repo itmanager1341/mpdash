@@ -55,7 +55,7 @@ const MPDailyPlanner = () => {
       content_variants: {
         ...item.content_variants,
         source_content: {
-          original_title: item.headline,
+          original_title: item.original_title,
           original_summary: item.summary,
           author: item.source,
           publication_date: item.timestamp,
@@ -99,28 +99,28 @@ Focus on relevance to mortgage industry professionals and include actionable ins
       
       const generatedContent = typeof data.output === 'string' ? data.output : JSON.stringify(data.output);
       const lines = generatedContent.split('\n').filter(line => line.trim());
-      const headline = lines[0] || `AI-Generated: ${aiPrompt.slice(0, 30)}...`;
+      const originalTitle = lines[0] || `AI-Generated: ${aiPrompt.slice(0, 30)}...`;
       
       const enhancedItem: NewsItem = {
         id: 'temp-' + Date.now(),
-        headline: headline,
+        original_title: originalTitle,
         summary: `AI-generated content about ${aiPrompt}`,
         status: 'draft',
         content_variants: {
           source_content: {
-            original_title: headline,
+            original_title: originalTitle,
             original_summary: `AI-generated content about ${aiPrompt}`,
             author: 'AI Assistant',
             publication_date: new Date().toISOString()
           },
           editorial_content: {
-            headline: headline,
+            headline: originalTitle,
             summary: `AI-generated content about ${aiPrompt}`,
             cta: "Discover what this means for your business...",
             full_content: generatedContent
           },
           metadata: {
-            seo_title: headline,
+            seo_title: originalTitle,
             seo_description: `AI-generated content about ${aiPrompt}`.slice(0, 160),
             tags: ['ai-generated']
           },
@@ -225,7 +225,7 @@ Focus on relevance to mortgage industry professionals and include actionable ins
                           <UnifiedNewsCard
                             newsItem={{
                               ...item,
-                              headline: item.content_variants?.editorial_content?.headline || item.headline,
+                              original_title: item.content_variants?.editorial_content?.headline || item.original_title,
                               summary: item.content_variants?.editorial_content?.summary || item.summary
                             }}
                             onDetailsClick={() => openDraftEditor(item)}
