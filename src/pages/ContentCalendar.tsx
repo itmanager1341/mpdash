@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Calendar, momentLocalizer } from "react-big-calendar";
@@ -48,14 +47,14 @@ export default function ContentCalendar() {
   const events = [
     ...(articles?.map(article => ({
       id: article.id,
-      title: article.original_title || article.title,
+      title: article.title || article.original_title || 'Untitled Article',
       start: new Date(article.published_at),
       end: new Date(article.published_at),
       resource: { type: 'article', data: article }
     })) || []),
     ...(news?.map(newsItem => ({
       id: newsItem.id,
-      title: newsItem.original_title,
+      title: newsItem.original_title || 'Untitled News',
       start: new Date(newsItem.timestamp),
       end: new Date(newsItem.timestamp),
       resource: { type: 'news', data: newsItem }

@@ -78,25 +78,8 @@ export default function MagazinePlanner() {
     }
   });
 
-  // Load existing issues on mount
-  useQuery({
-    queryKey: ['magazine-issues'],
-    queryFn: async () => {
-      setIsLoading(true);
-      const { data, error } = await supabase
-        .from('magazine_issues')
-        .select('*')
-        .order('updated_at', { ascending: false });
-
-      if (error) throw error;
-      setIssues(data.map(issue => ({
-        ...issue,
-        content: issue.content || []
-      })));
-      setIsLoading(false);
-      return data;
-    }
-  });
+  // Note: magazine_issues table doesn't exist in the schema, so we'll simulate it with local state
+  // In a real implementation, you would need to create this table in Supabase
 
   const handleNewsItemDrop = (newsItem: NewsItem, targetIssueId: string) => {
     setIssues(prev => prev.map(issue => {
@@ -111,7 +94,7 @@ export default function MagazinePlanner() {
             content: [...issue.content, {
               id: newsItem.id,
               type: 'news' as const,
-              title: newsItem.original_title,
+              title: newsItem.original_title || 'Untitled News',
               status: 'pending',
               wordCount: 0,
               priority: 'medium'
@@ -138,7 +121,7 @@ export default function MagazinePlanner() {
             content: [...issue.content, {
               id: draft.id,
               type: 'draft' as const,
-              title: draft.title || draft.theme,
+              title: draft.title || draft.theme || 'Untitled Draft',
               status: 'pending',
               wordCount: 0,
               priority: 'medium'
@@ -209,30 +192,20 @@ export default function MagazinePlanner() {
 
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('magazine_issues')
-        .insert({
-          title: newIssueTitle,
-          description: newIssueDescription,
-          status: 'planning',
-          content: []
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setIssues([...issues, {
-        id: data.id,
-        title: data.title,
-        description: data.description,
-        status: data.status,
+      // Since magazine_issues table doesn't exist, we'll just add to local state
+      const newIssue: Issue = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: newIssueTitle,
+        description: newIssueDescription,
+        status: 'planning',
         content: [],
-        updated_at: data.updated_at
-      }]);
+        updated_at: new Date().toISOString()
+      };
+
+      setIssues([...issues, newIssue]);
       setNewIssueTitle('');
       setNewIssueDescription('');
-      toast.success("New issue created");
+      toast.success("New issue created (local only - magazine_issues table not implemented)");
     } catch (error) {
       console.error("Error creating issue:", error);
       toast.error("Failed to create issue");
@@ -245,19 +218,6 @@ export default function MagazinePlanner() {
     setIssues(prev => prev.map(issue =>
       issue.id === issueId ? { ...issue, [field]: value } : issue
     ));
-
-    // Optimistically update, but also save to database
-    try {
-      const { error } = await supabase
-        .from('magazine_issues')
-        .update({ [field]: value })
-        .eq('id', issueId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error("Error updating issue:", error);
-      toast.error("Failed to update issue");
-    }
   };
 
   const updateContent = async (issueId: string, contentId: string, field: string, value: string | number) => {
@@ -305,20 +265,8 @@ export default function MagazinePlanner() {
   const saveAllChanges = async () => {
     setIsSaving(true);
     try {
-      for (const issue of issues) {
-        const { error } = await supabase
-          .from('magazine_issues')
-          .update({
-            title: issue.title,
-            description: issue.description,
-            status: issue.status,
-            content: issue.content
-          })
-          .eq('id', issue.id);
-
-        if (error) throw error;
-      }
-      toast.success("All changes saved successfully");
+      // Since magazine_issues table doesn't exist, we'll just simulate saving
+      toast.success("All changes saved (local only - magazine_issues table not implemented)");
     } catch (error) {
       console.error("Error saving changes:", error);
       toast.error("Failed to save changes");
@@ -357,7 +305,6 @@ export default function MagazinePlanner() {
 
   const getMetadata = (item: any) => {
     try {
-      // Handle the case where metadata might be a string or already an object
       if (typeof item.content_variants === 'string') {
         const parsed = JSON.parse(item.content_variants);
         return parsed.metadata || {};
