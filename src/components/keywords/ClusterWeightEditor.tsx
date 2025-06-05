@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +47,7 @@ export default function ClusterWeightEditor({
 }: ClusterWeightEditorProps) {
   const [editingWeight, setEditingWeight] = useState<string | null>(null);
   const [tempWeight, setTempWeight] = useState<number>(0);
+  const selectAllCheckboxRef = useRef<HTMLButtonElement>(null);
 
   // Filter clusters to show only selected primary themes
   const filteredClusters = clusters.filter(cluster =>
@@ -60,6 +60,21 @@ export default function ClusterWeightEditor({
   }, 0);
 
   const isWeightValid = Math.abs(totalWeight - 100) < 0.1;
+
+  // Check if all filtered clusters are selected
+  const allFilteredSelected = filteredClusters.length > 0 && 
+    filteredClusters.every(cluster => selectedSubThemes.includes(cluster.sub_theme));
+  
+  // Check if some (but not all) filtered clusters are selected
+  const someFilteredSelected = filteredClusters.some(cluster => selectedSubThemes.includes(cluster.sub_theme)) && 
+    !allFilteredSelected;
+
+  // Update indeterminate state using ref
+  useEffect(() => {
+    if (selectAllCheckboxRef.current) {
+      selectAllCheckboxRef.current.indeterminate = someFilteredSelected;
+    }
+  }, [someFilteredSelected]);
 
   // Select All functionality
   const handleSelectAll = () => {
@@ -82,14 +97,6 @@ export default function ClusterWeightEditor({
       });
     }
   };
-
-  // Check if all filtered clusters are selected
-  const allFilteredSelected = filteredClusters.length > 0 && 
-    filteredClusters.every(cluster => selectedSubThemes.includes(cluster.sub_theme));
-  
-  // Check if some (but not all) filtered clusters are selected
-  const someFilteredSelected = filteredClusters.some(cluster => selectedSubThemes.includes(cluster.sub_theme)) && 
-    !allFilteredSelected;
 
   // Fixed normalize function that handles zero weights
   const handleNormalizeWeights = () => {
@@ -202,8 +209,8 @@ export default function ClusterWeightEditor({
                   <TableHead className="w-16">
                     <div className="flex items-center space-x-2">
                       <Checkbox
+                        ref={selectAllCheckboxRef}
                         checked={allFilteredSelected}
-                        indeterminate={someFilteredSelected}
                         onCheckedChange={handleSelectAll}
                       />
                       <span className="text-xs">All</span>
