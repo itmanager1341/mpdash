@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
 import ScheduleConfigDialog from "@/components/keywords/ScheduleConfigDialog";
-import { fetchPrompts, extractPromptMetadata } from "@/utils/llmPromptsUtils";
+import { fetchPrompts, extractPromptMetadata, deletePrompt } from "@/utils/llmPromptsUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -69,6 +69,25 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
     refetch();
     handleFormClose();
     toast.success(editingPrompt ? "Search prompt updated successfully" : "Search prompt created successfully");
+  };
+
+  const handleDeletePrompt = async (prompt: LlmPrompt) => {
+    try {
+      // First delete any associated schedule
+      const schedule = getPromptSchedule(prompt.id);
+      if (schedule) {
+        await handleDeleteSchedule(schedule.id);
+      }
+      
+      // Then delete the prompt
+      await deletePrompt(prompt.id);
+      
+      toast.success("Search prompt deleted successfully");
+      refetch();
+    } catch (error) {
+      console.error("Error deleting prompt:", error);
+      toast.error("Failed to delete search prompt");
+    }
   };
 
   const handleSchedulePrompt = async (prompt: LlmPrompt) => {
@@ -360,6 +379,31 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
                         >
                           <Settings className="h-3 w-3" />
                         </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="sm">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Search Prompt</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to permanently delete the search prompt "{prompt.function_name}"? 
+                                This action cannot be undone and will also remove any associated schedules.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => handleDeletePrompt(prompt)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Delete Prompt
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   </CardHeader>
