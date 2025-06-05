@@ -81,54 +81,32 @@ export default function ClusterWeightEditor({
     }
   }, [someFilteredSelected]);
 
-  // Select All functionality
+  // Select All functionality - fixed logic
   const handleSelectAll = () => {
-    const allFilteredSubThemes = filteredClusters.map(c => c.sub_theme);
-    const allSelected = allFilteredSubThemes.every(subTheme => selectedSubThemes.includes(subTheme));
+    console.log('Select All clicked. Current state:', {
+      filteredClusters: filteredClusters.length,
+      allFilteredSelected,
+      someFilteredSelected,
+      selectedSubThemes: selectedSubThemes.length
+    });
     
-    if (allSelected) {
-      // Deselect all
+    const allFilteredSubThemes = filteredClusters.map(c => c.sub_theme);
+    
+    if (allFilteredSelected) {
+      // Deselect all filtered clusters
+      console.log('Deselecting all filtered clusters');
       allFilteredSubThemes.forEach(subTheme => {
         if (selectedSubThemes.includes(subTheme)) {
           onSubThemeSelect(subTheme);
         }
       });
     } else {
-      // Select all
+      // Select all filtered clusters
+      console.log('Selecting all filtered clusters');
       allFilteredSubThemes.forEach(subTheme => {
         if (!selectedSubThemes.includes(subTheme)) {
           onSubThemeSelect(subTheme);
         }
-      });
-    }
-  };
-
-  // Fixed normalize function that handles zero weights
-  const handleNormalizeWeights = () => {
-    const selectedClusters = clusters.filter(c => selectedSubThemes.includes(c.sub_theme));
-    
-    if (selectedClusters.length === 0) return;
-    
-    const currentTotalWeight = selectedClusters.reduce((sum, cluster) => 
-      sum + (promptWeights[cluster.sub_theme] || 0), 0
-    );
-    
-    if (currentTotalWeight === 0) {
-      // If total weight is 0, assign equal weights to all selected clusters
-      const equalWeight = Math.round(100 / selectedClusters.length);
-      selectedClusters.forEach((cluster, index) => {
-        // Ensure the total adds up to exactly 100 by adjusting the last item
-        const weight = index === selectedClusters.length - 1 
-          ? 100 - (equalWeight * (selectedClusters.length - 1))
-          : equalWeight;
-        onWeightChange(cluster.sub_theme, weight);
-      });
-    } else {
-      // Use proportional normalization for non-zero weights
-      selectedClusters.forEach(cluster => {
-        const currentWeight = promptWeights[cluster.sub_theme] || 0;
-        const normalizedWeight = Math.round((currentWeight / currentTotalWeight) * 100);
-        onWeightChange(cluster.sub_theme, normalizedWeight);
       });
     }
   };
@@ -197,7 +175,7 @@ export default function ClusterWeightEditor({
             </div>
             {selectedSubThemes.length > 0 && (
               <Button 
-                onClick={handleNormalizeWeights}
+                onClick={onNormalizeWeights}
                 variant="outline"
                 size="sm"
               >
@@ -239,7 +217,10 @@ export default function ClusterWeightEditor({
                       <TableCell>
                         <Checkbox
                           checked={isSelected}
-                          onCheckedChange={() => onSubThemeSelect(cluster.sub_theme)}
+                          onCheckedChange={() => {
+                            console.log('Individual checkbox clicked:', cluster.sub_theme, 'currently selected:', isSelected);
+                            onSubThemeSelect(cluster.sub_theme);
+                          }}
                         />
                       </TableCell>
                       <TableCell className="font-medium">
