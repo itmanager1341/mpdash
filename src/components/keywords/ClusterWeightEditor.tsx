@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,10 +70,14 @@ export default function ClusterWeightEditor({
   const someFilteredSelected = filteredClusters.some(cluster => selectedSubThemes.includes(cluster.sub_theme)) && 
     !allFilteredSelected;
 
-  // Update indeterminate state using ref
+  // Update indeterminate state using ref - find the actual input element
   useEffect(() => {
     if (selectAllCheckboxRef.current) {
-      selectAllCheckboxRef.current.indeterminate = someFilteredSelected;
+      // Find the input element within the checkbox button
+      const inputElement = selectAllCheckboxRef.current.querySelector('input[type="checkbox"]') as HTMLInputElement;
+      if (inputElement) {
+        inputElement.indeterminate = someFilteredSelected;
+      }
     }
   }, [someFilteredSelected]);
 
