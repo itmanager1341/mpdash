@@ -297,17 +297,34 @@ export default function VisualPromptBuilder({
     setHasManualWeightChanges(true);
   };
 
+  // Fixed normalize function that handles zero weights properly
   const handleNormalizeWeights = () => {
     const selectedClusters = clusters?.filter(c => selectedSubThemes.includes(c.sub_theme)) || [];
-    const totalWeight = selectedClusters.reduce((sum, cluster) => sum + (promptWeights[cluster.sub_theme] || 0), 0);
     
-    if (totalWeight === 0) return;
+    if (selectedClusters.length === 0) return;
+    
+    const currentTotalWeight = selectedClusters.reduce((sum, cluster) => 
+      sum + (promptWeights[cluster.sub_theme] || 0), 0
+    );
     
     const normalizedWeights: Record<string, number> = {};
-    selectedClusters.forEach(cluster => {
-      const currentWeight = promptWeights[cluster.sub_theme] || 0;
-      normalizedWeights[cluster.sub_theme] = Math.round((currentWeight / totalWeight) * 100);
-    });
+    
+    if (currentTotalWeight === 0) {
+      // If total weight is 0, assign equal weights to all selected clusters
+      const equalWeight = Math.round(100 / selectedClusters.length);
+      selectedClusters.forEach((cluster, index) => {
+        // Ensure the total adds up to exactly 100 by adjusting the last item
+        normalizedWeights[cluster.sub_theme] = index === selectedClusters.length - 1 
+          ? 100 - (equalWeight * (selectedClusters.length - 1))
+          : equalWeight;
+      });
+    } else {
+      // Use proportional normalization for non-zero weights
+      selectedClusters.forEach(cluster => {
+        const currentWeight = promptWeights[cluster.sub_theme] || 0;
+        normalizedWeights[cluster.sub_theme] = Math.round((currentWeight / currentTotalWeight) * 100);
+      });
+    }
     
     setPromptWeights(prev => ({
       ...prev,

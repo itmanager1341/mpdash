@@ -61,6 +61,66 @@ export default function ClusterWeightEditor({
 
   const isWeightValid = Math.abs(totalWeight - 100) < 0.1;
 
+  // Select All functionality
+  const handleSelectAll = () => {
+    const allFilteredSubThemes = filteredClusters.map(c => c.sub_theme);
+    const allSelected = allFilteredSubThemes.every(subTheme => selectedSubThemes.includes(subTheme));
+    
+    if (allSelected) {
+      // Deselect all
+      allFilteredSubThemes.forEach(subTheme => {
+        if (selectedSubThemes.includes(subTheme)) {
+          onSubThemeSelect(subTheme);
+        }
+      });
+    } else {
+      // Select all
+      allFilteredSubThemes.forEach(subTheme => {
+        if (!selectedSubThemes.includes(subTheme)) {
+          onSubThemeSelect(subTheme);
+        }
+      });
+    }
+  };
+
+  // Check if all filtered clusters are selected
+  const allFilteredSelected = filteredClusters.length > 0 && 
+    filteredClusters.every(cluster => selectedSubThemes.includes(cluster.sub_theme));
+  
+  // Check if some (but not all) filtered clusters are selected
+  const someFilteredSelected = filteredClusters.some(cluster => selectedSubThemes.includes(cluster.sub_theme)) && 
+    !allFilteredSelected;
+
+  // Fixed normalize function that handles zero weights
+  const handleNormalizeWeights = () => {
+    const selectedClusters = clusters.filter(c => selectedSubThemes.includes(c.sub_theme));
+    
+    if (selectedClusters.length === 0) return;
+    
+    const currentTotalWeight = selectedClusters.reduce((sum, cluster) => 
+      sum + (promptWeights[cluster.sub_theme] || 0), 0
+    );
+    
+    if (currentTotalWeight === 0) {
+      // If total weight is 0, assign equal weights to all selected clusters
+      const equalWeight = Math.round(100 / selectedClusters.length);
+      selectedClusters.forEach((cluster, index) => {
+        // Ensure the total adds up to exactly 100 by adjusting the last item
+        const weight = index === selectedClusters.length - 1 
+          ? 100 - (equalWeight * (selectedClusters.length - 1))
+          : equalWeight;
+        onWeightChange(cluster.sub_theme, weight);
+      });
+    } else {
+      // Use proportional normalization for non-zero weights
+      selectedClusters.forEach(cluster => {
+        const currentWeight = promptWeights[cluster.sub_theme] || 0;
+        const normalizedWeight = Math.round((currentWeight / currentTotalWeight) * 100);
+        onWeightChange(cluster.sub_theme, normalizedWeight);
+      });
+    }
+  };
+
   const handleEditWeight = (subTheme: string, currentWeight: number) => {
     setEditingWeight(subTheme);
     setTempWeight(currentWeight || 0);
@@ -119,10 +179,13 @@ export default function ClusterWeightEditor({
                   <span className="text-sm">Weights should total 100%</span>
                 </div>
               )}
+              <div className="text-sm text-muted-foreground">
+                ({selectedSubThemes.length} of {filteredClusters.length} clusters selected)
+              </div>
             </div>
-            {!isWeightValid && totalWeight > 0 && (
+            {selectedSubThemes.length > 0 && (
               <Button 
-                onClick={onNormalizeWeights}
+                onClick={handleNormalizeWeights}
                 variant="outline"
                 size="sm"
               >
@@ -136,7 +199,18 @@ export default function ClusterWeightEditor({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-16">Select</TableHead>
+                  <TableHead className="w-16">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={allFilteredSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someFilteredSelected;
+                        }}
+                        onCheckedChange={handleSelectAll}
+                      />
+                      <span className="text-xs">All</span>
+                    </div>
+                  </TableHead>
                   <TableHead>Primary Theme</TableHead>
                   <TableHead>Sub-theme</TableHead>
                   <TableHead>Description</TableHead>
