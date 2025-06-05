@@ -268,14 +268,14 @@ export default function VisualPromptBuilder({
 
   // Initialize prompt weights from database weights when clusters load
   useEffect(() => {
-    if (clusters && Object.keys(promptWeights).length === 0 && isInitialLoad) {
+    if (clusters && Object.keys(promptWeights).length === 0) {
       const initialWeights: Record<string, number> = {};
       clusters.forEach(cluster => {
         initialWeights[cluster.sub_theme] = cluster.priority_weight || 0;
       });
       setPromptWeights(initialWeights);
     }
-  }, [clusters, promptWeights, isInitialLoad]);
+  }, [clusters, promptWeights]);
 
   const handlePrimaryThemeSelect = (theme: string) => {
     if (selectedPrimaryThemes.includes(theme)) {
