@@ -203,9 +203,7 @@ export default function ClusterWeightEditor({
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         checked={allFilteredSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = someFilteredSelected;
-                        }}
+                        indeterminate={someFilteredSelected}
                         onCheckedChange={handleSelectAll}
                       />
                       <span className="text-xs">All</span>
