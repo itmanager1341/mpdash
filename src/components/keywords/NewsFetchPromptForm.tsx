@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +19,7 @@ interface NewsFetchPromptFormProps {
   initialData?: LlmPrompt | null;
   onSave?: () => void;
   onCancel?: () => void;
-  onSwitchToVisual?: () => void; // Added this prop
+  onSwitchToVisual?: () => void;
 }
 
 interface FormValues {
@@ -66,6 +67,16 @@ export default function NewsFetchPromptForm({
       temperature: 0.2,
       max_tokens: 1000,
       is_news_search: true
+    }
+  });
+
+  // Fetch available models from API keys
+  const { data: availableModels, isLoading: modelsLoading } = useQuery({
+    queryKey: ['available-models'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_available_models');
+      if (error) throw error;
+      return data || [];
     }
   });
 
@@ -162,12 +173,6 @@ export default function NewsFetchPromptForm({
     }
   }, [initialData, setValue]);
 
-  const modelOptions = [
-    { label: 'Llama 3.1 Sonar Small with Search', value: 'llama-3.1-sonar-small-128k-online' },
-    { label: 'Llama 3.1 Sonar Large with Search', value: 'llama-3.1-sonar-large-128k-online' },
-    { label: 'GPT-4o', value: 'gpt-4o' },
-  ];
-
   const recencyOptions = [
     { label: '30 minutes', value: '30m' },
     { label: 'Hour', value: 'hour' },
@@ -186,7 +191,7 @@ export default function NewsFetchPromptForm({
   ];
 
   const selectedModel = watch('model');
-  const isPerplexityModel = selectedModel.includes('sonar') || selectedModel.includes('online');
+  const isPerplexityModel = selectedModel?.includes('sonar') || selectedModel?.includes('online');
   const isNewsSearch = watch('is_news_search');
 
   return (
@@ -224,31 +229,35 @@ export default function NewsFetchPromptForm({
 
               <div className="space-y-2">
                 <Label htmlFor="model">Model</Label>
-                <Select 
-                  defaultValue={watch('model')} 
-                  onValueChange={(value) => setValue('model', value)}
-                >
-                  <SelectTrigger id="model">
-                    <SelectValue placeholder="Select a model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modelOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {modelsLoading ? (
+                  <div className="text-sm text-muted-foreground">Loading available models...</div>
+                ) : (
+                  <Select 
+                    defaultValue={watch('model')} 
+                    onValueChange={(value) => setValue('model', value)}
+                  >
+                    <SelectTrigger id="model">
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableModels?.map((model) => (
+                        <SelectItem key={`${model.provider}-${model.model_name}`} value={model.model_name}>
+                          {model.model_name} ({model.provider})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {isPerplexityModel ? (
                   <p className="text-xs text-muted-foreground mt-1">
                     This model has online search capability for real-time news.
                   </p>
-                ) : (
+                ) : selectedModel && !isPerplexityModel ? (
                   <p className="text-xs text-amber-600 mt-1">
                     <AlertCircle className="h-3 w-3 inline mr-1" />
                     This model doesn't have real-time search capability.
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
 

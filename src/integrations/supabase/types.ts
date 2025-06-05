@@ -995,6 +995,14 @@ export type Database = {
           total_reviewed: number
         }[]
       }
+      get_available_models: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          provider: string
+          model_name: string
+          is_active: boolean
+        }[]
+      }
       get_cron_jobs: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -1178,6 +1186,15 @@ export type Database = {
       update_job_settings: {
         Args: { job_name_param: string; settings_json: Json }
         Returns: boolean
+      }
+      update_news_fetch_job: {
+        Args: {
+          p_job_name: string
+          p_schedule: string
+          p_is_enabled: boolean
+          p_parameters: Json
+        }
+        Returns: string
       }
       vector_avg: {
         Args: { "": number[] }

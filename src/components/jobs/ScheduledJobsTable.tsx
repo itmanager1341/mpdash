@@ -1,372 +1,230 @@
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Play, Pause, Settings, Trash2, Edit } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Play, Settings, Trash2, Plus, RefreshCw, Eye, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import JobSettingsModal from "./JobSettingsModal";
-import { formatDistanceToNow } from "date-fns";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
-interface ScheduledJob {
-  id: string;
-  job_name: string;
-  schedule: string;
-  is_enabled: boolean;
-  last_run: string | null;
-  parameters: any;
-  created_at: string;
-  updated_at: string;
-}
+export default function ScheduledJobsTable() {
+  const [isLoading, setIsLoading] = useState(false);
 
-const ScheduledJobsTable = () => {
-  const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null);
-  const [isCreatingJob, setIsCreatingJob] = useState(false);
-  const [viewingLogsFor, setViewingLogsFor] = useState<string | null>(null);
-  const queryClient = useQueryClient();
-
-  const { data: jobs, isLoading, error } = useQuery({
-    queryKey: ["scheduled-jobs"],
+  const { data: jobs, isLoading: jobsLoading, refetch } = useQuery({
+    queryKey: ['scheduled-jobs'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("scheduled_job_settings")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .from('scheduled_job_settings')
+        .select('*')
+        .order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data as ScheduledJob[];
-    },
+      return data || [];
+    }
   });
 
-  const toggleJobMutation = useMutation({
-    mutationFn: async ({ jobId, enabled }: { jobId: string; enabled: boolean }) => {
+  const toggleJobStatus = async (jobId: string, enabled: boolean) => {
+    setIsLoading(true);
+    try {
       const { error } = await supabase
-        .from("scheduled_job_settings")
+        .from('scheduled_job_settings')
         .update({ is_enabled: enabled, updated_at: new Date().toISOString() })
-        .eq("id", jobId);
+        .eq('id', jobId);
       
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      toast.success("Job status updated");
-    },
-    onError: (error) => {
-      console.error("Error updating job:", error);
-      toast.error("Failed to update job status");
-    },
-  });
+      
+      toast.success(`Job ${enabled ? 'enabled' : 'disabled'} successfully`);
+      refetch();
+    } catch (error) {
+      console.error('Error toggling job status:', error);
+      toast.error('Failed to toggle job status');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const runJobMutation = useMutation({
-    mutationFn: async (jobName: string) => {
+  const runJobNow = async (job: any) => {
+    setIsLoading(true);
+    try {
+      // Extract parameters
+      const params = job.parameters as { promptId?: string; limit?: number; model?: string };
+      
       const { data, error } = await supabase.functions.invoke('run-news-import', {
-        body: { manual: true, jobName }
+        body: {
+          manual: true,
+          promptId: params?.promptId,
+          modelOverride: params?.model,
+          limit: params?.limit || 20,
+          triggeredBy: 'manual_ui'
+        }
       });
       
       if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      toast.success(`Job executed: ${data.message || 'Success'}`);
-      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["job-execution-logs"] });
-    },
-    onError: (error) => {
-      console.error("Error running job:", error);
-      toast.error("Failed to run job: " + error.message);
-    },
-  });
+      
+      if (data?.success) {
+        toast.success(`Job executed successfully: ${data.details?.articles_inserted || 0} articles imported`);
+        
+        // Update last_run timestamp
+        await supabase
+          .from('scheduled_job_settings')
+          .update({ last_run: new Date().toISOString() })
+          .eq('id', job.id);
+          
+        refetch();
+      } else {
+        toast.warning(data?.message || "Job completed but no new articles found");
+      }
+    } catch (error) {
+      console.error('Error running job:', error);
+      toast.error('Failed to run job: ' + error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  const deleteJobMutation = useMutation({
-    mutationFn: async (jobId: string) => {
+  const deleteJob = async (jobId: string) => {
+    try {
       const { error } = await supabase
-        .from("scheduled_job_settings")
+        .from('scheduled_job_settings')
         .delete()
-        .eq("id", jobId);
+        .eq('id', jobId);
       
       if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["scheduled-jobs"] });
-      toast.success("Job deleted");
-    },
-    onError: (error) => {
-      console.error("Error deleting job:", error);
-      toast.error("Failed to delete job");
-    },
-  });
-
-  const getJobHealthStatus = (job: ScheduledJob) => {
-    if (!job.is_enabled) {
-      return { 
-        status: "disabled", 
-        icon: <XCircle className="h-4 w-4 text-gray-500" />, 
-        color: "text-gray-500",
-        message: "Job is disabled"
-      };
+      
+      toast.success('Job deleted successfully');
+      refetch();
+    } catch (error) {
+      console.error('Error deleting job:', error);
+      toast.error('Failed to delete job');
     }
-    
-    if (!job.last_run) {
-      return { 
-        status: "pending", 
-        icon: <Clock className="h-4 w-4 text-blue-500" />, 
-        color: "text-blue-500",
-        message: "Waiting for first execution"
-      };
-    }
-    
-    const lastRun = new Date(job.last_run);
-    const now = new Date();
-    const hoursSinceLastRun = (now.getTime() - lastRun.getTime()) / (1000 * 60 * 60);
-    
-    // Parse cron to estimate expected frequency
-    const cronParts = job.schedule.split(' ');
-    let expectedHours = 24; // Default to daily
-    
-    if (cronParts[1] && cronParts[1].includes('*/')) {
-      expectedHours = parseInt(cronParts[1].replace('*/', ''));
-    }
-    
-    if (hoursSinceLastRun > expectedHours * 2) {
-      return { 
-        status: "overdue", 
-        icon: <AlertTriangle className="h-4 w-4 text-amber-500" />, 
-        color: "text-amber-500",
-        message: `Overdue by ${Math.round(hoursSinceLastRun - expectedHours)} hours`
-      };
-    }
-    
-    return { 
-      status: "healthy", 
-      icon: <CheckCircle2 className="h-4 w-4 text-green-500" />, 
-      color: "text-green-500",
-      message: "Running normally"
-    };
   };
 
-  const formatNextRun = (schedule: string, lastRun: string | null) => {
-    // Simple estimation based on common patterns
-    const patterns: Record<string, string> = {
-      "0 */12 * * *": "Next 12-hour interval",
-      "0 8 * * *": "Tomorrow at 8:00 AM",
-      "0 0 * * 1": "Next Monday",
-      "0 * * * *": "Next hour",
-      "*/15 * * * *": "Next 15 minutes"
-    };
-    
-    return patterns[schedule] || "Per schedule";
+  const getJobTypeLabel = (jobName: string) => {
+    if (jobName.includes('news_search')) return 'News Search';
+    if (jobName.includes('perplexity')) return 'Perplexity Import';
+    return 'General Task';
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-center">
-          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
-          <p className="text-muted-foreground">Loading scheduled jobs...</p>
-        </div>
-      </div>
-    );
-  }
+  const getScheduleDescription = (schedule: string) => {
+    const scheduleMap: { [key: string]: string } = {
+      '0 */6 * * *': 'Every 6 hours',
+      '0 */12 * * *': 'Every 12 hours',
+      '0 9 * * *': 'Daily at 9 AM',
+      '0 6 * * *': 'Daily at 6 AM',
+      '* * * * *': 'Every minute',
+      '*/5 * * * *': 'Every 5 minutes',
+      '0 * * * *': 'Hourly'
+    };
+    
+    return scheduleMap[schedule] || schedule;
+  };
 
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          Failed to load scheduled jobs: {error.message}
-        </AlertDescription>
-      </Alert>
-    );
+  if (jobsLoading) {
+    return <div>Loading scheduled jobs...</div>;
   }
 
   return (
-    <TooltipProvider>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium">Scheduled Jobs</h3>
-          <Button onClick={() => setIsCreatingJob(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Job
-          </Button>
-        </div>
-
-        <div className="border rounded-md">
+    <Card>
+      <CardHeader>
+        <CardTitle>Scheduled Jobs</CardTitle>
+        <CardDescription>
+          Manage automated tasks and their execution schedules
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {jobs?.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Settings className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p>No scheduled jobs found</p>
+            <p className="text-sm">Jobs will appear here when created from News Search Prompts</p>
+          </div>
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Job Name</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Schedule</TableHead>
-                <TableHead>Health</TableHead>
-                <TableHead>Last Run</TableHead>
-                <TableHead>Next Run</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead>Last Run</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {jobs?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    <div className="flex flex-col items-center gap-2">
-                      <Clock className="h-8 w-8 text-muted-foreground" />
-                      <p>No scheduled jobs found</p>
-                      <Button variant="outline" onClick={() => setIsCreatingJob(true)}>
-                        Create your first job
+              {jobs?.map((job) => (
+                <TableRow key={job.id}>
+                  <TableCell className="font-medium">{job.job_name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{getJobTypeLabel(job.job_name)}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">{getScheduleDescription(job.schedule)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={job.is_enabled ? "default" : "secondary"}>
+                      {job.is_enabled ? "Enabled" : "Disabled"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground">
+                      {job.last_run 
+                        ? new Date(job.last_run).toLocaleString()
+                        : "Never"
+                      }
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleJobStatus(job.id, !job.is_enabled)}
+                        disabled={isLoading}
+                      >
+                        {job.is_enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                       </Button>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => runJobNow(job)}
+                        disabled={isLoading}
+                      >
+                        <Play className="h-4 w-4" />
+                      </Button>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Job</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{job.job_name}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => deleteJob(job.id)}>
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : (
-                jobs?.map((job) => {
-                  const health = getJobHealthStatus(job);
-                  return (
-                    <TableRow key={job.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          {job.job_name}
-                          {health.icon}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <code className="text-xs bg-muted px-1 py-0.5 rounded">{job.schedule}</code>
-                          <p className="text-xs text-muted-foreground">
-                            {formatNextRun(job.schedule, job.last_run)}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip>
-                          <TooltipTrigger>
-                            <Badge variant="outline" className={health.color}>
-                              {health.status}
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{health.message}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {job.last_run ? (
-                          <div>
-                            <div>{new Date(job.last_run).toLocaleString()}</div>
-                            <div className="text-xs">
-                              {formatDistanceToNow(new Date(job.last_run), { addSuffix: true })}
-                            </div>
-                          </div>
-                        ) : (
-                          "Never"
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {job.is_enabled ? formatNextRun(job.schedule, job.last_run) : "Disabled"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={job.is_enabled ? "default" : "secondary"}>
-                          {job.is_enabled ? "Enabled" : "Disabled"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end space-x-1">
-                          <Switch
-                            checked={job.is_enabled}
-                            onCheckedChange={(checked) => 
-                              toggleJobMutation.mutate({ jobId: job.id, enabled: checked })
-                            }
-                          />
-                          
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => runJobMutation.mutate(job.job_name)}
-                                disabled={!job.is_enabled || runJobMutation.isPending}
-                              >
-                                <Play className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Run job manually</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setViewingLogsFor(job.job_name)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>View execution logs</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setEditingJob(job)}
-                              >
-                                <Settings className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Edit job configuration</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm(`Are you sure you want to delete ${job.job_name}?`)) {
-                                    deleteJobMutation.mutate(job.id);
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Remove scheduled job</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
+              ))}
             </TableBody>
           </Table>
-        </div>
-
-        {/* Job Settings Modal */}
-        <JobSettingsModal
-          job={editingJob}
-          isOpen={!!editingJob || isCreatingJob}
-          onClose={() => {
-            setEditingJob(null);
-            setIsCreatingJob(false);
-          }}
-          isCreating={isCreatingJob}
-        />
-      </div>
-    </TooltipProvider>
+        )}
+      </CardContent>
+    </Card>
   );
-};
-
-export default ScheduledJobsTable;
+}
