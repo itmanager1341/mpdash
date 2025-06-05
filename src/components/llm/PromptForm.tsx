@@ -36,6 +36,8 @@ import { createPrompt, updatePrompt, extractPromptMetadata } from "@/utils/llmPr
 import { useState } from "react";
 import { Info } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const promptFormSchema = z.object({
   function_name: z.string().min(1, "Function name is required"),
@@ -52,12 +54,22 @@ interface PromptFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  onSwitchToVisual?: () => void; // Added this prop
+  onSwitchToVisual?: () => void;
 }
 
 export default function PromptForm({ prompt, open, onOpenChange, onSuccess, onSwitchToVisual }: PromptFormProps) {
   const isEditing = !!prompt;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Fetch available models from database
+  const { data: availableModels, isLoading: modelsLoading } = useQuery({
+    queryKey: ['available-models'],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_available_models');
+      if (error) throw error;
+      return data || [];
+    }
+  });
   
   const form = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -113,19 +125,6 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess, onSw
     }
   };
 
-  const modelOptions = [
-    { value: "gpt-4o", label: "GPT-4o", description: "Most capable OpenAI model for complex reasoning" },
-    { value: "gpt-4o-mini", label: "GPT-4o Mini", description: "Cost-effective and fast, great for most tasks" },
-    { value: "claude-opus-4-20250514", label: "Claude 4 Opus", description: "Most capable and intelligent model with superior reasoning" },
-    { value: "claude-sonnet-4-20250514", label: "Claude 4 Sonnet", description: "High-performance with exceptional reasoning and efficiency" },
-    { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku", description: "Fastest model for quick responses" },
-    { value: "llama-3.1-sonar-small-128k-online", label: "Llama 3.1 Sonar Small", description: "Fast with online search capability" },
-    { value: "llama-3.1-sonar-large-128k-online", label: "Llama 3.1 Sonar Large", description: "More powerful with online search capability" },
-    { value: "perplexity/sonar-small-online", label: "Perplexity Sonar Small", description: "Efficient with real-time search" },
-    { value: "perplexity/sonar-medium-online", label: "Perplexity Sonar Medium", description: "Balanced with real-time search" },
-    { value: "perplexity/sonar-large-online", label: "Perplexity Sonar Large", description: "Most powerful with real-time search" },
-  ];
-
   return (
     <Sheet open={open} onOpenChange={(isOpen) => {
       if (!isSubmitting) {
@@ -178,14 +177,22 @@ export default function PromptForm({ prompt, open, onOpenChange, onSuccess, onSw
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {modelOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            <div className="flex flex-col">
-                              <span>{option.label}</span>
-                              <span className="text-xs text-muted-foreground">{option.description}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
+                        {modelsLoading ? (
+                          <div className="text-sm text-muted-foreground p-2">Loading models...</div>
+                        ) : availableModels && availableModels.length > 0 ? (
+                          availableModels.map((model) => (
+                            <SelectItem key={`${model.provider}-${model.model_name}`} value={model.model_name}>
+                              <div className="flex flex-col">
+                                <span>{model.model_name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {model.provider} - {model.model_name.includes('sonar') ? 'Online search capability' : 'Standard model'}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <div className="text-sm text-muted-foreground p-2">No models available. Please check your API keys.</div>
+                        )}
                       </SelectContent>
                     </Select>
                     <FormDescription>
