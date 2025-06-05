@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +31,7 @@ interface ClusterWeightEditorProps {
   promptWeights: Record<string, number>;
   onPrimaryThemeSelect: (theme: string) => void;
   onSubThemeSelect: (theme: string) => void;
+  onBulkSubThemeSelect: (themes: string[], shouldSelect: boolean) => void;
   onWeightChange: (subTheme: string, weight: number) => void;
   onNormalizeWeights: () => void;
 }
@@ -43,6 +43,7 @@ export default function ClusterWeightEditor({
   promptWeights,
   onPrimaryThemeSelect,
   onSubThemeSelect,
+  onBulkSubThemeSelect,
   onWeightChange,
   onNormalizeWeights
 }: ClusterWeightEditorProps) {
@@ -81,7 +82,7 @@ export default function ClusterWeightEditor({
     }
   }, [someFilteredSelected]);
 
-  // Select All functionality - fixed logic
+  // Select All functionality - fixed with bulk selection
   const handleSelectAll = () => {
     console.log('Select All clicked. Current state:', {
       filteredClusters: filteredClusters.length,
@@ -95,19 +96,11 @@ export default function ClusterWeightEditor({
     if (allFilteredSelected) {
       // Deselect all filtered clusters
       console.log('Deselecting all filtered clusters');
-      allFilteredSubThemes.forEach(subTheme => {
-        if (selectedSubThemes.includes(subTheme)) {
-          onSubThemeSelect(subTheme);
-        }
-      });
+      onBulkSubThemeSelect(allFilteredSubThemes, false);
     } else {
       // Select all filtered clusters
       console.log('Selecting all filtered clusters');
-      allFilteredSubThemes.forEach(subTheme => {
-        if (!selectedSubThemes.includes(subTheme)) {
-          onSubThemeSelect(subTheme);
-        }
-      });
+      onBulkSubThemeSelect(allFilteredSubThemes, true);
     }
   };
 

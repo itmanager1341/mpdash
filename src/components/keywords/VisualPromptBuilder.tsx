@@ -289,6 +289,19 @@ export default function VisualPromptBuilder({
     }
   };
 
+  const handleBulkSubThemeSelect = (themes: string[], shouldSelect: boolean) => {
+    console.log('Bulk selection:', { themes, shouldSelect, currentSelected: selectedSubThemes });
+    
+    if (shouldSelect) {
+      // Add themes that aren't already selected
+      const newThemes = themes.filter(theme => !selectedSubThemes.includes(theme));
+      setSelectedSubThemes([...selectedSubThemes, ...newThemes]);
+    } else {
+      // Remove themes that are currently selected
+      setSelectedSubThemes(selectedSubThemes.filter(theme => !themes.includes(theme)));
+    }
+  };
+
   const handleWeightChange = (subTheme: string, weight: number) => {
     setPromptWeights(prev => ({
       ...prev,
@@ -691,6 +704,7 @@ export default function VisualPromptBuilder({
                       promptWeights={promptWeights}
                       onPrimaryThemeSelect={handlePrimaryThemeSelect}
                       onSubThemeSelect={handleSubThemeSelect}
+                      onBulkSubThemeSelect={handleBulkSubThemeSelect}
                       onWeightChange={handleWeightChange}
                       onNormalizeWeights={handleNormalizeWeights}
                     />
