@@ -76,7 +76,9 @@ export default function VisualPromptBuilder({
   
   // Track manual changes to prevent resets
   const [hasManualWeightChanges, setHasManualWeightChanges] = useState(false);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  
+  // Track the current prompt ID to detect when we're switching to a different prompt
+  const [currentPromptId, setCurrentPromptId] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
   
@@ -159,77 +161,79 @@ export default function VisualPromptBuilder({
     },
   });
   
-  // Update form when initialPrompt changes - but respect manual changes
+  // Fixed useEffect - only reset when the prompt ID actually changes, not on manual edits
   useEffect(() => {
-    if (initialPrompt && (isInitialLoad || !hasManualWeightChanges)) {
-      console.log('Setting form values for prompt:', initialPrompt);
-      const metadata = extractPromptMetadata(initialPrompt);
-      const cleanPromptText = getCleanPromptText(initialPrompt.prompt_text);
+    const newPromptId = initialPrompt?.id || null;
+    
+    // Only reset if we're switching to a different prompt (including from null to a prompt or vice versa)
+    if (newPromptId !== currentPromptId) {
+      console.log('Prompt changed, resetting form. Old ID:', currentPromptId, 'New ID:', newPromptId);
       
-      // Extract prompt-specific weights from metadata
-      const savedPromptWeights = metadata?.search_settings?.prompt_weights || {};
-      
-      // Only update weights if this is initial load or no manual changes made
-      if (isInitialLoad || !hasManualWeightChanges) {
+      if (initialPrompt) {
+        const metadata = extractPromptMetadata(initialPrompt);
+        const cleanPromptText = getCleanPromptText(initialPrompt.prompt_text);
+        
+        // Extract prompt-specific weights from metadata
+        const savedPromptWeights = metadata?.search_settings?.prompt_weights || {};
         setPromptWeights(savedPromptWeights);
-      }
-      
-      form.reset({
-        function_name: initialPrompt.function_name,
-        model: initialPrompt.model,
-        prompt_text: cleanPromptText,
-        include_clusters: initialPrompt.include_clusters,
-        include_tracking_summary: initialPrompt.include_tracking_summary,
-        include_sources_map: initialPrompt.include_sources_map,
-        is_active: initialPrompt.is_active,
-        search_settings: {
+        
+        form.reset({
+          function_name: initialPrompt.function_name,
+          model: initialPrompt.model,
+          prompt_text: cleanPromptText,
+          include_clusters: initialPrompt.include_clusters,
+          include_tracking_summary: initialPrompt.include_tracking_summary,
+          include_sources_map: initialPrompt.include_sources_map,
+          is_active: initialPrompt.is_active,
+          search_settings: {
+            domain_filter: metadata?.search_settings?.domain_filter || "auto",
+            recency_filter: metadata?.search_settings?.recency_filter || "day",
+            temperature: metadata?.search_settings?.temperature || 0.7,
+            max_tokens: metadata?.search_settings?.max_tokens || 1500,
+            limit: metadata?.search_settings?.limit || 10,
+            is_news_search: true,
+          },
+          selected_themes: {
+            primary: metadata?.search_settings?.selected_themes?.primary || [],
+            sub: metadata?.search_settings?.selected_themes?.sub || [],
+            professions: metadata?.search_settings?.selected_themes?.professions || [],
+          },
+          test_keyword: "",
+        });
+
+        setCurrentModel(initialPrompt.model);
+        setSelectedPrimaryThemes(metadata?.search_settings?.selected_themes?.primary || []);
+        setSelectedSubThemes(metadata?.search_settings?.selected_themes?.sub || []);
+        setSearchSettings({
           domain_filter: metadata?.search_settings?.domain_filter || "auto",
           recency_filter: metadata?.search_settings?.recency_filter || "day",
           temperature: metadata?.search_settings?.temperature || 0.7,
           max_tokens: metadata?.search_settings?.max_tokens || 1500,
           limit: metadata?.search_settings?.limit || 10,
           is_news_search: true,
-        },
-        selected_themes: {
-          primary: metadata?.search_settings?.selected_themes?.primary || [],
-          sub: metadata?.search_settings?.selected_themes?.sub || [],
-          professions: metadata?.search_settings?.selected_themes?.professions || [],
-        },
-        test_keyword: "",
-      });
-
-      setCurrentModel(initialPrompt.model);
-      setSelectedPrimaryThemes(metadata?.search_settings?.selected_themes?.primary || []);
-      setSelectedSubThemes(metadata?.search_settings?.selected_themes?.sub || []);
-      setSearchSettings({
-        domain_filter: metadata?.search_settings?.domain_filter || "auto",
-        recency_filter: metadata?.search_settings?.recency_filter || "day",
-        temperature: metadata?.search_settings?.temperature || 0.7,
-        max_tokens: metadata?.search_settings?.max_tokens || 1500,
-        limit: metadata?.search_settings?.limit || 10,
-        is_news_search: true,
-      });
+        });
+      } else {
+        // Reset form for new prompt
+        form.reset();
+        setCurrentModel("llama-3.1-sonar-small-128k-online");
+        setSelectedPrimaryThemes([]);
+        setSelectedSubThemes([]);
+        setPromptWeights({});
+        setSearchSettings({
+          domain_filter: "auto",
+          recency_filter: "day",
+          temperature: 0.7,
+          max_tokens: 1500,
+          limit: 10,
+          is_news_search: true,
+        });
+      }
       
-      setIsInitialLoad(false);
-    } else if (!initialPrompt) {
-      // Reset form for new prompt
-      form.reset();
-      setCurrentModel("llama-3.1-sonar-small-128k-online");
-      setSelectedPrimaryThemes([]);
-      setSelectedSubThemes([]);
-      setPromptWeights({});
+      // Reset manual changes flag and update current prompt ID
       setHasManualWeightChanges(false);
-      setIsInitialLoad(true);
-      setSearchSettings({
-        domain_filter: "auto",
-        recency_filter: "day",
-        temperature: 0.7,
-        max_tokens: 1500,
-        limit: 10,
-        is_news_search: true,
-      });
+      setCurrentPromptId(newPromptId);
     }
-  }, [initialPrompt, form, isInitialLoad, hasManualWeightChanges]);
+  }, [initialPrompt?.id]); // Only depend on the prompt ID, not the entire prompt object
   
   // Keep track of the search settings in a single state object for easier access by child components
   const [searchSettings, setSearchSettings] = useState({
@@ -303,6 +307,7 @@ export default function VisualPromptBuilder({
   };
 
   const handleWeightChange = (subTheme: string, weight: number) => {
+    console.log('Weight changed for', subTheme, 'to', weight);
     setPromptWeights(prev => ({
       ...prev,
       [subTheme]: weight
@@ -312,6 +317,9 @@ export default function VisualPromptBuilder({
 
   // Fixed normalize function that handles zero weights properly
   const handleNormalizeWeights = () => {
+    console.log('Normalize weights called. Current weights:', promptWeights);
+    console.log('Selected sub themes:', selectedSubThemes);
+    
     const selectedClusters = clusters?.filter(c => selectedSubThemes.includes(c.sub_theme)) || [];
     
     if (selectedClusters.length === 0) return;
@@ -319,6 +327,8 @@ export default function VisualPromptBuilder({
     const currentTotalWeight = selectedClusters.reduce((sum, cluster) => 
       sum + (promptWeights[cluster.sub_theme] || 0), 0
     );
+    
+    console.log('Current total weight:', currentTotalWeight);
     
     const normalizedWeights: Record<string, number> = {};
     
@@ -338,6 +348,8 @@ export default function VisualPromptBuilder({
         normalizedWeights[cluster.sub_theme] = Math.round((currentWeight / currentTotalWeight) * 100);
       });
     }
+    
+    console.log('Normalized weights:', normalizedWeights);
     
     setPromptWeights(prev => ({
       ...prev,
