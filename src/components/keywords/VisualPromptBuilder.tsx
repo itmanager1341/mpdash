@@ -744,6 +744,7 @@ export default function VisualPromptBuilder({
                       searchSettings={searchSettings}
                       selectedThemes={selectedPrimaryThemes}
                       readOnly={false}
+                      includeSourcesMap={form.watch("include_sources_map")}
                     />
                   </div>
                 </div>

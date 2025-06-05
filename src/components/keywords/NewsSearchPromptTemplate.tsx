@@ -1,4 +1,3 @@
-
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -35,6 +34,7 @@ interface NewsSearchPromptTemplateProps {
   searchSettings?: any;
   selectedThemes?: string[];
   readOnly?: boolean;
+  includeSourcesMap?: boolean;
 }
 
 const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
@@ -44,7 +44,8 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
   sources,
   searchSettings = { recency_filter: 'day', domain_filter: 'auto' },
   selectedThemes = [],
-  readOnly = false
+  readOnly = false,
+  includeSourcesMap = false
 }) => {
   const [isCustomizing, setIsCustomizing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -63,7 +64,8 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       const currentKey = JSON.stringify({
         themes: selectedThemes.sort(),
         recency: searchSettings?.recency_filter,
-        domain: searchSettings?.domain_filter
+        domain: searchSettings?.domain_filter,
+        includeSourcesMap
       });
       
       if (lastGenerationRef.current && lastGenerationRef.current !== currentKey) {
@@ -76,7 +78,7 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       }
       lastGenerationRef.current = currentKey;
     }
-  }, [selectedThemes, searchSettings?.recency_filter, searchSettings?.domain_filter]);
+  }, [selectedThemes, searchSettings?.recency_filter, searchSettings?.domain_filter, includeSourcesMap]);
   
   // Generate template prompt based on clusters and sources
   const handleGenerateTemplate = () => {
@@ -89,7 +91,8 @@ const NewsSearchPromptTemplate: React.FC<NewsSearchPromptTemplateProps> = ({
       lastGenerationRef.current = JSON.stringify({
         themes: selectedThemes.sort(),
         recency: searchSettings?.recency_filter,
-        domain: searchSettings?.domain_filter
+        domain: searchSettings?.domain_filter,
+        includeSourcesMap
       });
     } finally {
       setTimeout(() => setIsGenerating(false), 300);
@@ -147,24 +150,32 @@ SEARCH PARAMETERS & FILTERS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ⏰ TIME SCOPE: Articles published within the last ${timeRange}
+`;
 
+    // Conditionally include priority source strategy only if includeSourcesMap is true
+    if (includeSourcesMap) {
+      template += `
 🎯 PRIORITY SOURCE STRATEGY:
 `;
 
-    // Add priority sources with proper grouping
-    if (prioritySources.length > 0) {
-      const sourceQueries = prioritySources.map(s => {
-        try {
-          return `site:${new URL(s.source_url).hostname.replace('www.', '')}`;
-        } catch (e) {
-          return `site:${s.source_url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0]}`;
-        }
-      });
-      template += `Search these authoritative sources first:\n${sourceQueries.join(' OR ')}\n\n`;
+      // Add priority sources with proper grouping
+      if (prioritySources.length > 0) {
+        const sourceQueries = prioritySources.map(s => {
+          try {
+            return `site:${new URL(s.source_url).hostname.replace('www.', '')}`;
+          } catch (e) {
+            return `site:${s.source_url.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0]}`;
+          }
+        });
+        template += `Search these authoritative sources first:\n${sourceQueries.join(' OR ')}\n`;
+      }
     }
 
-    template += `📊 CONTENT FOCUS AREAS (Weighted by Editorial Priority):\n`;
-    template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    template += `
+📊 CONTENT FOCUS AREAS (Weighted by Editorial Priority):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`;
     
     // Group clusters by primary theme with weights
     const clustersByTheme = filteredClusters.reduce((acc: Record<string, Cluster[]>, cluster) => {
@@ -222,8 +233,8 @@ SEARCH PARAMETERS & FILTERS:
       template += `\n`;
     });
 
-    // Add competitor exclusion if any exist
-    if (competitorSources.length > 0) {
+    // Add competitor exclusion if any exist (only if includeSourcesMap is true)
+    if (includeSourcesMap && competitorSources.length > 0) {
       template += `🚫 EXCLUDE COMPETITOR COVERAGE:\n`;
       template += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
       competitorSources.forEach(s => {
