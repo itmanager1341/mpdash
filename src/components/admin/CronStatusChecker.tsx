@@ -5,51 +5,69 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, AlertCircle, CheckCircle2, Clock } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle2, Clock, Settings, Wrench } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-interface CronStatusData {
+interface CronDiagnostic {
   success: boolean;
-  job_settings?: any;
-  recent_logs?: any[];
-  cron_status?: any;
-  current_time?: string;
-  recommendations?: {
-    job_exists: boolean;
-    job_enabled: boolean;
-    has_recent_runs: boolean;
-    last_run: string | null;
+  result?: {
+    cronJobs?: any[];
+    jobSettings?: any[];
+    recentLogs?: any[];
+    timestamp?: string;
   };
   error?: string;
 }
 
 const CronStatusChecker = () => {
-  const [status, setStatus] = useState<CronStatusData | null>(null);
+  const [status, setStatus] = useState<CronDiagnostic | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const checkCronStatus = async () => {
+  const runDiagnostic = async () => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('check-cron-status');
+      const { data, error } = await supabase.functions.invoke('test-cron-system', {
+        body: { action: 'full_diagnostic' }
+      });
       
       if (error) throw error;
       
       setStatus(data);
       
       if (data.success) {
-        toast.success("Cron status checked successfully");
+        toast.success("Cron diagnostic completed successfully");
       } else {
-        toast.error(`Error checking status: ${data.error}`);
+        toast.error(`Diagnostic error: ${data.error}`);
       }
     } catch (err) {
-      console.error("Error checking cron status:", err);
-      toast.error("Failed to check cron status");
+      console.error("Error running diagnostic:", err);
+      toast.error("Failed to run diagnostic");
       setStatus({
         success: false,
         error: err instanceof Error ? err.message : 'Unknown error'
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const reactivateJob = async (jobName: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('test-cron-system', {
+        body: { action: 'reactivate_job', jobName }
+      });
+      
+      if (error) throw error;
+      
+      if (data.success) {
+        toast.success(`Job reactivated: ${data.result.reactivateResult}`);
+        runDiagnostic(); // Refresh data
+      } else {
+        toast.error(`Reactivation failed: ${data.result.reactivateError?.message || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error("Error reactivating job:", err);
+      toast.error("Failed to reactivate job");
     }
   };
 
@@ -60,7 +78,6 @@ const CronStatusChecker = () => {
       const { data, error } = await supabase.functions.invoke('run-news-import', {
         body: { 
           manual: true,
-          // Use the new model naming convention for Perplexity API
           modelOverride: "llama-3.1-sonar-small-128k-online"
         }
       });
@@ -69,8 +86,7 @@ const CronStatusChecker = () => {
       
       if (data.success) {
         toast.success(`Manual import completed: ${data.details?.articles_inserted || 0} articles inserted`);
-        // Refresh status after manual run
-        setTimeout(() => checkCronStatus(), 1000);
+        setTimeout(() => runDiagnostic(), 1000);
       } else {
         toast.error(`Import failed: ${data.message}`);
       }
@@ -80,34 +96,56 @@ const CronStatusChecker = () => {
     }
   };
 
+  const getBrokenJobs = () => {
+    if (!status?.result) return [];
+    
+    const { cronJobs = [], jobSettings = [] } = status.result;
+    
+    return jobSettings.filter(setting => {
+      const hasCronJob = cronJobs.some(cron => cron.jobname === setting.job_name);
+      return setting.is_enabled && !hasCronJob;
+    });
+  };
+
+  const getWorkingJobs = () => {
+    if (!status?.result) return [];
+    
+    const { cronJobs = [], jobSettings = [] } = status.result;
+    
+    return jobSettings.filter(setting => {
+      const hasCronJob = cronJobs.some(cron => cron.jobname === setting.job_name);
+      return setting.is_enabled && hasCronJob;
+    });
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5" />
-          Daily Cron Job Status
+          Cron Job System Diagnostic
         </CardTitle>
         <CardDescription>
-          Check the status of the automated news import job
+          Check and fix scheduled job system issues
         </CardDescription>
       </CardHeader>
       
       <CardContent className="space-y-4">
         <div className="flex gap-2">
           <Button 
-            onClick={checkCronStatus} 
+            onClick={runDiagnostic} 
             disabled={isLoading}
             variant="outline"
           >
             {isLoading ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Checking...
+                Running Diagnostic...
               </>
             ) : (
               <>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Check Status
+                <Settings className="h-4 w-4 mr-2" />
+                Run Full Diagnostic
               </>
             )}
           </Button>
@@ -116,7 +154,7 @@ const CronStatusChecker = () => {
             onClick={manuallyTriggerImport}
             variant="default"
           >
-            Run Import Now
+            Test Manual Import
           </Button>
         </div>
 
@@ -124,90 +162,113 @@ const CronStatusChecker = () => {
           <div className="space-y-4">
             {status.success ? (
               <>
+                {/* Summary Cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {getWorkingJobs().length}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Working Jobs</p>
+                  </div>
+                  
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">
+                      {getBrokenJobs().length}
+                    </div>
+                    <p className="text-sm text-muted-foreground">Broken Jobs</p>
+                  </div>
+                  
+                  <div className="text-center">
                     <div className="text-2xl font-bold">
-                      {status.recommendations?.job_exists ? (
-                        <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto" />
-                      ) : (
-                        <AlertCircle className="h-8 w-8 text-red-500 mx-auto" />
-                      )}
+                      {status.result?.cronJobs?.length || 0}
                     </div>
-                    <p className="text-sm text-muted-foreground">Job Configured</p>
+                    <p className="text-sm text-muted-foreground">Cron Jobs</p>
                   </div>
                   
                   <div className="text-center">
-                    <Badge variant={status.recommendations?.job_enabled ? "default" : "secondary"}>
-                      {status.recommendations?.job_enabled ? "Enabled" : "Disabled"}
-                    </Badge>
-                    <p className="text-sm text-muted-foreground mt-1">Status</p>
-                  </div>
-                  
-                  <div className="text-center">
-                    <div className="text-lg font-semibold">
-                      {status.recent_logs?.length || 0}
+                    <div className="text-2xl font-bold">
+                      {status.result?.jobSettings?.length || 0}
                     </div>
-                    <p className="text-sm text-muted-foreground">Recent Runs</p>
-                  </div>
-                  
-                  <div className="text-center">
-                    <div className="text-xs">
-                      {status.recommendations?.last_run 
-                        ? new Date(status.recommendations.last_run).toLocaleDateString()
-                        : "Never"
-                      }
-                    </div>
-                    <p className="text-sm text-muted-foreground">Last Run</p>
+                    <p className="text-sm text-muted-foreground">Job Settings</p>
                   </div>
                 </div>
 
-                {status.job_settings && (
-                  <div className="p-3 bg-muted rounded-md">
-                    <h4 className="font-medium mb-2">Current Job Configuration:</h4>
-                    <div className="text-sm space-y-1">
-                      <div>Schedule: <code>{status.job_settings.schedule}</code></div>
-                      <div>Enabled: {status.job_settings.is_enabled ? "Yes" : "No"}</div>
-                      <div>Last Updated: {new Date(status.job_settings.updated_at).toLocaleString()}</div>
-                      
-                      {status.job_settings.parameters && (
-                        <div className="mt-2">
-                          <div className="font-medium">API Configuration:</div>
-                          <div className="text-xs bg-slate-100 p-2 rounded mt-1">
-                            <div>Model: {status.job_settings.parameters.model || "llama-3.1-sonar-small-128k-online"}</div>
-                            <div>Keywords: {Array.isArray(status.job_settings.parameters.keywords) 
-                              ? status.job_settings.parameters.keywords.join(", ") 
-                              : "Default keywords"}</div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {!status.recommendations?.job_enabled && (
+                {/* Broken Jobs Alert */}
+                {getBrokenJobs().length > 0 && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Job Disabled</AlertTitle>
+                    <AlertTitle>Broken Jobs Found</AlertTitle>
                     <AlertDescription>
-                      The news import job is currently disabled. Enable it in the Scheduled Tasks settings.
+                      {getBrokenJobs().length} job(s) are enabled in settings but missing from the cron system.
                     </AlertDescription>
                   </Alert>
                 )}
 
-                {!status.recommendations?.has_recent_runs && status.recommendations?.job_enabled && (
-                  <Alert>
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>No Recent Runs</AlertTitle>
-                    <AlertDescription>
-                      The job is enabled but hasn't run recently. This could indicate a cron scheduling issue.
-                    </AlertDescription>
-                  </Alert>
+                {/* Job Details */}
+                <div className="space-y-3">
+                  <h4 className="font-medium">Job Status Details:</h4>
+                  
+                  {/* Working Jobs */}
+                  {getWorkingJobs().map(job => (
+                    <div key={job.id} className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-md">
+                      <div>
+                        <div className="font-medium text-green-800">{job.job_name}</div>
+                        <div className="text-sm text-green-600">Schedule: {job.schedule}</div>
+                      </div>
+                      <Badge className="bg-green-100 text-green-800">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Working
+                      </Badge>
+                    </div>
+                  ))}
+                  
+                  {/* Broken Jobs */}
+                  {getBrokenJobs().map(job => (
+                    <div key={job.id} className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-md">
+                      <div>
+                        <div className="font-medium text-red-800">{job.job_name}</div>
+                        <div className="text-sm text-red-600">Schedule: {job.schedule}</div>
+                        <div className="text-xs text-red-500">Missing from cron system</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="destructive">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Broken
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => reactivateJob(job.job_name)}
+                        >
+                          <Wrench className="h-3 w-3 mr-1" />
+                          Fix
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Recent Logs */}
+                {status.result?.recentLogs && status.result.recentLogs.length > 0 && (
+                  <div className="p-3 bg-muted rounded-md">
+                    <h4 className="font-medium mb-2">Recent Job Logs:</h4>
+                    <div className="space-y-1 text-sm">
+                      {status.result.recentLogs.slice(0, 3).map((log: any) => (
+                        <div key={log.id} className="flex justify-between">
+                          <span>{log.job_name}</span>
+                          <span className={log.status === 'success' ? 'text-green-600' : 'text-red-600'}>
+                            {log.status} - {new Date(log.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </>
             ) : (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error Checking Status</AlertTitle>
+                <AlertTitle>Diagnostic Failed</AlertTitle>
                 <AlertDescription>
                   {status.error || 'Unknown error occurred'}
                 </AlertDescription>
@@ -217,7 +278,7 @@ const CronStatusChecker = () => {
         )}
 
         <div className="text-xs text-muted-foreground">
-          Current time: {status?.current_time ? new Date(status.current_time).toLocaleString() : new Date().toLocaleString()}
+          Last diagnostic: {status?.result?.timestamp ? new Date(status.result.timestamp).toLocaleString() : 'Never'}
         </div>
       </CardContent>
     </Card>
