@@ -168,10 +168,25 @@ export interface KeywordSuggestion {
   status?: 'pending' | 'approved' | 'dismissed';
 }
 
+// Interface for cron job data - Updated to use number (BIGINT) for jobid
+export interface CronJob {
+  jobid: number; // Changed from integer to number to match BIGINT
+  jobname: string;
+  schedule: string;
+  command: string;
+  nodename: string;
+  nodeport: number;
+  database: string;
+  username: string;
+  active: boolean;
+  next_run: string | null;
+}
+
 // Define custom RPC function return types
 export interface SupabaseRpcFunctions {
   get_job_settings: ScheduledJobSettings;
   update_job_settings: boolean;
+  get_cron_jobs: CronJob; // Updated to use the corrected CronJob interface
   get_approval_stats: {
     approval_date: string;
     mpdaily_count: number;
