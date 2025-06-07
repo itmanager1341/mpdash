@@ -116,9 +116,11 @@ const CronDiagnosticTool = () => {
   };
 
   const getBrokenJobs = () => {
-    if (!diagnosticResult?.result) return [];
+    if (!diagnosticResult?.result || !diagnosticResult.result.cronJobs || !diagnosticResult.result.jobSettings) {
+      return [];
+    }
     
-    const { cronJobs = [], jobSettings = [] } = diagnosticResult.result;
+    const { cronJobs, jobSettings } = diagnosticResult.result;
     
     return jobSettings.filter(setting => {
       const hasCronJob = cronJobs.some(cron => cron.jobname === setting.job_name);
@@ -127,9 +129,11 @@ const CronDiagnosticTool = () => {
   };
 
   const getWorkingJobs = () => {
-    if (!diagnosticResult?.result) return [];
+    if (!diagnosticResult?.result || !diagnosticResult.result.cronJobs || !diagnosticResult.result.jobSettings) {
+      return [];
+    }
     
-    const { cronJobs = [], jobSettings = [] } = diagnosticResult.result;
+    const { cronJobs, jobSettings } = diagnosticResult.result;
     
     return jobSettings.filter(setting => {
       const hasCronJob = cronJobs.some(cron => cron.jobname === setting.job_name);
