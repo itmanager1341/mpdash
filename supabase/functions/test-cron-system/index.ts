@@ -23,7 +23,7 @@ serve(async (req) => {
 
     switch (action) {
       case 'check_cron_jobs':
-        // Check what cron jobs exist
+        // Check what cron jobs exist using the improved function
         const { data: cronJobs, error: cronError } = await supabase.rpc('get_cron_jobs');
         result.cronJobs = cronJobs;
         result.cronError = cronError;
@@ -73,42 +73,16 @@ serve(async (req) => {
         }
         
         try {
-          // Get the job settings first
-          const { data: jobSettings, error: settingsError } = await supabase
-            .from('scheduled_job_settings')
-            .select('*')
-            .eq('job_name', jobName)
-            .single();
-
-          if (settingsError || !jobSettings) {
-            throw new Error(`Job settings not found for ${jobName}: ${settingsError?.message}`);
-          }
-
-          console.log('Found job settings for reactivation:', jobSettings);
-
-          // Use the existing update_news_fetch_job function to properly recreate the job
-          const { data: reactivateResult, error: reactivateError } = await supabase.rpc('update_news_fetch_job', {
-            p_job_name: jobSettings.job_name,
-            p_schedule: jobSettings.schedule,
-            p_is_enabled: jobSettings.is_enabled,
-            p_parameters: jobSettings.parameters
+          // Use the new improved reactivate_scheduled_job function
+          const { data: reactivateResult, error: reactivateError } = await supabase.rpc('reactivate_scheduled_job', {
+            job_name_param: jobName
           });
           
           if (reactivateError) {
             console.error('Error reactivating job:', reactivateError);
             result.reactivateError = reactivateError;
           } else {
-            // Also update the job settings updated_at to trigger any dependent processes
-            const { error: updateError } = await supabase
-              .from('scheduled_job_settings')
-              .update({ updated_at: new Date().toISOString() })
-              .eq('job_name', jobName);
-            
-            if (updateError) {
-              console.warn('Warning: Could not update job timestamp:', updateError);
-            }
-            
-            result.reactivateResult = `Job reactivated: ${reactivateResult}`;
+            result.reactivateResult = reactivateResult || `Job reactivated: ${jobName}`;
             console.log('Successfully reactivated job:', jobName, reactivateResult);
           }
         } catch (error) {

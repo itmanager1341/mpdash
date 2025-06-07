@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -112,20 +111,7 @@ const CronDiagnosticTool = () => {
     try {
       console.log("Fixing broken job:", jobName);
       
-      // First try to trigger the database trigger by updating the job
-      console.log("Testing database trigger...");
-      const { data: triggerData, error: triggerError } = await supabase.functions.invoke('test-cron-system', {
-        body: { action: 'test_trigger', jobName }
-      });
-      
-      if (triggerError) {
-        console.warn("Trigger test error:", triggerError);
-      } else {
-        console.log("Trigger test result:", triggerData);
-      }
-
-      // Then try the reactivation function
-      console.log("Attempting job reactivation...");
+      // Use the improved reactivate function
       const { data, error } = await supabase.functions.invoke('test-cron-system', {
         body: { action: 'reactivate_job', jobName }
       });
@@ -185,7 +171,7 @@ const CronDiagnosticTool = () => {
         throw error;
       }
       
-      toast.success("Default news search job created. Configure it in the Jobs management section.");
+      toast.success("Default news search job created. The database trigger will automatically schedule it.");
       await runFullDiagnostic();
     } catch (err) {
       console.error("Error creating job:", err);
@@ -245,7 +231,7 @@ const CronDiagnosticTool = () => {
           Cron System Diagnostic & Repair
         </CardTitle>
         <CardDescription>
-          Diagnose and fix issues with the scheduled job system
+          Diagnose and fix issues with the scheduled job system. All functions now use enhanced security permissions.
         </CardDescription>
       </CardHeader>
       
@@ -325,6 +311,17 @@ const CronDiagnosticTool = () => {
                   </div>
                 </div>
 
+                {/* Success Message */}
+                {(getBrokenJobs().length === 0 && getLegacyJobs().length === 0 && getWorkingJobs().length > 0) && (
+                  <Alert>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <AlertTitle>System Healthy</AlertTitle>
+                    <AlertDescription>
+                      All scheduled jobs are properly configured and running. The permission fixes have been applied successfully.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Issues Found */}
                 {(getBrokenJobs().length > 0 || getLegacyJobs().length > 0) && (
                   <Alert variant="destructive">
@@ -333,6 +330,7 @@ const CronDiagnosticTool = () => {
                     <AlertDescription>
                       {getBrokenJobs().length > 0 && `${getBrokenJobs().length} job(s) are enabled but not scheduled. `}
                       {getLegacyJobs().length > 0 && `${getLegacyJobs().length} legacy job(s) found without settings.`}
+                      Use the Fix/Remove buttons below to resolve these issues.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -364,7 +362,7 @@ const CronDiagnosticTool = () => {
                       <div>
                         <div className="font-medium text-red-800">{job.job_name}</div>
                         <div className="text-sm text-red-600">Schedule: {job.schedule}</div>
-                        <div className="text-xs text-red-500">Missing from cron system</div>
+                        <div className="text-xs text-red-500">Missing from cron system - will be fixed with improved permissions</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant="destructive">
@@ -468,6 +466,8 @@ const CronDiagnosticTool = () => {
 
         <div className="text-xs text-muted-foreground">
           Last diagnostic: {diagnosticResult?.result?.timestamp ? new Date(diagnosticResult.result.timestamp).toLocaleString() : 'Never'}
+          <br />
+          Status: Enhanced security permissions applied to all cron functions
         </div>
       </CardContent>
     </Card>

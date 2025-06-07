@@ -1141,6 +1141,10 @@ export type Database = {
         }
         Returns: string
       }
+      reactivate_scheduled_job: {
+        Args: { job_name_param: string }
+        Returns: string
+      }
       search_content_chunks: {
         Args: {
           query_text: string
