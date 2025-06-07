@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, AlertCircle, CheckCircle2, Wrench, Play, Settings, Trash2 } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle2, Wrench, Play, Settings, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface DiagnosticResult {
   success: boolean;
@@ -15,6 +16,7 @@ interface DiagnosticResult {
     jobSettings?: any[];
     recentLogs?: any[];
     timestamp?: string;
+    errors?: any;
   };
   error?: string;
 }
@@ -22,29 +24,41 @@ interface DiagnosticResult {
 const CronDiagnosticTool = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState<DiagnosticResult | null>(null);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
 
   const runFullDiagnostic = async () => {
     setIsLoading(true);
+    setLastError(null);
+    
     try {
+      console.log("Running full diagnostic...");
       const { data, error } = await supabase.functions.invoke('test-cron-system', {
         body: { action: 'full_diagnostic' }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Diagnostic error:", error);
+        throw error;
+      }
       
+      console.log("Diagnostic result:", data);
       setDiagnosticResult(data);
       
       if (data.success) {
         toast.success("Diagnostic completed successfully");
       } else {
+        setLastError(data.error);
         toast.error(`Diagnostic error: ${data.error}`);
       }
     } catch (err) {
       console.error("Error running diagnostic:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setLastError(errorMessage);
       toast.error("Failed to run diagnostic");
       setDiagnosticResult({
         success: false,
-        error: err instanceof Error ? err.message : 'Unknown error'
+        error: errorMessage
       });
     } finally {
       setIsLoading(false);
@@ -53,23 +67,38 @@ const CronDiagnosticTool = () => {
 
   const removeLegacyCronJob = async (jobName: string) => {
     setIsLoading(true);
+    setLastError(null);
+    
     try {
-      // Call a new edge function to safely remove legacy cron jobs
+      console.log("Removing legacy job:", jobName);
       const { data, error } = await supabase.functions.invoke('test-cron-system', {
         body: { action: 'remove_legacy_job', jobName }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Remove job error:", error);
+        throw error;
+      }
+      
+      console.log("Remove job result:", data);
       
       if (data.success) {
-        toast.success(`Legacy job removed: ${jobName}`);
-        // Refresh diagnostic data
-        await runFullDiagnostic();
+        if (data.result.removeError) {
+          setLastError(data.result.removeError);
+          toast.error(`Error removing job: ${data.result.removeError}`);
+        } else {
+          toast.success(data.result.removeResult || `Legacy job removed: ${jobName}`);
+          // Refresh diagnostic data
+          await runFullDiagnostic();
+        }
       } else {
-        toast.warning(`Could not remove job: ${data.error || 'Unknown error'}`);
+        setLastError(data.error);
+        toast.error(`Could not remove job: ${data.error}`);
       }
     } catch (err) {
-      console.error("Error removing legacy job:", err);
+      console.error("Exception removing legacy job:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setLastError(errorMessage);
       toast.error("Failed to remove legacy job");
     } finally {
       setIsLoading(false);
@@ -78,34 +107,55 @@ const CronDiagnosticTool = () => {
 
   const fixBrokenJob = async (jobName: string) => {
     setIsLoading(true);
+    setLastError(null);
+    
     try {
-      // First, try to manually update the job settings to trigger the system
-      const { error: updateError } = await supabase
-        .from('scheduled_job_settings')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('job_name', jobName);
+      console.log("Fixing broken job:", jobName);
       
-      if (updateError) {
-        console.error('Error updating job settings:', updateError);
+      // First try to trigger the database trigger by updating the job
+      console.log("Testing database trigger...");
+      const { data: triggerData, error: triggerError } = await supabase.functions.invoke('test-cron-system', {
+        body: { action: 'test_trigger', jobName }
+      });
+      
+      if (triggerError) {
+        console.warn("Trigger test error:", triggerError);
+      } else {
+        console.log("Trigger test result:", triggerData);
       }
 
       // Then try the reactivation function
+      console.log("Attempting job reactivation...");
       const { data, error } = await supabase.functions.invoke('test-cron-system', {
         body: { action: 'reactivate_job', jobName }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Reactivate job error:", error);
+        throw error;
+      }
+      
+      console.log("Reactivate job result:", data);
       
       if (data.success) {
-        toast.success(`Job fixed: ${data.result.reactivateResult || 'Job reactivated successfully'}`);
-        // Refresh diagnostic data
-        await runFullDiagnostic();
+        if (data.result.reactivateError) {
+          const errorMsg = data.result.reactivateError.message || JSON.stringify(data.result.reactivateError);
+          setLastError(errorMsg);
+          toast.error(`Fix attempt failed: ${errorMsg}`);
+        } else {
+          toast.success(data.result.reactivateResult || `Job fixed: ${jobName}`);
+          // Refresh diagnostic data
+          await runFullDiagnostic();
+        }
       } else {
-        toast.warning(`Fix attempt completed but may need manual intervention: ${data.result.reactivateError?.message || 'Check logs for details'}`);
+        setLastError(data.error);
+        toast.error(`Fix attempt failed: ${data.error}`);
       }
     } catch (err) {
-      console.error("Error fixing job:", err);
-      toast.error("Failed to fix job automatically. Try manual intervention.");
+      console.error("Exception fixing job:", err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setLastError(errorMessage);
+      toast.error(`Failed to fix job: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -113,8 +163,10 @@ const CronDiagnosticTool = () => {
 
   const createMissingJob = async () => {
     setIsLoading(true);
+    setLastError(null);
+    
     try {
-      // Try to create a basic news import job if none exists
+      console.log("Creating default news search job...");
       const { error } = await supabase
         .from('scheduled_job_settings')
         .upsert({
@@ -128,13 +180,18 @@ const CronDiagnosticTool = () => {
           }
         });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Create job error:", error);
+        throw error;
+      }
       
       toast.success("Default news search job created. Configure it in the Jobs management section.");
       await runFullDiagnostic();
     } catch (err) {
       console.error("Error creating job:", err);
-      toast.error("Failed to create default job");
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setLastError(errorMessage);
+      toast.error(`Failed to create default job: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
@@ -221,6 +278,17 @@ const CronDiagnosticTool = () => {
             Create Default Job
           </Button>
         </div>
+
+        {/* Error Display */}
+        {lastError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Last Error</AlertTitle>
+            <AlertDescription className="font-mono text-sm">
+              {lastError}
+            </AlertDescription>
+          </Alert>
+        )}
 
         {diagnosticResult && (
           <div className="space-y-4">
@@ -367,6 +435,24 @@ const CronDiagnosticTool = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Debug Info */}
+                <Collapsible open={showDebugInfo} onOpenChange={setShowDebugInfo}>
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                      {showDebugInfo ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      Debug Information
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2">
+                    <div className="p-3 bg-muted rounded-md">
+                      <h5 className="font-medium mb-2">Raw Diagnostic Data:</h5>
+                      <pre className="text-xs overflow-auto max-h-60 bg-background p-2 rounded border">
+                        {JSON.stringify(diagnosticResult.result, null, 2)}
+                      </pre>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               </>
             ) : (
               <Alert variant="destructive">

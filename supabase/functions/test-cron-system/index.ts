@@ -27,6 +27,7 @@ serve(async (req) => {
         const { data: cronJobs, error: cronError } = await supabase.rpc('get_cron_jobs');
         result.cronJobs = cronJobs;
         result.cronError = cronError;
+        console.log('Cron jobs check:', { cronJobs, cronError });
         break;
 
       case 'check_job_settings':
@@ -37,6 +38,7 @@ serve(async (req) => {
           .order('created_at', { ascending: false });
         result.jobSettings = jobSettings;
         result.settingsError = settingsError;
+        console.log('Job settings check:', { jobSettings, settingsError });
         break;
 
       case 'remove_legacy_job':
@@ -44,29 +46,24 @@ serve(async (req) => {
           throw new Error('Job name is required for removal');
         }
         try {
-          // Use raw SQL to safely remove the cron job
-          const { data: removeResult, error: removeError } = await supabase.rpc('sql', {
-            query: `SELECT cron.unschedule('${jobName.replace(/'/g, "''")}')`
+          // Use the existing update_news_fetch_job function to properly remove the job
+          const { data: removeResult, error: removeError } = await supabase.rpc('update_news_fetch_job', {
+            p_job_name: jobName,
+            p_schedule: '0 0 1 1 *', // Dummy schedule (won't be used since disabled)
+            p_is_enabled: false,
+            p_parameters: {}
           });
           
           if (removeError) {
-            // If the job doesn't exist, that's actually success
-            if (removeError.message?.includes('could not find valid entry for job')) {
-              result.removeResult = `Job '${jobName}' was already removed or didn't exist`;
-            } else {
-              throw removeError;
-            }
+            console.error('Error removing legacy job:', removeError);
+            result.removeError = removeError.message;
           } else {
             result.removeResult = `Successfully removed legacy job: ${jobName}`;
+            console.log('Successfully removed legacy job:', jobName);
           }
         } catch (error) {
-          // Try alternative approach - direct SQL execution
-          try {
-            await supabase.from('pg_stat_activity').select('*').limit(1); // Test connection
-            result.removeResult = `Attempted to remove job '${jobName}' - may have been already removed`;
-          } catch {
-            result.removeError = error;
-          }
+          console.error('Exception removing legacy job:', error);
+          result.removeError = error.message;
         }
         break;
 
@@ -74,33 +71,78 @@ serve(async (req) => {
         if (!jobName) {
           throw new Error('Job name is required for reactivation');
         }
-        // Reactivate a specific job
-        const { data: reactivateResult, error: reactivateError } = await supabase
-          .rpc('reactivate_scheduled_job', { job_name_param: jobName });
-        result.reactivateResult = reactivateResult;
-        result.reactivateError = reactivateError;
+        
+        try {
+          // Get the job settings first
+          const { data: jobSettings, error: settingsError } = await supabase
+            .from('scheduled_job_settings')
+            .select('*')
+            .eq('job_name', jobName)
+            .single();
+
+          if (settingsError || !jobSettings) {
+            throw new Error(`Job settings not found for ${jobName}: ${settingsError?.message}`);
+          }
+
+          console.log('Found job settings for reactivation:', jobSettings);
+
+          // Use the existing update_news_fetch_job function to properly recreate the job
+          const { data: reactivateResult, error: reactivateError } = await supabase.rpc('update_news_fetch_job', {
+            p_job_name: jobSettings.job_name,
+            p_schedule: jobSettings.schedule,
+            p_is_enabled: jobSettings.is_enabled,
+            p_parameters: jobSettings.parameters
+          });
+          
+          if (reactivateError) {
+            console.error('Error reactivating job:', reactivateError);
+            result.reactivateError = reactivateError;
+          } else {
+            // Also update the job settings updated_at to trigger any dependent processes
+            const { error: updateError } = await supabase
+              .from('scheduled_job_settings')
+              .update({ updated_at: new Date().toISOString() })
+              .eq('job_name', jobName);
+            
+            if (updateError) {
+              console.warn('Warning: Could not update job timestamp:', updateError);
+            }
+            
+            result.reactivateResult = `Job reactivated: ${reactivateResult}`;
+            console.log('Successfully reactivated job:', jobName, reactivateResult);
+          }
+        } catch (error) {
+          console.error('Exception reactivating job:', error);
+          result.reactivateError = { message: error.message };
+        }
         break;
 
       case 'test_trigger':
         if (!jobName) {
           throw new Error('Job name is required for trigger test');
         }
-        // Test the trigger by updating a job
-        const { data: triggerTest, error: triggerError } = await supabase
-          .from('scheduled_job_settings')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('job_name', jobName);
-        result.triggerTest = triggerTest;
-        result.triggerError = triggerError;
+        try {
+          // Test the trigger by updating a job
+          const { data: triggerTest, error: triggerError } = await supabase
+            .from('scheduled_job_settings')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('job_name', jobName);
+          result.triggerTest = triggerTest;
+          result.triggerError = triggerError;
+          console.log('Trigger test result:', { triggerTest, triggerError });
+        } catch (error) {
+          console.error('Exception testing trigger:', error);
+          result.triggerError = { message: error.message };
+        }
         break;
 
       case 'full_diagnostic':
         // Get comprehensive diagnostic info
-        const { data: allCronJobs } = await supabase.rpc('get_cron_jobs');
-        const { data: allJobSettings } = await supabase
+        const { data: allCronJobs, error: cronErr } = await supabase.rpc('get_cron_jobs');
+        const { data: allJobSettings, error: settingsErr } = await supabase
           .from('scheduled_job_settings')
           .select('*');
-        const { data: recentLogs } = await supabase
+        const { data: recentLogs, error: logsErr } = await supabase
           .from('job_execution_logs')
           .select('*')
           .order('created_at', { ascending: false })
@@ -110,8 +152,20 @@ serve(async (req) => {
           cronJobs: allCronJobs || [],
           jobSettings: allJobSettings || [],
           recentLogs: recentLogs || [],
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          errors: {
+            cronErr,
+            settingsErr,
+            logsErr
+          }
         };
+        
+        console.log('Full diagnostic completed:', {
+          cronJobsCount: allCronJobs?.length || 0,
+          jobSettingsCount: allJobSettings?.length || 0,
+          recentLogsCount: recentLogs?.length || 0,
+          errors: { cronErr, settingsErr, logsErr }
+        });
         break;
 
       default:
