@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { RefreshCw, AlertCircle, CheckCircle2, Wrench, Play, Settings } from "lucide-react";
+import { RefreshCw, AlertCircle, CheckCircle2, Wrench, Play, Settings, Trash2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface DiagnosticResult {
@@ -46,6 +46,31 @@ const CronDiagnosticTool = () => {
         success: false,
         error: err instanceof Error ? err.message : 'Unknown error'
       });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removeLegacyCronJob = async (jobName: string) => {
+    setIsLoading(true);
+    try {
+      // Call a new edge function to safely remove legacy cron jobs
+      const { data, error } = await supabase.functions.invoke('test-cron-system', {
+        body: { action: 'remove_legacy_job', jobName }
+      });
+      
+      if (error) throw error;
+      
+      if (data.success) {
+        toast.success(`Legacy job removed: ${jobName}`);
+        // Refresh diagnostic data
+        await runFullDiagnostic();
+      } else {
+        toast.warning(`Could not remove job: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error("Error removing legacy job:", err);
+      toast.error("Failed to remove legacy job");
     } finally {
       setIsLoading(false);
     }
@@ -141,6 +166,20 @@ const CronDiagnosticTool = () => {
     });
   };
 
+  const getLegacyJobs = () => {
+    if (!diagnosticResult?.result || !diagnosticResult.result.cronJobs || !diagnosticResult.result.jobSettings) {
+      return [];
+    }
+    
+    const { cronJobs, jobSettings } = diagnosticResult.result;
+    
+    // Find cron jobs that don't have corresponding job settings (legacy jobs)
+    return cronJobs.filter(cronJob => {
+      const hasSettings = jobSettings.some(setting => setting.job_name === cronJob.jobname);
+      return !hasSettings;
+    });
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -203,28 +242,29 @@ const CronDiagnosticTool = () => {
                     <p className="text-sm text-red-600">Broken</p>
                   </div>
                   
+                  <div className="text-center p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <div className="text-2xl font-bold text-yellow-600">
+                      {getLegacyJobs().length}
+                    </div>
+                    <p className="text-sm text-yellow-600">Legacy</p>
+                  </div>
+                  
                   <div className="text-center p-3 bg-blue-50 border border-blue-200 rounded-md">
                     <div className="text-2xl font-bold text-blue-600">
                       {diagnosticResult.result?.cronJobs?.length || 0}
                     </div>
-                    <p className="text-sm text-blue-600">Cron Jobs</p>
-                  </div>
-                  
-                  <div className="text-center p-3 bg-purple-50 border border-purple-200 rounded-md">
-                    <div className="text-2xl font-bold text-purple-600">
-                      {diagnosticResult.result?.jobSettings?.length || 0}
-                    </div>
-                    <p className="text-sm text-purple-600">Job Settings</p>
+                    <p className="text-sm text-blue-600">Total Cron Jobs</p>
                   </div>
                 </div>
 
                 {/* Issues Found */}
-                {getBrokenJobs().length > 0 && (
+                {(getBrokenJobs().length > 0 || getLegacyJobs().length > 0) && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Issues Found</AlertTitle>
                     <AlertDescription>
-                      {getBrokenJobs().length} job(s) are enabled but not scheduled in the cron system.
+                      {getBrokenJobs().length > 0 && `${getBrokenJobs().length} job(s) are enabled but not scheduled. `}
+                      {getLegacyJobs().length > 0 && `${getLegacyJobs().length} legacy job(s) found without settings.`}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -276,8 +316,34 @@ const CronDiagnosticTool = () => {
                     </div>
                   ))}
 
+                  {/* Legacy Jobs */}
+                  {getLegacyJobs().map(job => (
+                    <div key={job.jobname} className="flex items-center justify-between p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                      <div>
+                        <div className="font-medium text-yellow-800">{job.jobname}</div>
+                        <div className="text-sm text-yellow-600">Schedule: {job.schedule}</div>
+                        <div className="text-xs text-yellow-500">Legacy job without settings</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-yellow-100 text-yellow-800">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Legacy
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => removeLegacyCronJob(job.jobname)}
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+
                   {/* If no jobs at all */}
-                  {getWorkingJobs().length === 0 && getBrokenJobs().length === 0 && (
+                  {getWorkingJobs().length === 0 && getBrokenJobs().length === 0 && getLegacyJobs().length === 0 && (
                     <div className="text-center p-4 border border-dashed rounded-md">
                       <p className="text-muted-foreground">No scheduled jobs found</p>
                       <p className="text-sm text-muted-foreground">Create a default job to get started</p>

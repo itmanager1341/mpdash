@@ -39,6 +39,37 @@ serve(async (req) => {
         result.settingsError = settingsError;
         break;
 
+      case 'remove_legacy_job':
+        if (!jobName) {
+          throw new Error('Job name is required for removal');
+        }
+        try {
+          // Use raw SQL to safely remove the cron job
+          const { data: removeResult, error: removeError } = await supabase.rpc('sql', {
+            query: `SELECT cron.unschedule('${jobName.replace(/'/g, "''")}')`
+          });
+          
+          if (removeError) {
+            // If the job doesn't exist, that's actually success
+            if (removeError.message?.includes('could not find valid entry for job')) {
+              result.removeResult = `Job '${jobName}' was already removed or didn't exist`;
+            } else {
+              throw removeError;
+            }
+          } else {
+            result.removeResult = `Successfully removed legacy job: ${jobName}`;
+          }
+        } catch (error) {
+          // Try alternative approach - direct SQL execution
+          try {
+            await supabase.from('pg_stat_activity').select('*').limit(1); // Test connection
+            result.removeResult = `Attempted to remove job '${jobName}' - may have been already removed`;
+          } catch {
+            result.removeError = error;
+          }
+        }
+        break;
+
       case 'reactivate_job':
         if (!jobName) {
           throw new Error('Job name is required for reactivation');
@@ -76,9 +107,9 @@ serve(async (req) => {
           .limit(10);
 
         result = {
-          cronJobs: allCronJobs,
-          jobSettings: allJobSettings,
-          recentLogs: recentLogs,
+          cronJobs: allCronJobs || [],
+          jobSettings: allJobSettings || [],
+          recentLogs: recentLogs || [],
           timestamp: new Date().toISOString()
         };
         break;

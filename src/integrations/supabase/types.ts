@@ -1015,7 +1015,6 @@ export type Database = {
           database: string
           username: string
           active: boolean
-          last_run: string
           next_run: string
         }[]
       }
