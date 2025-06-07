@@ -4,7 +4,8 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ScheduledJobsTable from "@/components/jobs/ScheduledJobsTable";
 import JobExecutionLogsTable from "@/components/jobs/JobExecutionLogsTable";
-import { Calendar, History } from "lucide-react";
+import CronDiagnosticTool from "@/components/admin/CronDiagnosticTool";
+import { Calendar, History, Settings } from "lucide-react";
 
 export default function Jobs() {
   const [activeTab, setActiveTab] = useState("scheduled-jobs");
@@ -22,7 +23,7 @@ export default function Jobs() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="scheduled-jobs" className="flex items-center gap-2">
               <Calendar className="h-4 w-4" />
               Scheduled Jobs
@@ -30,6 +31,10 @@ export default function Jobs() {
             <TabsTrigger value="execution-logs" className="flex items-center gap-2">
               <History className="h-4 w-4" />
               Execution Logs
+            </TabsTrigger>
+            <TabsTrigger value="diagnostics" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Diagnostics
             </TabsTrigger>
           </TabsList>
 
@@ -39,6 +44,10 @@ export default function Jobs() {
 
           <TabsContent value="execution-logs" className="space-y-6">
             <JobExecutionLogsTable />
+          </TabsContent>
+
+          <TabsContent value="diagnostics" className="space-y-6">
+            <CronDiagnosticTool />
           </TabsContent>
         </Tabs>
       </div>
