@@ -99,13 +99,14 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
           <div className="space-y-2">
             <Label htmlFor="source_type">Source Type</Label>
             <Select 
-              value={formData.source_type} 
-              onValueChange={(value) => setFormData(prev => ({ ...prev, source_type: value }))}
+              value={formData.source_type || "none"} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, source_type: value === "none" ? "" : value }))}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select a type" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">No type selected</SelectItem>
                 <SelectItem value="news">News</SelectItem>
                 <SelectItem value="blog">Blog</SelectItem>
                 <SelectItem value="research">Research</SelectItem>
@@ -118,13 +119,14 @@ export function AddSourceDialog({ open, onOpenChange }: AddSourceDialogProps) {
           <div className="space-y-2">
             <Label htmlFor="priority_tier">Priority Tier</Label>
             <Select 
-              value={formData.priority_tier} 
-              onValueChange={(value) => setFormData(prev => ({ ...prev, priority_tier: value }))}
+              value={formData.priority_tier || "none"} 
+              onValueChange={(value) => setFormData(prev => ({ ...prev, priority_tier: value === "none" ? "" : value }))}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select priority" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">No priority selected</SelectItem>
                 <SelectItem value="1">Tier 1 (Highest)</SelectItem>
                 <SelectItem value="2">Tier 2</SelectItem>
                 <SelectItem value="3">Tier 3</SelectItem>

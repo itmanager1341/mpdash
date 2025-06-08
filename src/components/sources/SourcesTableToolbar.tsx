@@ -42,12 +42,12 @@ export function SourcesTableToolbar({
           />
         </div>
         
-        <Select value={typeFilter} onValueChange={onTypeFilterChange}>
+        <Select value={typeFilter || "all"} onValueChange={(value) => onTypeFilterChange(value === "all" ? "" : value)}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="All Types" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Types</SelectItem>
+            <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="news">News</SelectItem>
             <SelectItem value="blog">Blog</SelectItem>
             <SelectItem value="research">Research</SelectItem>
@@ -56,12 +56,12 @@ export function SourcesTableToolbar({
           </SelectContent>
         </Select>
 
-        <Select value={priorityFilter} onValueChange={onPriorityFilterChange}>
+        <Select value={priorityFilter || "all"} onValueChange={(value) => onPriorityFilterChange(value === "all" ? "" : value)}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder="All Priorities" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Priorities</SelectItem>
+            <SelectItem value="all">All Priorities</SelectItem>
             <SelectItem value="1">Priority 1</SelectItem>
             <SelectItem value="2">Priority 2</SelectItem>
             <SelectItem value="3">Priority 3</SelectItem>

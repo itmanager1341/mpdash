@@ -108,13 +108,14 @@ export function SourcesTableRow({
       <TableCell>
         {isEditing ? (
           <Select 
-            value={editValues.source_type} 
-            onValueChange={(value) => setEditValues(prev => ({ ...prev, source_type: value }))}
+            value={editValues.source_type || "none"} 
+            onValueChange={(value) => setEditValues(prev => ({ ...prev, source_type: value === "none" ? "" : value }))}
           >
             <SelectTrigger className="w-32">
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">No type</SelectItem>
               <SelectItem value="news">News</SelectItem>
               <SelectItem value="blog">Blog</SelectItem>
               <SelectItem value="research">Research</SelectItem>
@@ -134,13 +135,14 @@ export function SourcesTableRow({
       <TableCell>
         {isEditing ? (
           <Select 
-            value={editValues.priority_tier} 
-            onValueChange={(value) => setEditValues(prev => ({ ...prev, priority_tier: value }))}
+            value={editValues.priority_tier || "none"} 
+            onValueChange={(value) => setEditValues(prev => ({ ...prev, priority_tier: value === "none" ? "" : value }))}
           >
             <SelectTrigger className="w-24">
               <SelectValue placeholder="Tier" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">No tier</SelectItem>
               <SelectItem value="1">1</SelectItem>
               <SelectItem value="2">2</SelectItem>
               <SelectItem value="3">3</SelectItem>
