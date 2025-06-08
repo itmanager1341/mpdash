@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Play, Clock, Settings, Loader2, Pause, Edit, Trash2 } from "lucide-react";
@@ -9,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import VisualPromptBuilder from "@/components/keywords/VisualPromptBuilder";
 import ScheduleConfigDialog from "@/components/keywords/ScheduleConfigDialog";
+import ModelRecommendationsCard from "@/components/keywords/ModelRecommendationsCard";
 import { fetchPrompts, extractPromptMetadata, deletePrompt } from "@/utils/llmPromptsUtils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -236,6 +236,9 @@ export default function SearchPromptsTab({ searchTerm }: SearchPromptsTabProps) 
 
   return (
     <div className="space-y-6">
+      {/* Model Recommendations Card */}
+      <ModelRecommendationsCard />
+
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold">News Search Prompts</h2>
