@@ -1,13 +1,16 @@
+
 import { ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider, Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
-import { CalendarDays, LayoutDashboard, Mail, Settings, BookOpen, PieChart, FileText, Sparkles, LogOut, User, Search, Command, Edit3, Shield } from "lucide-react";
+import { CalendarDays, LayoutDashboard, Mail, Settings, BookOpen, PieChart, FileText, Sparkles, LogOut, User, Search, Command, Edit3, Shield, Database } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+
 interface DashboardLayoutProps {
   children: ReactNode;
 }
+
 export default function DashboardLayout({
   children
 }: DashboardLayoutProps) {
@@ -17,6 +20,7 @@ export default function DashboardLayout({
     signOut,
     isAdmin
   } = useAuth();
+
   const getInitials = () => {
     if (profile?.first_name && profile?.last_name) {
       return `${profile.first_name[0]}${profile.last_name[0]}`.toUpperCase();
@@ -25,6 +29,7 @@ export default function DashboardLayout({
     }
     return "U";
   };
+
   const getDisplayName = () => {
     if (profile?.first_name && profile?.last_name) {
       return `${profile.first_name} ${profile.last_name}`;
@@ -33,6 +38,7 @@ export default function DashboardLayout({
     }
     return "User";
   };
+
   return <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <Sidebar>
@@ -107,6 +113,14 @@ export default function DashboardLayout({
                     <a href="/jobs">
                       <Command />
                       <span>Jobs</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild tooltip="Sources Management">
+                    <a href="/sources">
+                      <Database />
+                      <span>Sources</span>
                     </a>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
