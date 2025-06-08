@@ -36,15 +36,6 @@ interface EnhancedModel {
   assignedFunctions?: string[];
 }
 
-const FUNCTION_OPTIONS = [
-  { value: "news_discovery", label: "News Discovery", description: "Finding and analyzing news articles" },
-  { value: "content_scraping", label: "Content Scraping", description: "Extracting content from web pages" },
-  { value: "sentiment_analysis", label: "Sentiment Analysis", description: "Analyzing social media and market sentiment" },
-  { value: "breaking_news", label: "Breaking News Detection", description: "Real-time news monitoring and alerts" },
-  { value: "content_generation", label: "Content Generation", description: "Creating articles and summaries" },
-  { value: "trend_analysis", label: "Trend Analysis", description: "Identifying market trends and patterns" }
-];
-
 export default function ModelsTab() {
   const [filterProvider, setFilterProvider] = useState("all");
   const [filterType, setFilterType] = useState("all");
@@ -58,8 +49,84 @@ export default function ModelsTab() {
   const [functionAssignments, setFunctionAssignments] = useState<Record<string, string[]>>({});
   const [addingFunctionFor, setAddingFunctionFor] = useState<string | null>(null);
 
-  // Updated model data with new APIs and function assignments
+  // Fetch dynamic function options from llm_prompts table
+  const { data: functionOptions = [] } = useQuery({
+    queryKey: ['llm-functions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('llm_prompts')
+        .select('function_name')
+        .eq('is_active', true);
+      
+      if (error) throw error;
+      
+      // Create unique function options with descriptions
+      const uniqueFunctions = [...new Set(data.map(p => p.function_name))];
+      return uniqueFunctions.map(func => ({
+        value: func,
+        label: func.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        description: `Function: ${func}`
+      }));
+    }
+  });
+
+  // Updated model data with complete OpenAI and Perplexity catalogs and real pricing
   const models: EnhancedModel[] = [
+    // OpenAI Models - Complete catalog with latest pricing
+    {
+      id: "gpt-4.1-2025-04-14",
+      name: "GPT-4.1 (Latest)",
+      provider: "OpenAI",
+      type: "Text + Vision",
+      description: "OpenAI's flagship model with enhanced reasoning and multimodal capabilities",
+      capabilities: ["text", "vision", "function-calling", "json-mode"],
+      maxTokens: 4096,
+      contextWindow: 128000,
+      isAvailable: true,
+      defaultSettings: { temperature: 0.7, topP: 1 },
+      costPer1MTokens: { input: 2.50, output: 10.00 },
+      avgResponseTime: "2-4s",
+      speed: "Medium",
+      costTier: "Premium",
+      recommendedFor: ["Complex editorial analysis", "Multi-step reasoning", "Content generation with citations"],
+      assignedFunctions: functionAssignments["gpt-4.1-2025-04-14"] || []
+    },
+    {
+      id: "o3-2025-04-16",
+      name: "O3 Reasoning",
+      provider: "OpenAI",
+      type: "Reasoning",
+      description: "Advanced reasoning model for complex analytical tasks",
+      capabilities: ["text", "reasoning", "analysis"],
+      maxTokens: 4096,
+      contextWindow: 128000,
+      isAvailable: true,
+      defaultSettings: { temperature: 0.3, topP: 0.9 },
+      costPer1MTokens: { input: 15.00, output: 60.00 },
+      avgResponseTime: "5-10s",
+      speed: "Slow",
+      costTier: "Premium",
+      recommendedFor: ["Complex financial analysis", "Multi-step problem solving", "Research synthesis"],
+      assignedFunctions: functionAssignments["o3-2025-04-16"] || []
+    },
+    {
+      id: "o4-mini-2025-04-16",
+      name: "O4 Mini",
+      provider: "OpenAI",
+      type: "Fast Reasoning",
+      description: "Fast reasoning model optimized for efficient analytical tasks",
+      capabilities: ["text", "reasoning", "coding"],
+      maxTokens: 4096,
+      contextWindow: 128000,
+      isAvailable: true,
+      defaultSettings: { temperature: 0.3, topP: 0.9 },
+      costPer1MTokens: { input: 1.00, output: 4.00 },
+      avgResponseTime: "1-3s",
+      speed: "Fast",
+      costTier: "Standard",
+      recommendedFor: ["Quick analysis", "Code review", "Fast content assessment"],
+      assignedFunctions: functionAssignments["o4-mini-2025-04-16"] || []
+    },
     {
       id: "gpt-4o",
       name: "GPT-4o",
@@ -96,6 +163,8 @@ export default function ModelsTab() {
       recommendedFor: ["Quick article summaries", "Simple content tasks", "High-volume operations"],
       assignedFunctions: functionAssignments["gpt-4o-mini"] || []
     },
+
+    // Perplexity Models - Complete catalog with real pricing
     {
       id: "llama-3.1-sonar-small-128k-online",
       name: "Llama 3.1 Sonar Small Online",
@@ -114,6 +183,44 @@ export default function ModelsTab() {
       recommendedFor: ["News research", "Current market trends", "Real-time competitor analysis"],
       assignedFunctions: functionAssignments["llama-3.1-sonar-small-128k-online"] || []
     },
+    {
+      id: "llama-3.1-sonar-large-128k-online",
+      name: "Llama 3.1 Sonar Large Online",
+      provider: "Perplexity",
+      type: "Real-time Search",
+      description: "70B parameter model with enhanced reasoning and live search",
+      capabilities: ["text", "real-time-search", "current-events", "enhanced-reasoning"],
+      maxTokens: 4096,
+      contextWindow: 127072,
+      isAvailable: true,
+      defaultSettings: { temperature: 0.2, topP: 0.9 },
+      costPer1MTokens: { input: 1.00, output: 1.00 },
+      avgResponseTime: "5-12s",
+      speed: "Slow",
+      costTier: "Standard",
+      recommendedFor: ["Complex market research", "Detailed news analysis", "Comprehensive trend reports"],
+      assignedFunctions: functionAssignments["llama-3.1-sonar-large-128k-online"] || []
+    },
+    {
+      id: "llama-3.1-sonar-huge-128k-online",
+      name: "Llama 3.1 Sonar Huge Online",
+      provider: "Perplexity",
+      type: "Real-time Search",
+      description: "405B parameter model for most complex analysis with live search",
+      capabilities: ["text", "real-time-search", "current-events", "advanced-reasoning"],
+      maxTokens: 4096,
+      contextWindow: 127072,
+      isAvailable: true,
+      defaultSettings: { temperature: 0.2, topP: 0.9 },
+      costPer1MTokens: { input: 5.00, output: 5.00 },
+      avgResponseTime: "10-20s",
+      speed: "Slow",
+      costTier: "Premium",
+      recommendedFor: ["Expert-level analysis", "Complex financial research", "In-depth investigative reporting"],
+      assignedFunctions: functionAssignments["llama-3.1-sonar-huge-128k-online"] || []
+    },
+
+    // Specialized Service Models
     {
       id: "firecrawl-scraper",
       name: "Firecrawl Scraper",
@@ -205,7 +312,7 @@ export default function ModelsTab() {
   // Get available functions for a model (not already assigned)
   const getAvailableFunctions = (modelId: string) => {
     const assignedFunctions = functionAssignments[modelId] || [];
-    return FUNCTION_OPTIONS.filter(func => !assignedFunctions.includes(func.value));
+    return functionOptions.filter(func => !assignedFunctions.includes(func.value));
   };
 
   // Filter and sort models
@@ -287,7 +394,7 @@ export default function ModelsTab() {
         <div className="flex flex-col sm:flex-row gap-4 justify-between">
           <div>
             <h2 className="text-2xl font-bold">AI Models & Function Assignment</h2>
-            <p className="text-muted-foreground">Manage AI models and assign them to multiple functions with cost optimization</p>
+            <p className="text-muted-foreground">Manage AI models and assign them to functions with real-time cost tracking</p>
           </div>
         </div>
 
@@ -335,7 +442,7 @@ export default function ModelsTab() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Functions</SelectItem>
-                  {FUNCTION_OPTIONS.map(func => (
+                  {functionOptions.map(func => (
                     <SelectItem key={func.value} value={func.value}>{func.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -402,7 +509,7 @@ export default function ModelsTab() {
                           {/* Assigned Functions as Badges */}
                           <div className="flex flex-wrap gap-1">
                             {assignedFunctions.map((funcValue, index) => {
-                              const func = FUNCTION_OPTIONS.find(f => f.value === funcValue);
+                              const func = functionOptions.find(f => f.value === funcValue);
                               if (!func) return null;
                               
                               return (
