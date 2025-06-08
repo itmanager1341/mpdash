@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import ModelTestingForm from "./ModelTestingForm";
 import ModelConfigForm from "./ModelConfigForm";
+import { FUNCTION_CATEGORIES, getCategoriesForModel, isModelAssignedToCategory } from "@/utils/functionCategories";
 
 interface EnhancedModel {
   id: string;
@@ -295,24 +295,24 @@ export default function ModelsTab() {
   };
 
   // Add function to model
-  const addFunctionToModel = (modelId: string, functionValue: string) => {
+  const addFunctionToModel = (modelId: string, categoryId: string) => {
     const currentFunctions = functionAssignments[modelId] || [];
-    if (!currentFunctions.includes(functionValue)) {
-      updateModelAssignment(modelId, [...currentFunctions, functionValue]);
+    if (!currentFunctions.includes(categoryId)) {
+      updateModelAssignment(modelId, [...currentFunctions, categoryId]);
     }
     setAddingFunctionFor(null);
   };
 
   // Remove function from model
-  const removeFunctionFromModel = (modelId: string, functionValue: string) => {
+  const removeFunctionFromModel = (modelId: string, categoryId: string) => {
     const currentFunctions = functionAssignments[modelId] || [];
-    updateModelAssignment(modelId, currentFunctions.filter(f => f !== functionValue));
+    updateModelAssignment(modelId, currentFunctions.filter(f => f !== categoryId));
   };
 
   // Get available functions for a model (not already assigned)
   const getAvailableFunctions = (modelId: string) => {
     const assignedFunctions = functionAssignments[modelId] || [];
-    return functionOptions.filter(func => !assignedFunctions.includes(func.value));
+    return FUNCTION_CATEGORIES.filter(category => !assignedFunctions.includes(category.id));
   };
 
   // Filter and sort models
@@ -320,7 +320,7 @@ export default function ModelsTab() {
     .filter(model => {
       const matchesProvider = filterProvider === "all" || model.provider.toLowerCase() === filterProvider.toLowerCase();
       const matchesType = filterType === "all" || model.type.toLowerCase().includes(filterType.toLowerCase());
-      const matchesFunction = filterFunction === "all" || model.assignedFunctions?.includes(filterFunction);
+      const matchesFunction = filterFunction === "all" || isModelAssignedToCategory(model.id, filterFunction, functionAssignments);
       const matchesSearch = searchTerm === "" || 
         model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         model.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -442,8 +442,8 @@ export default function ModelsTab() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Functions</SelectItem>
-                  {functionOptions.map(func => (
-                    <SelectItem key={func.value} value={func.value}>{func.label}</SelectItem>
+                  {FUNCTION_CATEGORIES.map(category => (
+                    <SelectItem key={category.id} value={category.id}>{category.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -487,8 +487,8 @@ export default function ModelsTab() {
               <TableBody>
                 {filteredModels.map((model) => {
                   const hasKey = hasActiveKey(model.provider);
-                  const assignedFunctions = functionAssignments[model.id] || [];
-                  const availableFunctions = getAvailableFunctions(model.id);
+                  const assignedCategories = getCategoriesForModel(model.id, functionAssignments);
+                  const availableCategories = getAvailableFunctions(model.id);
                   
                   return (
                     <TableRow key={model.id} className={!hasKey ? "opacity-70" : ""}>
@@ -508,33 +508,28 @@ export default function ModelsTab() {
                         <div className="space-y-2 min-w-48">
                           {/* Assigned Functions as Badges */}
                           <div className="flex flex-wrap gap-1">
-                            {assignedFunctions.map((funcValue, index) => {
-                              const func = functionOptions.find(f => f.value === funcValue);
-                              if (!func) return null;
-                              
-                              return (
-                                <Badge 
-                                  key={funcValue} 
-                                  variant={index === 0 ? "default" : "secondary"}
-                                  className="flex items-center gap-1 text-xs"
+                            {assignedCategories.map((category, index) => (
+                              <Badge 
+                                key={category.id} 
+                                variant={index === 0 ? "default" : "secondary"}
+                                className="flex items-center gap-1 text-xs"
+                              >
+                                {index === 0 && <Target className="h-3 w-3" />}
+                                {category.label}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-3 w-3 p-0 hover:bg-transparent"
+                                  onClick={() => removeFunctionFromModel(model.id, category.id)}
                                 >
-                                  {index === 0 && <Target className="h-3 w-3" />}
-                                  {func.label}
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-3 w-3 p-0 hover:bg-transparent"
-                                    onClick={() => removeFunctionFromModel(model.id, funcValue)}
-                                  >
-                                    <X className="h-2 w-2" />
-                                  </Button>
-                                </Badge>
-                              );
-                            })}
+                                  <X className="h-2 w-2" />
+                                </Button>
+                              </Badge>
+                            ))}
                           </div>
                           
                           {/* Add Function Dropdown */}
-                          {availableFunctions.length > 0 && (
+                          {availableCategories.length > 0 && (
                             <div className="flex items-center gap-2">
                               {addingFunctionFor === model.id ? (
                                 <div className="flex gap-1">
@@ -543,11 +538,11 @@ export default function ModelsTab() {
                                       <SelectValue placeholder="Add function" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {availableFunctions.map(func => (
-                                        <SelectItem key={func.value} value={func.value}>
+                                      {availableCategories.map(category => (
+                                        <SelectItem key={category.id} value={category.id}>
                                           <div>
-                                            <div className="font-medium text-xs">{func.label}</div>
-                                            <div className="text-xs text-muted-foreground">{func.description}</div>
+                                            <div className="font-medium text-xs">{category.label}</div>
+                                            <div className="text-xs text-muted-foreground">{category.description}</div>
                                           </div>
                                         </SelectItem>
                                       ))}
@@ -577,10 +572,10 @@ export default function ModelsTab() {
                           )}
                           
                           {/* Function Count Indicator */}
-                          {assignedFunctions.length > 0 && (
+                          {assignedCategories.length > 0 && (
                             <div className="text-xs text-muted-foreground">
-                              {assignedFunctions.length} function{assignedFunctions.length !== 1 ? 's' : ''} assigned
-                              {assignedFunctions.length > 1 && <span className="text-blue-600 ml-1">(multi-function)</span>}
+                              {assignedCategories.length} function{assignedCategories.length !== 1 ? 's' : ''} assigned
+                              {assignedCategories.length > 1 && <span className="text-blue-600 ml-1">(multi-function)</span>}
                             </div>
                           )}
                         </div>

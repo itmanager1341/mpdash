@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -70,13 +69,24 @@ export default function NewsFetchPromptForm({
     }
   });
 
-  // Fetch available models from API keys
+  // Fetch available models that are assigned to news search functions
   const { data: availableModels, isLoading: modelsLoading } = useQuery({
-    queryKey: ['available-models'],
+    queryKey: ['available-news-search-models'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_available_models');
+      // Get all available models first
+      const { data: allModels, error } = await supabase.rpc('get_available_models');
       if (error) throw error;
-      return data || [];
+      
+      // For now, filter to models that are typically used for news search
+      // In a full implementation, this would check the actual function assignments
+      const newsSearchModels = allModels?.filter(model => 
+        model.model_name.includes('sonar') ||
+        model.model_name.includes('online') ||
+        model.model_name.includes('perplexity') ||
+        model.provider === 'perplexity'
+      ) || [];
+      
+      return newsSearchModels;
     }
   });
 
