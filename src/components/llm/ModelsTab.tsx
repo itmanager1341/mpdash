@@ -376,10 +376,10 @@ export default function ModelsTab() {
                       <TableCell>
                         <div className="space-y-2">
                           <Select 
-                            value={model.assignedFunctions?.[0] || ""} 
+                            value={model.assignedFunctions?.[0] || "none"} 
                             onValueChange={(value) => {
                               const currentFunctions = model.assignedFunctions || [];
-                              const newFunctions = value ? [value] : [];
+                              const newFunctions = value === "none" ? [] : [value];
                               updateModelAssignment(model.id, newFunctions);
                             }}
                           >
@@ -392,7 +392,7 @@ export default function ModelsTab() {
                               </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">No function</SelectItem>
+                              <SelectItem value="none">No function</SelectItem>
                               {FUNCTION_OPTIONS.map(func => (
                                 <SelectItem key={func.value} value={func.value}>
                                   <div>
