@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings, TestTube2, Search, DollarSign, Zap, Clock, CheckCircle, AlertCircle, Info, Target } from "lucide-react";
+import { Settings, TestTube2, Search, DollarSign, Zap, Clock, CheckCircle, AlertCircle, Info, Target, Plus, X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,6 +56,7 @@ export default function ModelsTab() {
   const [showTesting, setShowTesting] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [functionAssignments, setFunctionAssignments] = useState<Record<string, string[]>>({});
+  const [addingFunctionFor, setAddingFunctionFor] = useState<string | null>(null);
 
   // Updated model data with new APIs and function assignments
   const models: EnhancedModel[] = [
@@ -186,6 +187,27 @@ export default function ModelsTab() {
     toast.success(`Updated function assignments for ${modelId}`);
   };
 
+  // Add function to model
+  const addFunctionToModel = (modelId: string, functionValue: string) => {
+    const currentFunctions = functionAssignments[modelId] || [];
+    if (!currentFunctions.includes(functionValue)) {
+      updateModelAssignment(modelId, [...currentFunctions, functionValue]);
+    }
+    setAddingFunctionFor(null);
+  };
+
+  // Remove function from model
+  const removeFunctionFromModel = (modelId: string, functionValue: string) => {
+    const currentFunctions = functionAssignments[modelId] || [];
+    updateModelAssignment(modelId, currentFunctions.filter(f => f !== functionValue));
+  };
+
+  // Get available functions for a model (not already assigned)
+  const getAvailableFunctions = (modelId: string) => {
+    const assignedFunctions = functionAssignments[modelId] || [];
+    return FUNCTION_OPTIONS.filter(func => !assignedFunctions.includes(func.value));
+  };
+
   // Filter and sort models
   const filteredModels = models
     .filter(model => {
@@ -265,7 +287,7 @@ export default function ModelsTab() {
         <div className="flex flex-col sm:flex-row gap-4 justify-between">
           <div>
             <h2 className="text-2xl font-bold">AI Models & Function Assignment</h2>
-            <p className="text-muted-foreground">Manage AI models and assign them to specific functions with cost optimization</p>
+            <p className="text-muted-foreground">Manage AI models and assign them to multiple functions with cost optimization</p>
           </div>
         </div>
 
@@ -348,7 +370,7 @@ export default function ModelsTab() {
                   <TableHead>Model</TableHead>
                   <TableHead>Provider</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Functions</TableHead>
+                  <TableHead>Assigned Functions</TableHead>
                   <TableHead>Cost/1M Tokens</TableHead>
                   <TableHead>Speed</TableHead>
                   <TableHead>Status</TableHead>
@@ -358,6 +380,8 @@ export default function ModelsTab() {
               <TableBody>
                 {filteredModels.map((model) => {
                   const hasKey = hasActiveKey(model.provider);
+                  const assignedFunctions = functionAssignments[model.id] || [];
+                  const availableFunctions = getAvailableFunctions(model.id);
                   
                   return (
                     <TableRow key={model.id} className={!hasKey ? "opacity-70" : ""}>
@@ -374,39 +398,82 @@ export default function ModelsTab() {
                         <Badge variant="secondary">{model.type}</Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="space-y-2">
-                          <Select 
-                            value={model.assignedFunctions?.[0] || "none"} 
-                            onValueChange={(value) => {
-                              const currentFunctions = model.assignedFunctions || [];
-                              const newFunctions = value === "none" ? [] : [value];
-                              updateModelAssignment(model.id, newFunctions);
-                            }}
-                          >
-                            <SelectTrigger className="w-40">
-                              <SelectValue placeholder="Assign function">
-                                {model.assignedFunctions?.[0] ? 
-                                  FUNCTION_OPTIONS.find(f => f.value === model.assignedFunctions[0])?.label 
-                                  : "No function"
-                                }
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">No function</SelectItem>
-                              {FUNCTION_OPTIONS.map(func => (
-                                <SelectItem key={func.value} value={func.value}>
-                                  <div>
-                                    <div className="font-medium">{func.label}</div>
-                                    <div className="text-xs text-muted-foreground">{func.description}</div>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {model.assignedFunctions && model.assignedFunctions.length > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Target className="h-3 w-3 text-green-600" />
-                              <span className="text-xs text-green-600">Assigned</span>
+                        <div className="space-y-2 min-w-48">
+                          {/* Assigned Functions as Badges */}
+                          <div className="flex flex-wrap gap-1">
+                            {assignedFunctions.map((funcValue, index) => {
+                              const func = FUNCTION_OPTIONS.find(f => f.value === funcValue);
+                              if (!func) return null;
+                              
+                              return (
+                                <Badge 
+                                  key={funcValue} 
+                                  variant={index === 0 ? "default" : "secondary"}
+                                  className="flex items-center gap-1 text-xs"
+                                >
+                                  {index === 0 && <Target className="h-3 w-3" />}
+                                  {func.label}
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-3 w-3 p-0 hover:bg-transparent"
+                                    onClick={() => removeFunctionFromModel(model.id, funcValue)}
+                                  >
+                                    <X className="h-2 w-2" />
+                                  </Button>
+                                </Badge>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* Add Function Dropdown */}
+                          {availableFunctions.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              {addingFunctionFor === model.id ? (
+                                <div className="flex gap-1">
+                                  <Select onValueChange={(value) => addFunctionToModel(model.id, value)}>
+                                    <SelectTrigger className="h-7 text-xs">
+                                      <SelectValue placeholder="Add function" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableFunctions.map(func => (
+                                        <SelectItem key={func.value} value={func.value}>
+                                          <div>
+                                            <div className="font-medium text-xs">{func.label}</div>
+                                            <div className="text-xs text-muted-foreground">{func.description}</div>
+                                          </div>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2"
+                                    onClick={() => setAddingFunctionFor(null)}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setAddingFunctionFor(model.id)}
+                                >
+                                  <Plus className="h-3 w-3 mr-1" />
+                                  Add Function
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Function Count Indicator */}
+                          {assignedFunctions.length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              {assignedFunctions.length} function{assignedFunctions.length !== 1 ? 's' : ''} assigned
+                              {assignedFunctions.length > 1 && <span className="text-blue-600 ml-1">(multi-function)</span>}
                             </div>
                           )}
                         </div>
